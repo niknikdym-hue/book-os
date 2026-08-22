@@ -6,7 +6,10 @@ This repository is the project source of truth. Chats are working sessions, not 
 
 ## Current phase
 
-**Design / v0.1 architecture. No production coding yet.**
+**Design baseline complete → Implementation Milestone 0 ready.**
+
+The next permitted action is the bounded bootstrap task in
+[`docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`](docs/tasks/CODEX_TASK_001_BOOTSTRAP.md).
 
 ## Authority
 

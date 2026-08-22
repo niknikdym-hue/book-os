@@ -61,7 +61,7 @@ Do not implement Model Gateway, ontology persistence, AI calls, Research, Memory
 
 No product-design blocker.
 
-Operational limitation of the current chat: it cannot directly push to GitHub. Therefore a design file generated in the chat becomes repository authority only after Codex/user commits it to canonical `main`.
+Operational rule: a design file becomes repository authority only after it is committed to canonical GitHub `main`. Chat-generated material alone is not authority.
 
 ## Stop conditions
 

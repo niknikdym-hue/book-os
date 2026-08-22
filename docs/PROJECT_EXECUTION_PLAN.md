@@ -442,9 +442,9 @@ BOOK OS v0.1 считается доказанным, когда Owner може�
 
 ## 14. Следующий разрешённый шаг
 
-**Current design task: Core Ontology v0.1.**
+**Current implementation task: `docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`.**
 
-Production coding Codex пока не начинается.
+Design baseline complete; implementation begins only within this bounded Milestone 0 task.
 
 ## 13. Accepted v0.1 design baseline
 
@@ -463,4 +463,3 @@ The implementation-ready design is indexed in `DESIGN_INDEX.md` and consists of:
 - `IMPLEMENTATION_ROADMAP_v0.1.md`
 
 Detailed internal technical decisions may be executed by Central Brain/Codex under `BOOKOS-DEC-0002` without pausing for Owner approval unless a documented stop condition is triggered.
-
