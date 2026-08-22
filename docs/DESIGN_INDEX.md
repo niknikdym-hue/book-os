@@ -25,10 +25,11 @@ A new Central Brain or implementation lead must read, in order:
 11. `TECHNICAL_ARCHITECTURE_v0.1.md` — local-first technical architecture and stack.
 12. `SECURITY_AVAILABILITY_v0.1.md` — secrets, privacy, backups, no-VPN/regional requirements.
 13. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
-14. `IMPLEMENTATION_ROADMAP_v0.1.md` — milestones, acceptance gates, Codex sequencing.
+14. `IMPLEMENTATION_ROADMAP_v0.1.md` — milestone critical path and acceptance gates.
 15. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — mandatory security, rights, supply-chain, recovery, performance and release hardening mapped to milestones.
-16. `tasks/` — active and historical bounded implementation tasks.
-17. Recent commits, open PRs, tests and eval evidence.
+16. `TASK_EXECUTION_PROTOCOL_v0.1.md` — mandatory justification, efficiency, scope, evidence and acceptance rules for every implementation task.
+17. `tasks/` — active/historical bounded tasks; new tasks use `tasks/TASK_TEMPLATE.md`.
+18. Recent commits, open PRs, tests and eval evidence.
 
 Chat history is optional context. It is never authority.
 
@@ -57,7 +58,8 @@ Chat history is optional context. It is never authority.
 | 19. MVP success | `PRODUCT_SPEC_v0.1.md` |
 | 20. Further phases | `IMPLEMENTATION_ROADMAP_v0.1.md` |
 | Cross-cutting implementation hardening | `PRE_IMPLEMENTATION_HARDENING_v0.1.md` |
+| Task necessity / efficiency / bounded delivery | `TASK_EXECUTION_PROTOCOL_v0.1.md` |
 
 ## Baseline rule
 
-Implementation may refine internal code structure but may not change accepted product behavior, Authority Protocol, evidence semantics, regional access requirements, Literary Master semantics, human-acceptance boundaries, or mandatory hardening requirements without an explicit decision record.
+Implementation may refine internal code structure but may not change accepted product behavior, Authority Protocol, evidence semantics, regional access requirements, Literary Master semantics, human-acceptance boundaries, mandatory hardening requirements, or task-execution control rules without an explicit decision record.
