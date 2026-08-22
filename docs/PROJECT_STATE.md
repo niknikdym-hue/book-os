@@ -1,13 +1,13 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.6.0  
+**Version:** 0.7.0  
 **Date:** 2026-08-23  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**PRE-IMPLEMENTATION AUDIT + TASK GOVERNANCE COMPLETE → IMPLEMENTATION MILESTONE 0 READY**
+**IMPLEMENTATION MILESTONE 0 — TASK 001 REWORK REQUIRED**
 
 ## Latest accepted design authority
 
@@ -30,38 +30,21 @@
 
 The complete recovery map is `DESIGN_INDEX.md`.
 
-## Pre-implementation audit verdict
+## Pre-implementation verdict
 
-`GO_FOR_IMPLEMENTATION`.
+`GO_FOR_IMPLEMENTATION` remains valid.
 
-No architecture redesign is required before Milestone 0. The final audit added mandatory milestone-mapped hardening for:
+No architecture redesign is required. Task 001 reached a bounded partial implementation, but mandatory M0 runtime evidence is incomplete.
 
-- prompt injection / untrusted retrieved content;
-- SSRF/network fetch and hostile file-import boundaries;
-- source reuse rights/permissions;
-- software supply-chain/SBOM/dependency security;
-- signed/notarized update trust before external distribution;
-- migration/backup disaster tests;
-- measured performance/scale envelope;
-- durable authoring UX/crash recovery;
-- accessibility/localization baseline;
-- commercial/legal provider-brokerage launch gate;
-- data lifecycle/purge semantics;
-- Literary Master release reproducibility.
+## Task-governance rule
 
-These requirements are authority through `PRE_IMPLEMENTATION_HARDENING_v0.1.md`; most are intentionally scheduled after M0 and must not inflate Task 001.
-
-## Task-governance verdict
-
-Every implementation task must now pass the qualification gate in `TASK_EXECUTION_PROTOCOL_v0.1.md` before Codex receives it.
+Every implementation task must pass `TASK_EXECUTION_PROTOCOL_v0.1.md`.
 
 Mandatory line of sight:
 
 `accepted milestone dependency → WHY NOW → product/system value → smallest professional implementation → objective acceptance evidence → capability unlocked next`.
 
-Tasks that are speculative, not on the MVP critical path, unjustified by a blocker/measurement, or broader than an independently acceptable capability must not be issued.
-
-By default only one critical-path implementation task is active. Parallel tasks require explicit Central Brain independence/safety justification.
+Only one critical-path implementation task is active by default.
 
 ## Active product baseline
 
@@ -78,36 +61,72 @@ By default only one critical-path implementation task is active. Parallel tasks 
 
 `docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`
 
-**State:** READY TO EXECUTE after this task-governance baseline is accepted in `main` and Central Brain locks the exact launch HEAD.
+**State:** `REWORK_REQUIRED — CONTINUE SAME TASK`.
 
-Task 001 now explicitly records:
+### Task 001 attempt 1
 
-- why it is the first dependency;
-- what product/runtime capability it creates;
-- why its architecture is the smallest sufficient professional option;
-- bounded scope/non-goals;
-- M0 hardening due now vs later;
-- measurable acceptance evidence;
-- the exact next milestone it unlocks.
+Launch baseline:
+
+`3834486b496b7fcb26c3bda8b9a90e3350b7954c`
+
+Codex created a local bounded worktree/branch but intentionally made no commit, push or PR because mandatory acceptance evidence was incomplete.
+
+Confirmed partial results:
+
+- React/TypeScript desktop scaffold started;
+- Python 3.12 FastAPI local-core scaffold started;
+- bearer-token health endpoint implemented with unauthenticated rejection;
+- SQLite bootstrap implemented with foreign-key/WAL tests;
+- initial Tauri/Rust sidecar scaffold started;
+- initial CI/setup documentation started;
+- Python `pytest`: PASS (2 tests);
+- `ruff check`: PASS;
+- `mypy`: PASS;
+- paid model/API calls: 0.
+
+Unproven / blocking acceptance items:
+
+- development Mac currently lacks Rust/Cargo;
+- package install/check path was interrupted by transient npm registry DNS resolution failure;
+- Tauri compile/dev launch not yet evidenced;
+- TypeScript lint/type/tests not yet evidenced;
+- authenticated desktop → sidecar health integration not yet evidenced end-to-end;
+- sidecar lifecycle/shutdown not yet evidenced;
+- full CI validation not yet evidenced;
+- no remote `codex/task-001-bootstrap` branch or PR exists yet.
+
+These are environment/execution blockers, not architecture blockers.
 
 ## Next permitted action
 
-Codex Task 001 only:
+**Continue Task 001 only. Do not create Task 002.**
 
-- create Tauri + React desktop skeleton;
-- create Python/FastAPI local-core sidecar;
-- authenticated loopback health integration;
-- SQLite migration skeleton;
-- CI/non-paid tests;
-- dependency lockfiles/minimal M0 security scanning.
+Codex must:
+
+1. preserve the bounded uncommitted Task 001 work;
+2. fetch current `origin/main` and reconcile this project-state-only baseline change safely;
+3. verify/install the minimum trusted macOS development prerequisites required by the accepted stack (Rust stable/Cargo and existing Apple toolchain as needed);
+4. restore package-registry connectivity and install from the existing/expected lockfile without opportunistic dependency upgrades;
+5. complete TypeScript/Rust/Tauri validation;
+6. complete real desktop ↔ authenticated local-core health and lifecycle evidence;
+7. rerun the full Task 001 acceptance matrix;
+8. only when mandatory gates pass, commit/push `codex/task-001-bootstrap` and open a PR;
+9. return `PASS/PARTIAL/FAIL` evidence and stop for Central Brain acceptance.
 
 Do not implement Model Gateway, ontology persistence, AI calls, Research, Memory or BookBench in Task 001.
 
 ## Known blockers
 
-None.
+Current bounded blockers are development-environment/toolchain only:
 
-Operational rule: a design/task file becomes repository authority only after it is committed to canonical GitHub `main`. Chat-generated material alone is not authority.
+- Rust/Cargo absent on Owner Mac;
+- transient npm registry DNS/package connectivity failure.
+
+No owner decision is required unless installing the standard local toolchain would require a materially different platform, paid dependency, security exception or accepted architecture change.
+
+## Operational rule
+
+A design/task/implementation result becomes repository authority only after it is committed to canonical GitHub `main` through the accepted review path. Chat-only and uncommitted local work are not authority.
 
 ## Stop conditions
 
@@ -123,5 +142,5 @@ If the chat disappears:
 2. Read README recovery order and `DESIGN_INDEX.md`.
 3. Read this file.
 4. Read `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-5. Inspect active task/PR and exact HEAD.
-6. Continue only the `Next permitted action` unless newer accepted authority supersedes it.
+5. Inspect the local Task 001 worktree if available; remote branch/PR does not yet exist for attempt 1.
+6. Continue only the Task 001 rework described under `Next permitted action` unless newer accepted authority supersedes it.
