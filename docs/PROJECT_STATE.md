@@ -1,13 +1,13 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.4.0  
-**Date:** 2026-08-22  
+**Version:** 0.5.0  
+**Date:** 2026-08-23  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**DESIGN BASELINE COMPLETE → IMPLEMENTATION MILESTONE 0 READY**
+**PRE-IMPLEMENTATION AUDIT COMPLETE → IMPLEMENTATION MILESTONE 0 READY**
 
 ## Latest accepted design authority
 
@@ -24,8 +24,30 @@
 - Security/availability: `SECURITY_AVAILABILITY_v0.1.md`
 - Audio handoff: `AUDIO_HANDOFF_v0.1.md`
 - Implementation sequence: `IMPLEMENTATION_ROADMAP_v0.1.md`
+- Cross-cutting hardening: `PRE_IMPLEMENTATION_HARDENING_v0.1.md`
 
 The complete recovery map is `DESIGN_INDEX.md`.
+
+## Pre-implementation audit verdict
+
+`GO_FOR_IMPLEMENTATION`.
+
+No architecture redesign is required before Milestone 0. The final audit added mandatory milestone-mapped hardening for:
+
+- prompt injection / untrusted retrieved content;
+- SSRF/network fetch and hostile file-import boundaries;
+- source reuse rights/permissions;
+- software supply-chain/SBOM/dependency security;
+- signed/notarized update trust before external distribution;
+- migration/backup disaster tests;
+- measured performance/scale envelope;
+- durable authoring UX/crash recovery;
+- accessibility/localization baseline;
+- commercial/legal provider-brokerage launch gate;
+- data lifecycle/purge semantics;
+- Literary Master release reproducibility.
+
+These requirements are authority through `PRE_IMPLEMENTATION_HARDENING_v0.1.md`; most are intentionally scheduled after M0 and must not inflate Task 001.
 
 ## Active product baseline
 
@@ -42,24 +64,24 @@ The complete recovery map is `DESIGN_INDEX.md`.
 
 `docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`
 
-**State:** READY TO EXECUTE once Codex has the accepted design files/current repository checkout.
+**State:** READY TO EXECUTE.
 
 ## Next permitted action
 
 Codex Task 001 only:
 
-- materialize accepted design baseline in GitHub `main` if not already present;
 - create Tauri + React desktop skeleton;
 - create Python/FastAPI local-core sidecar;
 - authenticated loopback health integration;
 - SQLite migration skeleton;
-- CI/non-paid tests.
+- CI/non-paid tests;
+- dependency lockfiles/minimal security scanning consistent with Task 001.
 
 Do not implement Model Gateway, ontology persistence, AI calls, Research, Memory or BookBench in Task 001.
 
 ## Known blockers
 
-No product-design blocker.
+None.
 
 Operational rule: a design file becomes repository authority only after it is committed to canonical GitHub `main`. Chat-generated material alone is not authority.
 
