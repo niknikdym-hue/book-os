@@ -1,7 +1,7 @@
 # BOOK OS — DESIGN BASELINE INDEX v0.1
 
 **Status:** ACCEPTED FOR V0.1 IMPLEMENTATION  
-**Date:** 2026-08-22  
+**Date:** 2026-08-23  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Purpose
@@ -26,8 +26,9 @@ A new Central Brain or implementation lead must read, in order:
 12. `SECURITY_AVAILABILITY_v0.1.md` — secrets, privacy, backups, no-VPN/regional requirements.
 13. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
 14. `IMPLEMENTATION_ROADMAP_v0.1.md` — milestones, acceptance gates, Codex sequencing.
-15. `tasks/` — active and historical bounded implementation tasks.
-16. Recent commits, open PRs, tests and eval evidence.
+15. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — mandatory security, rights, supply-chain, recovery, performance and release hardening mapped to milestones.
+16. `tasks/` — active and historical bounded implementation tasks.
+17. Recent commits, open PRs, tests and eval evidence.
 
 Chat history is optional context. It is never authority.
 
@@ -55,7 +56,8 @@ Chat history is optional context. It is never authority.
 | 18. MVP | `PRODUCT_SPEC_v0.1.md`, `IMPLEMENTATION_ROADMAP_v0.1.md` |
 | 19. MVP success | `PRODUCT_SPEC_v0.1.md` |
 | 20. Further phases | `IMPLEMENTATION_ROADMAP_v0.1.md` |
+| Cross-cutting implementation hardening | `PRE_IMPLEMENTATION_HARDENING_v0.1.md` |
 
 ## Baseline rule
 
-Implementation may refine internal code structure but may not change accepted product behavior, Authority Protocol, evidence semantics, regional access requirements, Literary Master semantics, or human-acceptance boundaries without an explicit decision record.
+Implementation may refine internal code structure but may not change accepted product behavior, Authority Protocol, evidence semantics, regional access requirements, Literary Master semantics, human-acceptance boundaries, or mandatory hardening requirements without an explicit decision record.
