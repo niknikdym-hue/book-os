@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.7.0  
+**Version:** 0.7.1  
 **Date:** 2026-08-23  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -63,13 +63,19 @@ Only one critical-path implementation task is active by default.
 
 **State:** `REWORK_REQUIRED — CONTINUE SAME TASK`.
 
+Remote implementation branch now exists:
+
+`codex/task-001-bootstrap`
+
+It was created by Central Brain from the current accepted `main` checkpoint. No implementation commit or PR exists yet.
+
 ### Task 001 attempt 1
 
-Launch baseline:
+Original launch baseline:
 
 `3834486b496b7fcb26c3bda8b9a90e3350b7954c`
 
-Codex created a local bounded worktree/branch but intentionally made no commit, push or PR because mandatory acceptance evidence was incomplete.
+Codex created local bounded work but intentionally made no commit, push or PR because mandatory acceptance evidence was incomplete.
 
 Confirmed partial results:
 
@@ -93,7 +99,7 @@ Unproven / blocking acceptance items:
 - authenticated desktop → sidecar health integration not yet evidenced end-to-end;
 - sidecar lifecycle/shutdown not yet evidenced;
 - full CI validation not yet evidenced;
-- no remote `codex/task-001-bootstrap` branch or PR exists yet.
+- PR does not exist yet.
 
 These are environment/execution blockers, not architecture blockers.
 
@@ -104,13 +110,13 @@ These are environment/execution blockers, not architecture blockers.
 Codex must:
 
 1. preserve the bounded uncommitted Task 001 work;
-2. fetch current `origin/main` and reconcile this project-state-only baseline change safely;
+2. fetch `origin` and align its local Task 001 branch with remote `codex/task-001-bootstrap` without losing uncommitted work;
 3. verify/install the minimum trusted macOS development prerequisites required by the accepted stack (Rust stable/Cargo and existing Apple toolchain as needed);
 4. restore package-registry connectivity and install from the existing/expected lockfile without opportunistic dependency upgrades;
 5. complete TypeScript/Rust/Tauri validation;
 6. complete real desktop ↔ authenticated local-core health and lifecycle evidence;
 7. rerun the full Task 001 acceptance matrix;
-8. only when mandatory gates pass, commit/push `codex/task-001-bootstrap` and open a PR;
+8. only when mandatory gates pass, commit/push to `codex/task-001-bootstrap` and open a PR;
 9. return `PASS/PARTIAL/FAIL` evidence and stop for Central Brain acceptance.
 
 Do not implement Model Gateway, ontology persistence, AI calls, Research, Memory or BookBench in Task 001.
@@ -142,5 +148,5 @@ If the chat disappears:
 2. Read README recovery order and `DESIGN_INDEX.md`.
 3. Read this file.
 4. Read `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-5. Inspect the local Task 001 worktree if available; remote branch/PR does not yet exist for attempt 1.
+5. Inspect remote branch `codex/task-001-bootstrap` and the local uncommitted Task 001 worktree if available; no PR exists yet.
 6. Continue only the Task 001 rework described under `Next permitted action` unless newer accepted authority supersedes it.
