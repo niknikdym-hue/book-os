@@ -1,79 +1,55 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.1.0  
+**Version:** 0.3.0  
 **Date:** 2026-08-22  
 **Project:** BOOK OS  
+**Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## 0. Authority rule
 
-This repository is the source of truth for BOOK OS.
+GitHub `main` is the source of truth for BOOK OS product-development authority.
 
-Chats are working sessions and may contain hypotheses, drafts, rejected ideas, or incomplete reasoning. A decision becomes BOOK OS authority only when it is recorded here or in another authority file explicitly referenced from here.
+Chats are disposable working sessions and may contain drafts, hypotheses, rejected ideas or incomplete reasoning. A decision becomes project authority only when recorded in canonical repository authority/specification/decision files.
 
-Accepted decisions are not silently overwritten. If a decision changes, the prior decision remains in history and is marked `SUPERSEDED` by a new accepted decision.
+Accepted decisions are not silently overwritten. A changed decision is versioned and/or explicitly superseded; Git history and decision records preserve prior state.
 
----
+This v0.3 consolidation supersedes the formatting/order of earlier authority-file versions while preserving their accepted product decisions.
 
 ## 1. Product identity — ACCEPTED
 
-BOOK OS is a specialized editorial-authoring system for producing strong nonfiction at an international professional standard.
+BOOK OS is a specialized editorial-authoring operating system for producing strong nonfiction at an international professional standard.
 
 It is **not** a generic AI writer and **not** a one-prompt book generator.
 
-Its purpose is to give one strong author/editor the intellectual and operational infrastructure of a professional editorial team across research, book architecture, drafting, developmental editing, evidence/fact checking, cross-book editing, literary editing, author-voice control, versioning, provenance, quality gates, human acceptance, and release of a literary master.
+Its purpose is to give one strong author/editor the intellectual and operational infrastructure of a professional editorial team across research, book architecture, bounded drafting, developmental editing, evidence/fact checking, cross-book editing, literary editing, author-voice control, versioning, provenance, quality gates, human acceptance and release of a Literary Master.
 
-BOOK OS does not promise a bestseller. Its responsibility is to maximize manuscript quality; commercial success also depends on topic, author, market, publisher, marketing, timing, and other external factors.
+BOOK OS does not promise a bestseller. Its responsibility is manuscript quality; commercial success also depends on topic, author, market, publisher, marketing, timing and external factors.
 
----
+## 2. First user / pilot — ACCEPTED
 
-## 2. Model principle — ACCEPTED
-
-BOOK OS is model-agnostic.
-
-A `Model Gateway` must allow different frontier models/providers to be assigned to roles according to BOOK OS internal evals.
-
-Possible providers include OpenAI, Anthropic, Google Gemini, and future providers that pass internal quality tests.
-
-A model brand or model version is never architectural authority. BOOK OS quality requirements and internal eval results are authority.
-
----
+- First user of v0.1: Owner.
+- First real pilot: one new book created from zero.
+- First direction: `Business Nonfiction`.
+- Product is validated on a real book, not an abstract demo persona.
 
 ## 3. Two operating modes — ACCEPTED
 
-BOOK OS supports two base modes.
-
 ### Mode A — Book from Zero
 
-The system can take a book from an initial idea through research, contracts, architecture, bounded drafting, editorial stages, human acceptance, and Literary Master.
+`Idea → Reader/Market → Thesis → Research → Book Contract → Architecture → Chapter Contracts → bounded drafting/editing → evidence/fact check → whole-book edit → BookBench → Human Acceptance → Literary Master`
+
+This is the first v0.1 pilot path.
 
 ### Mode B — Existing Manuscript / Materials
 
-The system can accept an existing manuscript, fragments, notes, interviews, research, or other source materials, formalize their state and authority, and take them through the same controlled editorial pipeline toward Literary Master.
+BOOK OS can accept an existing manuscript, fragments, notes, interviews, research or other source materials, formalize state/authority, and move them through the controlled editorial pipeline toward Literary Master.
 
-BOOK OS must not collapse into either only a manuscript editor or only a book generator.
+Architecture must support both modes; v0.1 implementation prioritizes Mode A.
 
-For **v0.1**, the first real end-to-end test scenario is **Book from Zero**.
+## 4. Business Nonfiction taxonomy — ACCEPTED
 
----
-
-## 4. First user — ACCEPTED
-
-The first user of BOOK OS v0.1 is the project owner herself.
-
-The first MVP is designed around one strong author/editor who remains the final human authority for major creative decisions.
-
-The system should be validated on a real book rather than an abstract persona.
-
----
-
-## 5. First book profile — ACCEPTED
-
-The first v0.1 direction is **Business Nonfiction**.
-
-The user-facing classification must remain simple: the user selects one primary subtype and, when useful, one additional subtype.
-
-Initial business subtypes:
+User-facing selection stays simple: one primary subtype and optionally one secondary subtype.
 
 1. Entrepreneurship
 2. Strategy
@@ -88,361 +64,280 @@ Initial business subtypes:
 
 Principle: **simple outside, smart inside**.
 
-External market classifications and richer internal logic may be used by the system without burdening the user.
+Subtype may influence research/evidence standards, structural expectations, style risks, domain pathologies and BookBench criteria.
 
-The subtype must be able to influence research/evidence standards, structural expectations, style risks, domain pathologies, and BookBench criteria.
+## 5. Core production lifecycle — ACCEPTED
 
----
+Baseline lifecycle:
 
-## 6. Core production lifecycle — ACCEPTED BASELINE
+`Idea → Market & Reader → Thesis → Research → Book Contract → Architecture → Chapter Contracts → Draft → Developmental Edit → Evidence / Fact Check → Cross-book Edit → Literary Edit → BookBench → Human Acceptance → Literary Master`
 
-The current baseline lifecycle for a book created from zero is:
+Exact orchestration may be refined without weakening authority/human gates.
 
-`Idea`
-→ `Market & Reader`
-→ `Thesis`
-→ `Research`
-→ `Book Contract`
-→ `Architecture`
-→ `Chapter Contracts`
-→ `Draft`
-→ `Developmental Edit`
-→ `Evidence / Fact Check`
-→ `Cross-book Edit`
-→ `Literary Edit`
-→ `BookBench`
-→ `Human Acceptance`
-→ `Literary Master`
+Derived production stages such as Audio, Translation and Publishing come after Literary Master and do not redefine it.
 
-Derived production stages such as Audio, Translation, and Publishing come **after** Literary Master and do not redefine it.
+## 6. Authority Protocol v0.1 — ACCEPTED
 
-The exact orchestration may be refined, but BOOK OS must never become uncontrolled whole-book generation.
+Workflow stage and authority status are separate.
 
----
+### Workflow stages
 
-## 7. Book Contract — ACCEPTED CONCEPT
+`IDEA → BOOK DEFINITION → ARCHITECTURE → WRITING → WHOLE-BOOK EDIT → FINAL REVIEW → LITERARY MASTER`
 
-Each book must have a formal `Book Contract` defining at minimum:
+### Authority statuses
 
-- intended reader;
-- problem solved;
+`DRAFT → PROPOSED → REVIEWED → APPROVED → LOCKED`
+
+Historical approved versions may become `SUPERSEDED`.
+
+### Non-negotiable rule
+
+AI/system code must never mutate an `APPROVED` or `LOCKED` object in place.
+
+Required pattern:
+
+`authority → bounded task → proposed patch/revision → review → human acceptance → new authority`
+
+Rejected proposal leaves prior authority unchanged.
+
+Material changes require human acceptance; minor mechanical changes may be batch-accepted with preserved history.
+
+Experiments remain isolated until promoted into a formal proposal.
+
+## 7. Literary Master — ACCEPTED
+
+`LiteraryMaster` is an immutable reproducible release manifest, not merely the latest DOCX/file.
+
+It references exact versions/hashes of at least:
+
+- Book Contract;
+- Book Architecture;
+- approved manuscript/chapter revisions;
+- Style Profile;
+- Claim/Evidence snapshot;
+- final BookBench/Evaluation runs;
+- human release approval.
+
+Derived DOCX/PDF/EPUB/Audio/Translation/Publishing artifacts cannot silently mutate Literary Master upstream.
+
+## 8. Human authority — ACCEPTED
+
+Human Owner remains final authority for important creative/product decisions, including:
+
+- central thesis/promise;
+- book architecture;
+- author voice;
+- material approved-content changes;
+- major deletions/rearrangements;
+- significant quality/cost/risk trade-offs;
+- Literary Master release.
+
+AI roles may research, draft, diagnose, critique, evaluate and propose. They do not grant themselves final material approval.
+
+## 9. Model principle — ACCEPTED
+
+BOOK OS is model-agnostic.
+
+`Model Gateway` assigns providers/models to roles according to internal BOOK OS evals plus region, privacy, capability, cost, latency and availability constraints.
+
+OpenAI, Anthropic, Google, Yandex, GigaChat, open-weight/self-hosted or future providers are replaceable execution resources. Model brand/version is never architectural authority.
+
+Critical workflows should avoid a single self-validating loop in which one model writes, judges and approves its own work.
+
+## 10. Book Contract — ACCEPTED
+
+Each book has a formal versioned `BookContract` defining at minimum:
+
+- reader;
+- reader problem;
 - central promise;
 - central thesis;
 - unique angle;
-- intended intellectual trajectory of the reader;
-- explicit exclusions / what the book does not do;
+- reader intellectual trajectory;
+- explicit exclusions;
 - evidence standards;
-- voice and genre constraints;
+- voice/genre constraints;
 - readiness criteria.
 
-The Book Contract is a first-class authority object, not merely a prompt.
+It is first-class authority, not merely a prompt.
 
----
+## 11. Chapter Contract — ACCEPTED
 
-## 8. Chapter Contract — ACCEPTED CONCEPT
+Before systematic chapter drafting, BOOK OS must know the chapter's function through a versioned `ChapterContract` covering at minimum:
 
-Before drafting a chapter, BOOK OS must know the chapter's function.
+- purpose/new contribution;
+- reader prior/after state;
+- required claims/research;
+- required scenes/examples;
+- ideas/examples reserved elsewhere;
+- opening/ending/transition requirements;
+- rhythm/constraints as appropriate.
 
-A Chapter Contract may include:
+## 12. Research / Claim Ledger — ACCEPTED
 
-- chapter purpose;
-- new idea introduced;
-- what the reader already knows at this point;
-- what the reader should understand after the chapter;
-- required claims;
-- permitted / required research;
-- required scenes or examples;
-- ideas already owned by other chapters and therefore not to be repeated;
-- emotional and intellectual rhythm;
-- opening requirements;
-- ending requirements;
-- transition to the next chapter.
+BOOK OS has a serious Research Engine and traceable Claim Ledger.
 
-A Chapter Contract is a gate before bounded drafting.
+Core evidence distinction:
 
----
+`Claim != Source != Evidence`
 
-## 9. Authority Protocol v0.1 — ACCEPTED
+A source existing in the ledger does not by itself prove a claim. `Evidence` records the explicit relationship, supporting location, strength, limitations and conflicts.
 
-### 9.1 Workflow stage and authority status are different
+No model-generated citation is considered verified merely because it looks plausible.
 
-Book production stage describes **where work is in the lifecycle**.
+Primary initial research adapters include web search, OpenAlex, Crossref, Semantic Scholar, direct official/public sources and user-provided files.
 
-Authority status describes **which version of an object is currently trusted and protected**.
+## 13. Book Memory — ACCEPTED
 
-Baseline workflow stages:
+BOOK OS does not rely only on model context.
 
-`IDEA`
-→ `BOOK DEFINITION`
-→ `ARCHITECTURE`
-→ `WRITING`
-→ `WHOLE-BOOK EDIT`
-→ `FINAL REVIEW`
-→ `LITERARY MASTER`
+Memory combines:
 
-Baseline authority statuses:
+- structured Book Graph;
+- lexical/exact retrieval;
+- semantic retrieval;
+- whole-book context when justified;
+- optional reranking.
 
-`DRAFT`
-→ `PROPOSED`
-→ `REVIEWED`
-→ `APPROVED`
-→ `LOCKED`
+It must support detection of literal repetition, semantic idea repetition, contradictions, forgotten promises, duplicated examples and unsupported claims.
 
-Historical approved versions may become:
+Indexes are derived/rebuildable and must reference stable manuscript/revision IDs.
 
-`SUPERSEDED`
+## 14. Style / author voice — ACCEPTED
 
-### 9.2 Approved/locked content cannot be silently rewritten
+BOOK OS uses a versioned `StyleProfile` / Author Voice Fingerprint, not only a “write beautifully” prompt.
 
-AI must never mutate an `APPROVED` or `LOCKED` object in place.
+It may model sentence/paragraph distributions, syntax, author presence, emotionality, irony, metaphors, concrete detail, dialogue, transitions, opening/ending patterns, prohibited constructions and accepted reference passages.
 
-The required pattern is:
+System must check voice compliance, not merely state voice rules in prompts.
 
-`authority`
-→ `bounded task`
-→ `proposed patch / proposed version`
-→ `review`
-→ `human acceptance`
-→ `new authority`
+## 15. AI-prose pathology detection — ACCEPTED
 
-If a proposal is rejected, the prior authority remains unchanged.
+BookBench/Style Guardian must detect measured versions of machine-prose defects including artificial contrasts, excessive `не X, а Y`, pseudo-aphorisms, artificial threes, repeated paragraph structures, repeated conclusions, unnecessary rhetorical questions, empty therapeutic/corporate abstractions, false profundity, banal generalization, excessive syntactic symmetry and overly smooth depersonalized prose.
 
-### 9.3 Material vs minor changes
+Findings show examples/locations and respect the author Style Profile; they are not blind bans.
 
-Material changes include changes to meaning, thesis, argument, claims, structure, examples, author voice, or conclusions and require human acceptance.
+## 16. BookBench — ACCEPTED
 
-Minor/technical changes such as punctuation, obvious typos, or formatting may be accepted in batches, while preserving history.
+BookBench is BOOK OS's internal evaluation system and a key moat.
 
-### 9.4 Experiments
+It combines deterministic, lexical, statistical, semantic, LLM-as-judge, pairwise, multi-model and human evaluation where appropriate.
 
-Experimental variants are isolated from current authority. They do not replace approved content unless promoted into a formal proposal and accepted.
+It measures/finds dimensions such as contract fulfillment, chapter novelty/function, idea/example repetition, contradictions, thought density, specificity/banality, evidence quality/unsupported claims, voice, AI-prose pathology, beginnings/endings/transitions and whole-book coherence.
 
----
+BookBench does **not** hide findings behind one magic “book score”.
 
-## 10. Literary Master — ACCEPTED
+Model/prompt/provider role assignment is driven by BOOK OS eval data, not brand reputation.
 
-`Literary Master` is an immutable release/snapshot of the book, not merely the latest DOCX file.
+## 17. Editorial decision corpus / moat — ACCEPTED
 
-A Literary Master release must be reproducible from the exact authority versions it references, including at minimum:
+The most valuable accumulating dataset is:
 
-- Book Contract version;
-- Architecture version;
-- approved chapter versions;
-- relevant Style Profile version;
-- Claim Ledger snapshot;
-- BookBench final report;
-- human approval;
-- release timestamp/version.
+`original → diagnosis → proposed edit → accepted/rejected → reason → final`
 
-Derived formats such as DOCX, PDF, EPUB, audio, translation, or publishing artifacts must not silently modify the Literary Master upstream.
+This corpus drives future BookBench calibration, routing and only later potential fine-tuning/training.
 
----
+It is private/sensitive project data, not something to publish in the public software repository.
 
-## 11. Human authority — ACCEPTED
+Fine-tuning is explicitly not the starting strategy.
 
-The human remains final authority for important creative decisions, especially:
+## 18. Core Ontology — ACCEPTED
 
-- central thesis;
-- book architecture;
-- author voice;
-- major deletions;
-- major rearrangements;
-- material changes to approved content;
-- Literary Master release.
+`CORE_ONTOLOGY.md` v0.2.0 is the v0.1 ontology authority.
 
-AI roles may research, draft, diagnose, critique, propose patches, and run checks. They do not grant themselves final approval.
+A book is modeled as a versioned graph of intent, content, evidence, editorial work, authority/provenance, evaluations and release — not as one mutable text file.
 
----
+## 19. Local-first technical direction — ACCEPTED
 
-## 12. Multi-model critical review — ACCEPTED PRINCIPLE
+BOOK OS v0.1 is a local-first desktop product.
 
-Critical decisions should not use a single self-validating loop in which one model writes, judges, and approves its own output.
+Canonical book state/authority remains locally accessible and recoverable. External AI/research services are replaceable execution dependencies.
 
-Preferred pattern:
+Accepted technical baseline is in `TECHNICAL_ARCHITECTURE_v0.1.md`:
 
-`model A proposes`
-→ `model B critiques`
-→ `deterministic / BookBench checks`
-→ `human accepts`
+- Tauri 2 + React/TypeScript desktop;
+- Python 3.12 local editorial-core sidecar;
+- FastAPI/Pydantic;
+- SQLite canonical state + FTS5;
+- local rebuildable semantic index;
+- provider/research adapters;
+- no heavy distributed infrastructure in v0.1 without measured need.
 
-Exact model assignments remain subject to internal evals.
+## 20. No-chat dependency — ACCEPTED
 
----
+Project development: GitHub `main` + authority/spec/state/tasks/tests/evals is recoverable without chat history.
 
-## 13. Research / evidence direction — ACCEPTED CONCEPT
+Product: durable book state, tasks, outputs, decisions and authority are first-class local objects. A conversational interface may exist, but conversation transcript is never required hidden state.
 
-BOOK OS requires a serious research layer and must not allow fabricated studies, statistics, authors, or sources.
+A successor must be able to recover from `README → PROJECT_STATE → DESIGN_INDEX → active task/HEAD`.
 
-Research may use web search, scientific APIs and databases, primary research, official statistics, government/regulatory sources, and professional sources appropriate to the book domain.
+## 21. Regional access / Russia — ACCEPTED
 
-Commodity research infrastructure should be integrated where practical rather than reinvented.
+Core BOOK OS use for a user in Russia must not require:
 
----
+- VPN;
+- a personal ChatGPT/Claude/Gemini subscription;
+- a personal foreign AI vendor API key.
 
-## 14. Claim Ledger — ACCEPTED CONCEPT
+BOOK OS must not circumvent provider regional/contractual restrictions.
 
-Verifiable claims should be representable as first-class objects with traceable evidence.
+Provider Gateway selects only permitted paths for the relevant region. At least one region-compliant provider/self-hosted route must meet BOOK OS minimum quality before product can be declared Russia-ready.
 
-A claim record may include:
+As of 2026-08-22 Russia is absent from OpenAI's official supported-country list, whose policy states access/offering access outside the listed countries may lead to blocking/suspension. Therefore OpenAI may be Owner development/international benchmark capability, but cannot be mandatory Russian runtime dependency under current policy.
 
-- claim text;
-- location(s) of use;
-- source;
-- DOI / URL / bibliographic metadata;
-- access date;
-- source type;
-- evidence strength;
-- supporting excerpt/reference;
-- study limitations;
-- contradictory evidence;
-- verification status;
-- fact-check decision.
+Yandex Cloud AI Studio and GigaChat are initial Russian-lane candidates and must pass the same BOOK OS role evals.
 
-The purpose is traceable book-level fact checking.
+## 22. End-user API/subscription model — ACCEPTED DIRECTION
 
----
+End users should buy/use BOOK OS, not assemble personal subscriptions across AI vendors.
 
-## 15. Book Memory — ACCEPTED PRINCIPLE
+Provider credentials/routing are product infrastructure concerns subject to provider terms/law. BYOK may exist later as optional capability, not a core requirement.
 
-BOOK OS must not rely only on a model's long context window.
+Before commercial provider brokerage, current vendor commercial/resale/regional/data-processing terms must be reviewed.
 
-Book Memory should combine:
+## 23. Repository / data boundary — ACCEPTED
 
-`whole-book context`
-+ `semantic retrieval`
-+ `lexical / exact retrieval`
-+ optional `reranking`
+`book-os` is a separate repository from concrete books and Audio Studio.
 
-It must support detection of literal repetition, semantic repetition, contradictions, forgotten promises, and inadequately supported claims.
+The public BOOK OS repository may contain project authority/specifications/source code, but must not contain:
 
----
+- real private manuscripts;
+- private source materials;
+- API/signing secrets;
+- proprietary human editorial-decision/eval corpus.
 
-## 16. Style / author voice — ACCEPTED CONCEPT
+A user's book project has separate local/private storage authority.
 
-BOOK OS requires a formal author-voice profile, not only a prompt such as "write vividly".
+## 24. BOOK OS ↔ Audio Studio boundary — ACCEPTED
 
-The system should eventually model and evaluate dimensions such as sentence/paragraph patterns, syntax, author presence, emotionality, irony, metaphor use, concrete detail density, scene vs abstraction, dialogue, transitions, openings/endings, prohibited constructions, and recurring AI-like patterns.
+BOOK OS and Audio Studio remain separate products/repositories.
 
----
+`BOOK OS Literary Master → immutable Production Handoff → Audio Studio → Audio Edition Master`
 
-## 17. AI-prose pathology detection — ACCEPTED CONCEPT
+Audio-only TTS/SSML/pronunciation/mastering transformations do not mutate Literary Master. A literary correction discovered in Audio Studio returns upstream as a correction request/proposal to BOOK OS.
 
-BOOK OS should detect recurring machine-prose defects, including but not limited to:
+Shared commodity infrastructure may be extracted later only after real duplication is observed and interface stability is demonstrated. Domain intelligence remains separate.
 
-- artificial oppositions;
-- excessive "not X but Y" constructions;
-- pseudo-aphorisms;
-- artificial triads;
-- repetitive paragraph structures;
-- repetitive conclusions;
-- over-explaining obvious ideas;
-- empty therapeutic language;
-- decorative rhetorical questions;
-- false depth;
-- banal generalizations;
-- overly smooth/depersonalized prose;
-- repeated chapter endings;
-- synthetic syntactic symmetry.
+## 25. Build-vs-buy principle — ACCEPTED
 
----
+Build BOOK OS-specific editorial IP ourselves: ontology, Authority Protocol, Contracts, Claim/Evidence semantics, editorial workflows, voice/pathology intelligence, cross-book editor, BookBench, human acceptance, Literary Master semantics and editorial-decision corpus.
 
-## 18. BookBench — ACCEPTED CONCEPT
+Use proven commodity technology/APIs for LLMs, embeddings, research metadata/search, desktop/runtime, database, observability, CI and other infrastructure when it does not compromise authority/portability.
 
-BookBench is a core proprietary quality-evaluation layer.
+## 26. Project execution governance — ACCEPTED
 
-Over time it should evaluate at least:
+`PROJECT_EXECUTION_PLAN.md` defines role split:
 
-- semantic novelty;
-- idea repetition;
-- example repetition;
-- idea density;
-- specificity;
-- banality;
-- evidence quality;
-- unsupported claims;
-- Book Contract fulfillment;
-- Chapter Contract fulfillment;
-- author-voice preservation;
-- chapter structural function;
-- transitions;
-- opening strength;
-- ending strength;
-- rhythmic variation;
-- AI-like prose;
-- developmental defects;
-- whole-book coherence.
+- Owner = final product/creative authority;
+- Central Brain = architecture, sequencing, bounded task design, acceptance, authority/state maintenance;
+- Codex = bounded implementation executor against explicit baseline/acceptance criteria.
 
-Checks may be deterministic, lexical, semantic, statistical, LLM-as-judge, pairwise, multi-model, or human.
+Under `BOOKOS-DEC-0002`, Central Brain may finalize internal v0.1 technical/editorial design and issue bounded Codex tasks without pausing for Owner approval of every internal choice, unless a documented stop condition is triggered.
 
-BookBench must not be reduced to a single magical quality score. Findings should be explainable and actionable.
+## 27. Implementation baseline — CURRENT AUTHORITY
 
----
+Design baseline is complete and indexed by `DESIGN_INDEX.md`.
 
-## 19. Editorial decision data / moat — ACCEPTED
+Current next permitted action is the active task recorded in `PROJECT_STATE.md`, beginning with `docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`.
 
-The main long-term moat is not a particular LLM.
-
-A key proprietary asset is the accumulating editorial decision corpus:
-
-`original`
-→ `proposed edit`
-→ `accepted / rejected`
-→ `reason`
-→ `final version`
-
-Combined with BookBench, author-voice data, evidence history, and human acceptance, this becomes BOOK OS's proprietary editorial intelligence.
-
----
-
-## 20. Repository separation — ACCEPTED
-
-BOOK OS has its own repository.
-
-Repositories of individual books are not the source of truth for BOOK OS itself.
-
-BOOK OS architecture, authority documents, schemas, decisions, benchmarks, and future code belong in the BOOK OS repository.
-
----
-
-## 21. v0.1 scope discipline — ACCEPTED
-
-Do not begin v0.1 with:
-
-- a proprietary foundational LLM;
-- fine-tuning;
-- uncontrolled agent swarms;
-- automatic whole-book "make it better" rewriting;
-- publishing/marketing automation as a core concern;
-- translation/TTS as a core concern;
-- optimization for every nonfiction genre at once;
-- large multi-user SaaS complexity before editorial core quality is proven.
-
-First prove a real, high-quality, end-to-end book creation workflow for one author/editor and one Business Nonfiction book from zero.
-
----
-
-## 22. Next design step — CURRENT
-
-The next design artifact to create is:
-
-**Core Ontology v0.1**
-
-It should formalize the main BOOK OS entities and relationships, including at minimum:
-
-`BOOK`
-→ `Book Contract`
-→ `Architecture`
-→ `Chapter`
-→ `Chapter Contract`
-→ `Claim`
-→ `Source`
-→ `Scene / Example`
-→ `Style Profile`
-→ `Editorial Finding`
-→ `Patch / Proposal`
-→ `Decision`
-→ `Version`
-→ `Approval`
-→ `Literary Master`
-
-No implementation work should precede enough design clarity to preserve the accepted authority and provenance rules.
+Codex must not skip milestones or broaden scope without new authority.
