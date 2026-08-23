@@ -14,11 +14,15 @@ def test_health_requires_session_token() -> None:
     )
 
 
-def test_database_enables_foreign_keys_and_wal(tmp_path: Path) -> None:
+def test_fresh_database_runs_m0_migration_with_foreign_keys_and_wal(tmp_path: Path) -> None:
     engine = create_database(tmp_path / "fresh.sqlite")
     with engine.connect() as connection:
         assert connection.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
         assert connection.execute(text("PRAGMA journal_mode")).scalar_one() == "wal"
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0001"
+        )
         assert (
             connection.execute(text("SELECT version FROM schema_metadata")).scalar_one() == "0001"
         )

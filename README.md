@@ -18,10 +18,10 @@ Prerequisites: Python 3.12, Node.js 20+ with pnpm, and Rust stable. No cloud acc
 cd services/local-core
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements-dev.lock
-PYTHONPATH=src .venv/bin/pytest
+.venv/bin/pytest
 
 cd ../../apps/desktop
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --prod=false
 BOOK_OS_PYTHON="../../services/local-core/.venv/bin/python" pnpm tauri dev
 ```
 
