@@ -1,13 +1,13 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.6.0
+**Version:** 0.7.3  
 **Date:** 2026-08-23  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**PRE-IMPLEMENTATION AUDIT + TASK GOVERNANCE COMPLETE → IMPLEMENTATION MILESTONE 0 READY**
+**IMPLEMENTATION MILESTONE 0 — TASK 001 REWORK REQUIRED**
 
 ## Latest accepted design authority
 
@@ -30,38 +30,21 @@
 
 The complete recovery map is `DESIGN_INDEX.md`.
 
-## Pre-implementation audit verdict
+## Pre-implementation verdict
 
-`GO_FOR_IMPLEMENTATION`.
+`GO_FOR_IMPLEMENTATION` remains valid.
 
-No architecture redesign is required before Milestone 0. The final audit added mandatory milestone-mapped hardening for:
+No architecture redesign is required. Task 001 has a bounded partial implementation, but mandatory M0 runtime evidence is incomplete.
 
-- prompt injection / untrusted retrieved content;
-- SSRF/network fetch and hostile file-import boundaries;
-- source reuse rights/permissions;
-- software supply-chain/SBOM/dependency security;
-- signed/notarized update trust before external distribution;
-- migration/backup disaster tests;
-- measured performance/scale envelope;
-- durable authoring UX/crash recovery;
-- accessibility/localization baseline;
-- commercial/legal provider-brokerage launch gate;
-- data lifecycle/purge semantics;
-- Literary Master release reproducibility.
+## Task-governance rule
 
-These requirements are authority through `PRE_IMPLEMENTATION_HARDENING_v0.1.md`; most are intentionally scheduled after M0 and must not inflate Task 001.
-
-## Task-governance verdict
-
-Every implementation task must now pass the qualification gate in `TASK_EXECUTION_PROTOCOL_v0.1.md` before Codex receives it.
+Every implementation task must pass `TASK_EXECUTION_PROTOCOL_v0.1.md`.
 
 Mandatory line of sight:
 
 `accepted milestone dependency → WHY NOW → product/system value → smallest professional implementation → objective acceptance evidence → capability unlocked next`.
 
-Tasks that are speculative, not on the MVP critical path, unjustified by a blocker/measurement, or broader than an independently acceptable capability must not be issued.
-
-By default only one critical-path implementation task is active. Parallel tasks require explicit Central Brain independence/safety justification.
+Only one critical-path implementation task is active by default.
 
 ## Active product baseline
 
@@ -78,38 +61,88 @@ By default only one critical-path implementation task is active. Parallel tasks 
 
 `docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`
 
-**State:** `REWORK_REQUIRED — INTERMEDIATE CHECKPOINT FOR CLOUD VALIDATION` on branch `codex/task-001-bootstrap` from baseline `3834486b496b7fcb26c3bda8b9a90e3350b7954c`.
+**State:** `REWORK_REQUIRED — CONTINUE SAME TASK`.
 
-This checkpoint publishes the reviewed M0 scaffold so Codex Cloud can execute the remaining validation. It is not Task 001 acceptance and does not permit M1/Task 002.
+Remote implementation branch:
 
-Task 001 now explicitly records:
+`codex/task-001-bootstrap`
 
-- why it is the first dependency;
-- what product/runtime capability it creates;
-- why its architecture is the smallest sufficient professional option;
-- bounded scope/non-goals;
-- M0 hardening due now vs later;
-- measurable acceptance evidence;
-- the exact next milestone it unlocks.
+### Task 001 attempt 1
+
+Original launch baseline:
+
+`3834486b496b7fcb26c3bda8b9a90e3350b7954c`
+
+Confirmed partial results:
+
+- React/TypeScript desktop scaffold started;
+- Python 3.12 FastAPI local-core scaffold started;
+- bearer-token health endpoint implemented with unauthenticated rejection;
+- SQLite bootstrap implemented with foreign-key/WAL tests;
+- initial Tauri/Rust sidecar scaffold started;
+- initial CI/setup documentation started;
+- Python `pytest`: PASS (2 tests);
+- `ruff check`: PASS;
+- `mypy`: previously PASS before subsequent annotation edit;
+- TypeScript checks: PASS in second attempt;
+- Rust stable/Cargo installed successfully;
+- paid model/API calls: 0.
+
+### Task 001 attempt 2
+
+Remaining blocker was a required Tauri raster application icon. Central Brain classified it as a technical M0 packaging asset, not an Owner/product decision.
+
+Central Brain created an original neutral temporary PNG placeholder for the remote implementation branch:
+
+`apps/desktop/src-tauri/icons/icon.png`
+
+Placeholder blob SHA:
+
+`e342bb265b32f09d4e7dee61f60f33c0be48a66a`
+
+Branch commit:
+
+`fbbd0d6de0465a9883eb80effabf5ada7010790b`
+
+This placeholder is not final BOOK OS branding and exists only to unblock M0 compilation. It contains no third-party asset.
+
+Unproven / blocking acceptance items that Codex must still complete:
+
+- rerun mypy after final Python edit;
+- `cargo check` / Tauri compile after syncing the icon commit;
+- real native desktop launch;
+- real desktop → sidecar authenticated health integration;
+- sidecar shutdown/orphan-process lifecycle evidence;
+- full final secret scan;
+- full fresh/reproducible setup evidence;
+- final commit/push of implementation and PR.
+
+These are environment/execution completion items, not architecture blockers.
 
 ## Next permitted action
 
-Codex Task 001 only:
+**Continue Task 001 only. Do not create Task 002.**
 
-- create Tauri + React desktop skeleton;
-- create Python/FastAPI local-core sidecar;
-- authenticated loopback health integration;
-- SQLite migration skeleton;
-- CI/non-paid tests;
-- dependency lockfiles/minimal M0 security scanning.
+Codex must:
+
+1. preserve its bounded uncommitted Task 001 work;
+2. fetch `origin` and reconcile the remote `codex/task-001-bootstrap` icon commit without losing local work;
+3. rerun the complete Task 001 acceptance matrix;
+4. fix only defects required for Task 001 acceptance;
+5. when all mandatory M0 gates pass, commit/push implementation to `codex/task-001-bootstrap` and open/return a PR;
+6. stop for Central Brain acceptance.
 
 Do not implement Model Gateway, ontology persistence, AI calls, Research, Memory or BookBench in Task 001.
 
 ## Known blockers
 
-None.
+No known architecture or Owner blocker.
 
-Operational rule: a design/task file becomes repository authority only after it is committed to canonical GitHub `main`. Chat-generated material alone is not authority.
+Current task can proceed after Codex syncs the remote placeholder icon and completes validation.
+
+## Operational rule
+
+A design/task/implementation result becomes repository authority only after it is committed to canonical GitHub `main` through the accepted review path. Chat-only and uncommitted local work are not authority.
 
 ## Stop conditions
 
@@ -125,5 +158,5 @@ If the chat disappears:
 2. Read README recovery order and `DESIGN_INDEX.md`.
 3. Read this file.
 4. Read `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-5. Inspect active task/PR and exact HEAD.
-6. Continue only the `Next permitted action` unless newer accepted authority supersedes it.
+5. Inspect remote branch `codex/task-001-bootstrap` and any local uncommitted Task 001 worktree.
+6. Continue only the Task 001 rework described under `Next permitted action` unless newer accepted authority supersedes it.
