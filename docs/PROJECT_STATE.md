@@ -100,7 +100,7 @@ Placeholder blob SHA:
 
 `e342bb265b32f09d4e7dee61f60f33c0be48a66a`
 
-Planned branch commit:
+Branch commit:
 
 `fbbd0d6de0465a9883eb80effabf5ada7010790b`
 
