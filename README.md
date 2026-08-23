@@ -6,10 +6,12 @@ This repository is the project source of truth. Chats are working sessions, not 
 
 ## Current phase
 
-**Design baseline complete → Implementation Milestone 0 ready.**
+**Implementation Milestone 0 — Task 001 rework in progress.**
 
-The next permitted action is the bounded bootstrap task in
+The active bounded task is
 [`docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`](docs/tasks/CODEX_TASK_001_BOOTSTRAP.md).
+Current exact checkpoint and next permitted action are always in
+[`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
 
 ## Authority
 
