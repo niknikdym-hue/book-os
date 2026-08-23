@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.7.2  
+**Version:** 0.7.3  
 **Date:** 2026-08-23  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -92,11 +92,15 @@ Confirmed partial results:
 
 Remaining blocker was a required Tauri raster application icon. Central Brain classified it as a technical M0 packaging asset, not an Owner/product decision.
 
-Central Brain has now created an original neutral temporary PNG placeholder directly in remote branch:
+Central Brain created an original neutral temporary PNG placeholder for the remote implementation branch:
 
 `apps/desktop/src-tauri/icons/icon.png`
 
-Branch commit containing this placeholder:
+Placeholder blob SHA:
+
+`e342bb265b32f09d4e7dee61f60f33c0be48a66a`
+
+Planned branch commit:
 
 `fbbd0d6de0465a9883eb80effabf5ada7010790b`
 
