@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.7.1  
+**Version:** 0.7.2  
 **Date:** 2026-08-23  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -34,7 +34,7 @@ The complete recovery map is `DESIGN_INDEX.md`.
 
 `GO_FOR_IMPLEMENTATION` remains valid.
 
-No architecture redesign is required. Task 001 reached a bounded partial implementation, but mandatory M0 runtime evidence is incomplete.
+No architecture redesign is required. Task 001 has a bounded partial implementation, but mandatory M0 runtime evidence is incomplete.
 
 ## Task-governance rule
 
@@ -63,19 +63,15 @@ Only one critical-path implementation task is active by default.
 
 **State:** `REWORK_REQUIRED — CONTINUE SAME TASK`.
 
-Remote implementation branch now exists:
+Remote implementation branch:
 
 `codex/task-001-bootstrap`
-
-It was created by Central Brain from the current accepted `main` checkpoint. No implementation commit or PR exists yet.
 
 ### Task 001 attempt 1
 
 Original launch baseline:
 
 `3834486b496b7fcb26c3bda8b9a90e3350b7954c`
-
-Codex created local bounded work but intentionally made no commit, push or PR because mandatory acceptance evidence was incomplete.
 
 Confirmed partial results:
 
@@ -87,21 +83,37 @@ Confirmed partial results:
 - initial CI/setup documentation started;
 - Python `pytest`: PASS (2 tests);
 - `ruff check`: PASS;
-- `mypy`: PASS;
+- `mypy`: previously PASS before subsequent annotation edit;
+- TypeScript checks: PASS in second attempt;
+- Rust stable/Cargo installed successfully;
 - paid model/API calls: 0.
 
-Unproven / blocking acceptance items:
+### Task 001 attempt 2
 
-- development Mac currently lacks Rust/Cargo;
-- package install/check path was interrupted by transient npm registry DNS resolution failure;
-- Tauri compile/dev launch not yet evidenced;
-- TypeScript lint/type/tests not yet evidenced;
-- authenticated desktop → sidecar health integration not yet evidenced end-to-end;
-- sidecar lifecycle/shutdown not yet evidenced;
-- full CI validation not yet evidenced;
-- PR does not exist yet.
+Remaining blocker was a required Tauri raster application icon. Central Brain classified it as a technical M0 packaging asset, not an Owner/product decision.
 
-These are environment/execution blockers, not architecture blockers.
+Central Brain has now created an original neutral temporary PNG placeholder directly in remote branch:
+
+`apps/desktop/src-tauri/icons/icon.png`
+
+Branch commit containing this placeholder:
+
+`fbbd0d6de0465a9883eb80effabf5ada7010790b`
+
+This placeholder is not final BOOK OS branding and exists only to unblock M0 compilation. It contains no third-party asset.
+
+Unproven / blocking acceptance items that Codex must still complete:
+
+- rerun mypy after final Python edit;
+- `cargo check` / Tauri compile after syncing the icon commit;
+- real native desktop launch;
+- real desktop → sidecar authenticated health integration;
+- sidecar shutdown/orphan-process lifecycle evidence;
+- full final secret scan;
+- full fresh/reproducible setup evidence;
+- final commit/push of implementation and PR.
+
+These are environment/execution completion items, not architecture blockers.
 
 ## Next permitted action
 
@@ -109,26 +121,20 @@ These are environment/execution blockers, not architecture blockers.
 
 Codex must:
 
-1. preserve the bounded uncommitted Task 001 work;
-2. fetch `origin` and align its local Task 001 branch with remote `codex/task-001-bootstrap` without losing uncommitted work;
-3. verify/install the minimum trusted macOS development prerequisites required by the accepted stack (Rust stable/Cargo and existing Apple toolchain as needed);
-4. restore package-registry connectivity and install from the existing/expected lockfile without opportunistic dependency upgrades;
-5. complete TypeScript/Rust/Tauri validation;
-6. complete real desktop ↔ authenticated local-core health and lifecycle evidence;
-7. rerun the full Task 001 acceptance matrix;
-8. only when mandatory gates pass, commit/push to `codex/task-001-bootstrap` and open a PR;
-9. return `PASS/PARTIAL/FAIL` evidence and stop for Central Brain acceptance.
+1. preserve its bounded uncommitted Task 001 work;
+2. fetch `origin` and reconcile the remote `codex/task-001-bootstrap` icon commit without losing local work;
+3. rerun the complete Task 001 acceptance matrix;
+4. fix only defects required for Task 001 acceptance;
+5. when all mandatory M0 gates pass, commit/push implementation to `codex/task-001-bootstrap` and open/return a PR;
+6. stop for Central Brain acceptance.
 
 Do not implement Model Gateway, ontology persistence, AI calls, Research, Memory or BookBench in Task 001.
 
 ## Known blockers
 
-Current bounded blockers are development-environment/toolchain only:
+No known architecture or Owner blocker.
 
-- Rust/Cargo absent on Owner Mac;
-- transient npm registry DNS/package connectivity failure.
-
-No owner decision is required unless installing the standard local toolchain would require a materially different platform, paid dependency, security exception or accepted architecture change.
+Current task can proceed after Codex syncs the remote placeholder icon and completes validation.
 
 ## Operational rule
 
@@ -148,5 +154,5 @@ If the chat disappears:
 2. Read README recovery order and `DESIGN_INDEX.md`.
 3. Read this file.
 4. Read `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-5. Inspect remote branch `codex/task-001-bootstrap` and the local uncommitted Task 001 worktree if available; no PR exists yet.
+5. Inspect remote branch `codex/task-001-bootstrap` and any local uncommitted Task 001 worktree.
 6. Continue only the Task 001 rework described under `Next permitted action` unless newer accepted authority supersedes it.
