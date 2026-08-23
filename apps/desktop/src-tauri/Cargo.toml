@@ -1,0 +1,12 @@
+[package]
+name = "book-os-desktop"
+version = "0.1.0"
+edition = "2021"
+[build-dependencies]
+tauri-build = { version = "2.4.1", features = [] }
+[dependencies]
+tauri = { version = "2.8.4", features = [] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+rand = "0.9.2"
+ureq = "3.1.0"
