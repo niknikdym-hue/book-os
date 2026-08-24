@@ -1,0 +1,13 @@
+[project]
+name = "book-os-local-core"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["fastapi==0.116.1", "uvicorn[standard]==0.35.0", "sqlalchemy==2.0.43", "alembic==1.16.5"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+[tool.ruff]
+line-length = 100
+[tool.mypy]
+strict = true
+files = ["src"]
