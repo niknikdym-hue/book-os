@@ -25,6 +25,10 @@ pnpm install --frozen-lockfile --prod=false
 BOOK_OS_PYTHON="../../services/local-core/.venv/bin/python" pnpm tauri dev
 ```
 
+Relative `BOOK_OS_PYTHON` values are resolved from `apps/desktop`, so the command is
+independent of the native process's working directory. Absolute overrides are also
+supported unchanged.
+
 The desktop starts the Python core, which binds an OS-assigned `127.0.0.1` port. Its random per-launch bearer token remains in the native process; the React UI asks Tauri to perform the authenticated health check.
 
 ## Authority
