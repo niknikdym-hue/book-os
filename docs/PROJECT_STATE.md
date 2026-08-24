@@ -1,13 +1,13 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.7.3  
-**Date:** 2026-08-23  
+**Version:** 0.8.0  
+**Date:** 2026-08-24  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 0 — TASK 001 REWORK REQUIRED**
+**IMPLEMENTATION MILESTONE 0 — TASK 001 ACCEPTED / READY FOR MERGE**
 
 ## Latest accepted design authority
 
@@ -30,125 +30,115 @@
 
 The complete recovery map is `DESIGN_INDEX.md`.
 
-## Pre-implementation verdict
+## Task 001 acceptance
 
-`GO_FOR_IMPLEMENTATION` remains valid.
-
-No architecture redesign is required. Task 001 has a bounded partial implementation, but mandatory M0 runtime evidence is incomplete.
-
-## Task-governance rule
-
-Every implementation task must pass `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-
-Mandatory line of sight:
-
-`accepted milestone dependency → WHY NOW → product/system value → smallest professional implementation → objective acceptance evidence → capability unlocked next`.
-
-Only one critical-path implementation task is active by default.
-
-## Active product baseline
-
-- First user: Owner.
-- First pilot: real Business Nonfiction book from zero.
-- Two modes architecturally supported: Book from Zero + Existing Manuscript/Materials.
-- Local-first desktop.
-- Human final authority.
-- Model/provider agnostic.
-- Russia-ready requirement: no VPN, no personal foreign AI subscription/API key, compliant provider routing.
-- BOOK OS and Audio Studio are separate products linked by immutable production handoff.
-
-## Active implementation task
+Task contract:
 
 `docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`
 
-**State:** `REWORK_REQUIRED — CONTINUE SAME TASK`.
+PR:
 
-Remote implementation branch:
+`#3 — Task 001 — executable local-first skeleton`
+
+Implementation branch:
 
 `codex/task-001-bootstrap`
 
-### Task 001 attempt 1
+Accepted implementation commit:
 
-Original launch baseline:
+`f4217dab4ff1d97e0cda14b3aacc87e1b61886cf` — `Fix native sidecar launch and shutdown`
 
-`3834486b496b7fcb26c3bda8b9a90e3350b7954c`
+Accepted baseline `main` for Task 001:
 
-Confirmed partial results:
+`c404996e3713a4e51d9f7f04e0ad2e010f1b7f31`
 
-- React/TypeScript desktop scaffold started;
-- Python 3.12 FastAPI local-core scaffold started;
-- bearer-token health endpoint implemented with unauthenticated rejection;
-- SQLite bootstrap implemented with foreign-key/WAL tests;
-- initial Tauri/Rust sidecar scaffold started;
-- initial CI/setup documentation started;
-- Python `pytest`: PASS (2 tests);
-- `ruff check`: PASS;
-- `mypy`: previously PASS before subsequent annotation edit;
-- TypeScript checks: PASS in second attempt;
-- Rust stable/Cargo installed successfully;
-- paid model/API calls: 0.
+### Repository-side evidence
 
-### Task 001 attempt 2
+GitHub Actions run:
 
-Remaining blocker was a required Tauri raster application icon. Central Brain classified it as a technical M0 packaging asset, not an Owner/product decision.
+`32738392596` — `SUCCESS`
 
-Central Brain created an original neutral temporary PNG placeholder for the remote implementation branch:
+All required jobs passed:
 
-`apps/desktop/src-tauri/icons/icon.png`
+- `local-core` — success;
+- `desktop` — success;
+- `tauri-smoke` — success;
+- `secret-scan` — success.
 
-Placeholder blob SHA:
+Round 5B changed only the bounded M0 surface required for the final defects:
 
-`e342bb265b32f09d4e7dee61f60f33c0be48a66a`
+- deterministic relative `BOOK_OS_PYTHON` resolution against `apps/desktop`;
+- absolute `BOOK_OS_PYTHON` passthrough;
+- synchronous/idempotent sidecar cleanup on native exit;
+- focused Rust path-resolution tests;
+- README clarification and matching design-hash update.
 
-Branch commit:
+External/model API calls: `0`.  
+Paid API calls: `0`.
 
-`fbbd0d6de0465a9883eb80effabf5ada7010790b`
+### Owner-Mac native evidence
 
-This placeholder is not final BOOK OS branding and exists only to unblock M0 compilation. It contains no third-party asset.
+Owner re-verified the accepted implementation commit on the development Mac using the README repo-relative launch command.
 
-Unproven / blocking acceptance items that Codex must still complete:
+Criterion 8 — **PASS**:
 
-- rerun mypy after final Python edit;
-- `cargo check` / Tauri compile after syncing the icon commit;
-- real native desktop launch;
-- real desktop → sidecar authenticated health integration;
-- sidecar shutdown/orphan-process lifecycle evidence;
-- full final secret scan;
-- full fresh/reproducible setup evidence;
-- final commit/push of implementation and PR.
+- native BOOK OS window displayed `Local Core healthy`.
 
-These are environment/execution completion items, not architecture blockers.
+Criterion 9 — **PASS**:
+
+- after normal window close, `pgrep -fl 'book_os_core' || true` returned no process;
+- after a second launch and `Cmd-Q`, the same process check again returned no process.
+
+The previously observed reproducibility and delayed-shutdown defects are therefore closed on the accepted implementation.
+
+## Central Brain verdict
+
+**TASK 001 / M0 — ACCEPTED**
+
+The executable local-first foundation is accepted:
+
+- native Tauri + React/TypeScript desktop shell;
+- Python 3.12 local core;
+- authenticated loopback health boundary with random per-launch token/port;
+- SQLite/Alembic bootstrap with foreign-key/WAL coverage;
+- reproducible local setup;
+- green Python/TypeScript/Rust/secret-scan CI;
+- deterministic sidecar shutdown;
+- no paid/model API dependency.
+
+No architecture redesign or Owner decision is required.
 
 ## Next permitted action
 
-**Continue Task 001 only. Do not create Task 002.**
+1. Merge PR #3 to `main` through the accepted review path.
+2. Verify the resulting canonical `main` HEAD and CI.
+3. Only after that merge, issue the next bounded implementation task for **M1 — Authority & Persistence Engine** from `IMPLEMENTATION_ROADMAP_v0.1.md`.
 
-Codex must:
+Do not start M1 against the pre-merge Task 001 branch.
 
-1. preserve its bounded uncommitted Task 001 work;
-2. fetch `origin` and reconcile the remote `codex/task-001-bootstrap` icon commit without losing local work;
-3. rerun the complete Task 001 acceptance matrix;
-4. fix only defects required for Task 001 acceptance;
-5. when all mandatory M0 gates pass, commit/push implementation to `codex/task-001-bootstrap` and open/return a PR;
-6. stop for Central Brain acceptance.
+## M1 capability to unlock after merge
 
-Do not implement Model Gateway, ontology persistence, AI calls, Research, Memory or BookBench in Task 001.
+M1 is the next accepted roadmap milestone and will implement only the bounded authority-bearing persistence foundation:
 
-## Known blockers
+- core ontology persistence;
+- immutable Revision;
+- Authority statuses;
+- Decision / Approval / Provenance;
+- ChangeProposal with stale-baseline protection;
+- transactions/invariants;
+- backup/export primitive.
 
-No known architecture or Owner blocker.
-
-Current task can proceed after Codex syncs the remote placeholder icon and completes validation.
+M1 must have its own exact-baseline task contract and acceptance evidence.
 
 ## Operational rule
 
-A design/task/implementation result becomes repository authority only after it is committed to canonical GitHub `main` through the accepted review path. Chat-only and uncommitted local work are not authority.
+A design/task/implementation result becomes canonical repository authority only after it is committed to `main` through the accepted review path.
+
+Task 001 is accepted by Central Brain, but until PR #3 is merged, `main` still contains the pre-M0 implementation baseline.
 
 ## Stop conditions
 
 Escalate to Owner before changing product intent, human authority, regional-access requirement, public/private data boundary, major recurring cost, quality floor, or BOOK OS/Audio Studio authority boundary.
-
-Central Brain may change internal task slicing/order only when it provides a more efficient critical path without skipping accepted milestone gates or weakening hardening/quality requirements.
 
 ## Recovery rule
 
@@ -158,5 +148,6 @@ If the chat disappears:
 2. Read README recovery order and `DESIGN_INDEX.md`.
 3. Read this file.
 4. Read `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-5. Inspect remote branch `codex/task-001-bootstrap` and any local uncommitted Task 001 worktree.
-6. Continue only the Task 001 rework described under `Next permitted action` unless newer accepted authority supersedes it.
+5. Verify whether PR #3 has been merged.
+6. If PR #3 is merged and `main` contains the accepted Task 001 implementation, continue with the bounded M1 task only.
+7. If PR #3 is not merged, do not start M1; complete the Task 001 merge path first.
