@@ -104,7 +104,11 @@ def upgrade() -> None:
         sa.Column("revision_hash", sa.String(64), nullable=False),
         sa.Column("updated_at", sa.String(32), nullable=False),
         sa.ForeignKeyConstraint(["entity_id"], ["authority_entities.entity_id"]),
-        sa.ForeignKeyConstraint(["revision_id"], ["revisions.revision_id"]),
+        sa.ForeignKeyConstraint(
+            ["revision_id", "revision_hash"],
+            ["revisions.revision_id", "revisions.content_hash"],
+            name="fk_authority_head_revision_hash",
+        ),
     )
 
     op.create_table(
@@ -123,7 +127,11 @@ def upgrade() -> None:
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.Column("resolved_at", sa.String(32), nullable=True),
         sa.ForeignKeyConstraint(["entity_id"], ["authority_entities.entity_id"]),
-        sa.ForeignKeyConstraint(["base_revision_id"], ["revisions.revision_id"]),
+        sa.ForeignKeyConstraint(
+            ["base_revision_id", "base_revision_hash"],
+            ["revisions.revision_id", "revisions.content_hash"],
+            name="fk_proposal_base_revision_hash",
+        ),
         sa.ForeignKeyConstraint(["provenance_id"], ["provenance_records.provenance_id"]),
         sa.CheckConstraint(f"status IN ({PROPOSAL_STATUSES})", name="ck_proposal_status"),
     )
@@ -161,6 +169,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["decision_id"], ["decisions.decision_id"]),
         sa.ForeignKeyConstraint(["approved_revision_id"], ["revisions.revision_id"]),
         sa.ForeignKeyConstraint(["prior_revision_id"], ["revisions.revision_id"]),
+        sa.CheckConstraint(
+            "approving_actor_kind IN ('HUMAN','SYSTEM','AI')", name="ck_approval_actor_kind"
+        ),
     )
 
     op.execute("INSERT INTO schema_metadata (version) VALUES ('0002')")
