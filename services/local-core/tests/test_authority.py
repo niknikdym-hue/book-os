@@ -7,7 +7,7 @@ import sqlite3
 from alembic import command
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import DatabaseError
+from sqlalchemy.exc import DatabaseError, IntegrityError
 
 from book_os_core.authority import (
     AuthorityService,
@@ -97,6 +97,23 @@ def test_revision_content_and_history_are_append_only(tmp_path: Path) -> None:
     assert service.get_revision(head.revision_id)["content"]["title"] == "Initial"
 
 
+def test_create_revision_cannot_bypass_formal_approval(tmp_path: Path) -> None:
+    service, _ = _service(tmp_path)
+    initial = _initial(service)
+    with pytest.raises(InvalidAuthorityOperation, match="must start DRAFT"):
+        service.create_revision(
+            entity_id=initial.entity_id,
+            payload={"title": "Bypass"},
+            schema_name="test.contract",
+            schema_version="1",
+            actor="system",
+            origin="SYSTEM_DERIVED",
+            status="APPROVED",
+            parent_revision_ids=(initial.revision_id,),
+        )
+    assert service.get_head(initial.entity_id) == initial
+
+
 def test_review_status_transitions_are_bounded(tmp_path: Path) -> None:
     service, _ = _service(tmp_path)
     initial = _initial(service)
@@ -133,7 +150,7 @@ def test_accept_reject_and_stale_proposals(tmp_path: Path) -> None:
         schema_version="1",
         rationale="improve",
         actor="owner",
-        input_revision_ids=(initial.revision_id,),
+        task_id="task-accept",
     )
     proposal_stale = service.create_proposal(
         entity_id=initial.entity_id,
@@ -160,6 +177,40 @@ def test_accept_reject_and_stale_proposals(tmp_path: Path) -> None:
     assert len(history["decisions"]) == 1
     assert len(history["approvals"]) == 1
     assert service.get_revision(initial.revision_id)["content"]["title"] == "Initial"
+
+    decision = history["decisions"][0]
+    assert decision["decision_id"] == accepted.decision_id
+    assert decision["proposal_id"] == proposal_one
+    assert decision["actor"] == "owner"
+    assert decision["actor_kind"] == "HUMAN"
+    assert decision["decision"] == "ACCEPT"
+    assert decision["reason"] == "approved"
+    assert decision["created_at"]
+
+    approval = history["approvals"][0]
+    assert approval["approval_id"] == accepted.approval_id
+    assert approval["approved_revision_id"] == accepted.revision_id
+    assert approval["prior_revision_id"] == initial.revision_id
+    assert approval["approving_actor"] == "owner"
+    assert json.loads(approval["gates_json"]) == {"human_review": True}
+
+    statuses = {(row["revision_id"], row["status"]) for row in history["statuses"]}
+    assert (initial.revision_id, "SUPERSEDED") in statuses
+    assert (accepted.revision_id, "APPROVED") in statuses
+    assert any(
+        row["revision_id"] == initial.revision_id for row in history["provenance_inputs"]
+    )
+    assert any(row["task_id"] == "task-accept" for row in history["provenance"])
+
+    with service.engine.begin() as connection:
+        with pytest.raises(IntegrityError):
+            connection.execute(
+                text(
+                    "UPDATE authority_heads SET revision_hash=:bad_hash "
+                    "WHERE entity_id=:entity_id"
+                ),
+                {"bad_hash": "0" * 64, "entity_id": initial.entity_id},
+            )
 
     before = service.history(initial.entity_id)
     with pytest.raises(StaleBaselineError):
@@ -330,11 +381,13 @@ def test_backup_restore_preserves_authority_history_and_detects_tamper(tmp_path:
     expected_head = service.get_head(initial.entity_id)
     expected_history = service.history(initial.entity_id)
 
-    # Leave committed WAL activity present; SQLite's online backup API must still produce a consistent copy.
     with service.engine.begin() as connection:
         connection.execute(
             text("INSERT OR IGNORE INTO schema_metadata(version) VALUES ('wal-evidence')")
         )
+    wal_path = Path(f"{db_path}-wal")
+    assert wal_path.is_file()
+    assert wal_path.stat().st_size > 0
 
     backup_dir = tmp_path / "backup"
     create_backup(db_path, backup_dir)
@@ -342,9 +395,7 @@ def test_backup_restore_preserves_authority_history_and_detects_tamper(tmp_path:
     restore_backup(backup_dir, restored_path)
     restored = AuthorityService(create_database(restored_path))
     assert restored.get_head(initial.entity_id) == expected_head
-    restored_history = restored.history(initial.entity_id)
-    for key in ("revisions", "proposals", "decisions", "approvals", "provenance"):
-        assert len(restored_history[key]) == len(expected_history[key])
+    assert restored.history(initial.entity_id) == expected_history
 
     tampered = tmp_path / "tampered"
     tampered.mkdir()
