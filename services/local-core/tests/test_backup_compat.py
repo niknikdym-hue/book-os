@@ -39,10 +39,16 @@ def test_m1_backup_restores_then_migrates_forward_to_m2(tmp_path: Path) -> None:
 
     restored_engine = create_engine(f"sqlite:///{restored_path}")
     with restored_engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0002"
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0002"
+        )
     restored_engine.dispose()
 
     upgraded = create_database(restored_path)
     with upgraded.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0003"
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0003"
+        )
     assert AuthorityService(upgraded).get_head(original.entity_id) == original

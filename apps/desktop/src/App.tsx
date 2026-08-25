@@ -417,7 +417,7 @@ export function App() {
                     <p className="eyebrow">HUMAN GATE 1</p>
                     <h3>Book Contract</h3>
                   </div>
-                  <StatusBadge status={project.book_contract?.authority_status} />
+                  <StatusBadge status={project.book_contract?.status} />
                 </div>
                 <div className="form-grid">
                   {(
@@ -480,7 +480,7 @@ export function App() {
                     <p className="eyebrow">HUMAN GATE 2</p>
                     <h3>Book Architecture</h3>
                   </div>
-                  <StatusBadge status={project.architecture?.authority_status} />
+                  <StatusBadge status={project.architecture?.status} />
                 </div>
                 <div className="form-grid">
                   <Field
@@ -619,7 +619,7 @@ export function App() {
                       <p className="eyebrow">HUMAN GATE 3</p>
                       <h3>Chapter Contract</h3>
                     </div>
-                    <StatusBadge status={selectedChapter?.chapter_contract?.authority_status} />
+                    <StatusBadge status={selectedChapter?.chapter_contract?.status} />
                   </div>
                   <label className="field">
                     <span>Chapter</span>

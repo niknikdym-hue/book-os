@@ -529,7 +529,9 @@ class ProjectService:
             "LOCKED",
         }:
             raise ProjectGateError("Architecture must be approved before Chapter Contract approval")
-        architecture = BookArchitecturePayload.model_validate(project.architecture.content)
+        architecture = BookArchitecturePayload.model_validate(
+            self._authority_content(book_id, project.architecture)
+        )
         current_ids = {
             chapter.chapter_id
             for part in architecture.parts
@@ -570,6 +572,14 @@ class ProjectService:
         finally:
             engine.dispose()
         return self.get_project(book_id)
+
+    def _authority_content(self, book_id: str, document: DocumentView) -> dict[str, Any]:
+        engine = self._engine(book_id)
+        try:
+            revision = AuthorityService(engine).get_revision(document.authority_revision_id)
+            return cast(dict[str, Any], revision["content"])
+        finally:
+            engine.dispose()
 
     def _save_project_document(
         self,
