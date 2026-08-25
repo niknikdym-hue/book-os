@@ -5,10 +5,10 @@ def replace_schema_assertions() -> None:
     path = Path("services/local-core/tests/test_authority.py")
     text = path.read_text()
     old = '== "0002"'
-    if old in text:
-        count = text.count(old)
-        if count != 2:
-            raise SystemExit(f"unexpected old-schema assertion count: {count}")
+    count = text.count(old)
+    if count not in {0, 1}:
+        raise SystemExit(f"unexpected old-schema assertion count: {count}")
+    if count == 1:
         path.write_text(text.replace(old, '== "0003"'))
 
 
