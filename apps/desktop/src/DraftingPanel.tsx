@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { coreApi } from "./api";
 import type { DraftRunView, DraftingPanelProps } from "./draftingTypes";
 
-export function DraftingPanel({ project, chapter }: DraftingPanelProps) {
+export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanelProps) {
   const [objective, setObjective] = useState("");
   const [model, setModel] = useState("");
   const [context, setContext] = useState("");
@@ -18,20 +18,20 @@ export function DraftingPanel({ project, chapter }: DraftingPanelProps) {
     setRuns([]);
     setError(null);
     if (!chapter) return;
-    void coreApi<DraftRunView[]>(
+    void api<DraftRunView[]>(
       "GET",
       `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
     )
       .then(setRuns)
       .catch((reason: unknown) => setError(String(reason)));
-  }, [chapter, project.book_id]);
+  }, [api, chapter, project.book_id]);
 
   async function generate() {
     if (!chapter || !approved || !objective.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const run = await coreApi<DraftRunView>(
+      const run = await api<DraftRunView>(
         "POST",
         `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
         {
