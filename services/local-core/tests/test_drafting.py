@@ -252,7 +252,7 @@ def test_unapproved_chapter_contract_is_rejected(tmp_path: Path) -> None:
 def test_authenticated_drafting_api_returns_draft_not_approval(tmp_path: Path) -> None:
     _, book_id, chapter_id = ready_project(tmp_path)
     gateway = ModelGateway({"fake": DeterministicFakeAdapter()})
-    client = TestClient(create_app("token", tmp_path, gateway))
+    client = TestClient(create_app("token", tmp_path, gateway=gateway))
     assert client.post(f"/api/projects/{book_id}/chapters/{chapter_id}/drafts").status_code == 401
     response = client.post(
         f"/api/projects/{book_id}/chapters/{chapter_id}/drafts",
