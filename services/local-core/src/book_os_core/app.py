@@ -6,6 +6,14 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from . import __version__
+from .drafting import DraftingError, DraftingGateError, DraftingService, DraftSectionRequest
+from .model_gateway import (
+    ModelBudgetError,
+    ModelGateway,
+    ModelOutputError,
+    ModelProviderError,
+    OpenAIResponsesAdapter,
+)
 from .projects import (
     BookArchitecturePayload,
     BookContractPayload,
@@ -16,9 +24,15 @@ from .projects import (
     ProjectNotFound,
     ProjectService,
 )
+from .secrets import MacOSKeychainSecretStore, SecretNotFound
 
 
-def create_app(token: str | None = None, data_dir: Path | None = None) -> FastAPI:
+def create_app(
+    token: str | None = None,
+    data_dir: Path | None = None,
+    *,
+    gateway: ModelGateway | None = None,
+) -> FastAPI:
     expected = token or os.environ.get("BOOK_OS_SESSION_TOKEN")
     if not expected:
         raise RuntimeError("BOOK_OS_SESSION_TOKEN is required")
@@ -27,6 +41,14 @@ def create_app(token: str | None = None, data_dir: Path | None = None) -> FastAP
         raw_data_dir = os.environ.get("BOOK_OS_DATA_DIR")
         configured_data_dir = Path(raw_data_dir) if raw_data_dir else None
     projects = ProjectService(configured_data_dir) if configured_data_dir is not None else None
+    configured_gateway = gateway or ModelGateway(
+        {"openai": OpenAIResponsesAdapter(MacOSKeychainSecretStore())}
+    )
+    drafting = (
+        DraftingService(configured_data_dir, configured_gateway)
+        if configured_data_dir is not None
+        else None
+    )
 
     app = FastAPI(title="BOOK OS Local Core", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -46,6 +68,14 @@ def create_app(token: str | None = None, data_dir: Path | None = None) -> FastAP
             )
         return projects
 
+    def drafting_service(_: None = Depends(require_token)) -> DraftingService:
+        if drafting is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="BOOK_OS_DATA_DIR is required for drafting operations",
+            )
+        return drafting
+
     @app.exception_handler(ProjectNotFound)
     async def project_not_found(_: Request, exc: ProjectNotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
@@ -56,6 +86,33 @@ def create_app(token: str | None = None, data_dir: Path | None = None) -> FastAP
 
     @app.exception_handler(ProjectError)
     async def project_error(_: Request, exc: ProjectError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(DraftingGateError)
+    async def drafting_gate_error(_: Request, exc: DraftingGateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ModelBudgetError)
+    async def model_budget_error(_: Request, exc: ModelBudgetError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(SecretNotFound)
+    async def secret_not_found(_: Request, exc: SecretNotFound) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": f"required provider secret is unavailable: {exc}"},
+        )
+
+    @app.exception_handler(ModelProviderError)
+    async def model_provider_error(_: Request, exc: ModelProviderError) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+    @app.exception_handler(ModelOutputError)
+    async def model_output_error(_: Request, exc: ModelOutputError) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+    @app.exception_handler(DraftingError)
+    async def drafting_error(_: Request, exc: DraftingError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     @app.exception_handler(ValidationError)
@@ -128,5 +185,22 @@ def create_app(token: str | None = None, data_dir: Path | None = None) -> FastAP
         service: ProjectService = Depends(project_service),
     ) -> dict[str, object]:
         return service.approve_chapter_contract(book_id, chapter_id).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/chapters/{chapter_id}/drafts")
+    def list_section_drafts(
+        book_id: str,
+        chapter_id: str,
+        service: DraftingService = Depends(drafting_service),
+    ) -> list[dict[str, object]]:
+        return [item.model_dump(mode="json") for item in service.list_drafts(book_id, chapter_id)]
+
+    @app.post("/api/projects/{book_id}/chapters/{chapter_id}/drafts")
+    def generate_section_draft(
+        book_id: str,
+        chapter_id: str,
+        payload: DraftSectionRequest,
+        service: DraftingService = Depends(drafting_service),
+    ) -> dict[str, object]:
+        return service.generate_section_draft(book_id, chapter_id, payload).model_dump(mode="json")
 
     return app
