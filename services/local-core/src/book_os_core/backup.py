@@ -7,10 +7,12 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
-SUPPORTED_ALEMBIC_REVISION = "0002"
+SUPPORTED_ALEMBIC_REVISION = "0003"
+MIN_RESTORABLE_ALEMBIC_REVISION = "0002"
 BACKUP_FORMAT_VERSION = 1
 DOWNGRADE_POLICY = (
-    "No silent automatic downgrade; use an application version that supports the backup schema."
+    "No silent automatic downgrade. Older supported backups restore at their recorded schema and "
+    "are migrated forward by normal application migrations when opened."
 )
 
 
@@ -84,6 +86,7 @@ def create_backup(
         "app_version": app_version,
         "alembic_revision": schema_revision,
         "supported_schema_revision": SUPPORTED_ALEMBIC_REVISION,
+        "minimum_restorable_schema_revision": MIN_RESTORABLE_ALEMBIC_REVISION,
         "database_sha256": checksum,
         "database_file": database_backup.name,
         "downgrade_policy": DOWNGRADE_POLICY,
@@ -100,8 +103,9 @@ def restore_backup(
     destination_database: Path,
     *,
     supported_revision: str = SUPPORTED_ALEMBIC_REVISION,
+    minimum_revision: str = MIN_RESTORABLE_ALEMBIC_REVISION,
 ) -> None:
-    """Validate a backup manifest/checksum/integrity before restoring into a fresh path."""
+    """Validate a backup before restoring its exact recorded schema into a fresh path."""
     manifest_path = backup_directory / "manifest.json"
     if not manifest_path.is_file():
         raise BackupIntegrityError("backup manifest is missing")
@@ -110,14 +114,13 @@ def restore_backup(
         raise BackupIntegrityError("unsupported backup format version")
 
     schema_revision = str(manifest.get("alembic_revision", ""))
-    if schema_revision != supported_revision:
-        if schema_revision > supported_revision:
-            raise SchemaCompatibilityError(
-                f"backup schema {schema_revision} is newer than supported {supported_revision}"
-            )
+    if schema_revision > supported_revision:
         raise SchemaCompatibilityError(
-            f"backup schema {schema_revision} does not match supported {supported_revision}; "
-            "automatic downgrade/upgrade during restore is not performed"
+            f"backup schema {schema_revision} is newer than supported {supported_revision}"
+        )
+    if schema_revision < minimum_revision:
+        raise SchemaCompatibilityError(
+            f"backup schema {schema_revision} is older than minimum restorable {minimum_revision}"
         )
 
     database_backup = backup_directory / str(manifest.get("database_file", "project.sqlite"))
@@ -144,9 +147,9 @@ def restore_backup(
             destination.execute("PRAGMA foreign_keys=ON")
             _integrity_check(destination)
             restored_schema = _alembic_revision(destination)
-            if restored_schema != supported_revision:
-                raise SchemaCompatibilityError(
-                    f"restored schema {restored_schema} does not match supported {supported_revision}"
+            if restored_schema != schema_revision:
+                raise BackupIntegrityError(
+                    "restored database schema does not match the backup manifest"
                 )
         except Exception:
             destination.close()

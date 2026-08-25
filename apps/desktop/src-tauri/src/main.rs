@@ -1,6 +1,7 @@
 use rand::distr::Alphanumeric;
 use rand::{rng, Rng};
 use serde::Deserialize;
+use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -27,9 +28,17 @@ impl Drop for Core {
         self.stop();
     }
 }
+
 #[derive(Deserialize)]
 struct Ready {
     port: u16,
+}
+
+#[derive(Deserialize)]
+struct CoreApiRequest {
+    method: String,
+    path: String,
+    body: Option<Value>,
 }
 
 fn resolve_python(value: &str, manifest_dir: &Path) -> PathBuf {
@@ -44,7 +53,22 @@ fn resolve_python(value: &str, manifest_dir: &Path) -> PathBuf {
     }
 }
 
-fn launch() -> Result<Core, String> {
+fn validate_core_api_request(method: &str, path: &str) -> Result<(), String> {
+    if !matches!(method, "GET" | "POST" | "PUT") {
+        return Err("unsupported local-core API method".into());
+    }
+    if !path.starts_with("/api/")
+        || path.contains("..")
+        || path.contains("://")
+        || path.contains('\\')
+        || path.contains('#')
+    {
+        return Err("invalid local-core API path".into());
+    }
+    Ok(())
+}
+
+fn launch(data_dir: &Path) -> Result<Core, String> {
     let token: String = rng()
         .sample_iter(&Alphanumeric)
         .take(48)
@@ -62,6 +86,7 @@ fn launch() -> Result<Core, String> {
     let mut child = Command::new(python)
         .args(["-m", "book_os_core"])
         .env("BOOK_OS_SESSION_TOKEN", &token)
+        .env("BOOK_OS_DATA_DIR", data_dir)
         .env("PYTHONPATH", source_path)
         .stdout(Stdio::piped())
         .spawn()
@@ -79,26 +104,62 @@ fn launch() -> Result<Core, String> {
         token,
     })
 }
+
+fn read_json_response(mut response: ureq::http::Response<ureq::Body>) -> Result<Value, String> {
+    let text = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
+    serde_json::from_str(&text).map_err(|e| e.to_string())
+}
+
+fn json_request_body(body: Option<Value>) -> Result<String, String> {
+    serde_json::to_string(&body.unwrap_or(Value::Null)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
-fn core_health(core: tauri::State<'_, Core>) -> Result<serde_json::Value, String> {
+fn core_health(core: tauri::State<'_, Core>) -> Result<Value, String> {
     let url = format!("http://127.0.0.1:{}/health", core.port);
     let response = ureq::get(&url)
         .header("Authorization", &format!("Bearer {}", core.token))
         .call()
         .map_err(|e| e.to_string())?;
-    let text = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| e.to_string())?;
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+    read_json_response(response)
 }
+
+#[tauri::command]
+fn core_api(request: CoreApiRequest, core: tauri::State<'_, Core>) -> Result<Value, String> {
+    let method = request.method.to_ascii_uppercase();
+    validate_core_api_request(&method, &request.path)?;
+    let url = format!("http://127.0.0.1:{}{}", core.port, request.path);
+    let authorization = format!("Bearer {}", core.token);
+    let response = match method.as_str() {
+        "GET" => ureq::get(&url)
+            .header("Authorization", &authorization)
+            .call(),
+        "POST" => ureq::post(&url)
+            .header("Authorization", &authorization)
+            .content_type("application/json")
+            .send(json_request_body(request.body)?),
+        "PUT" => ureq::put(&url)
+            .header("Authorization", &authorization)
+            .content_type("application/json")
+            .send(json_request_body(request.body)?),
+        _ => unreachable!("validated method"),
+    }
+    .map_err(|e| e.to_string())?;
+    read_json_response(response)
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
-            app.manage(launch().map_err(std::io::Error::other)?);
+            let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir)?;
+            app.manage(launch(&data_dir).map_err(std::io::Error::other)?);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![core_health])
+        .invoke_handler(tauri::generate_handler![core_health, core_api])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if let Some(core) = window.app_handle().try_state::<Core>() {
@@ -123,7 +184,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_python;
+    use super::{json_request_body, resolve_python, validate_core_api_request};
+    use serde_json::json;
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -148,5 +210,24 @@ mod tests {
         };
 
         assert_eq!(resolve_python(python, manifest_dir), PathBuf::from(python));
+    }
+
+    #[test]
+    fn local_core_proxy_is_bounded_to_api_paths() {
+        assert!(validate_core_api_request("GET", "/api/projects").is_ok());
+        assert!(validate_core_api_request("POST", "/api/projects").is_ok());
+        assert!(validate_core_api_request("PUT", "/api/projects/ABC/book-contract/draft").is_ok());
+        assert!(validate_core_api_request("DELETE", "/api/projects/ABC").is_err());
+        assert!(validate_core_api_request("GET", "/health").is_err());
+        assert!(validate_core_api_request("GET", "http://example.com/api/projects").is_err());
+        assert!(validate_core_api_request("GET", "/api/../health").is_err());
+    }
+
+    #[test]
+    fn local_core_proxy_serializes_json_without_optional_ureq_json_feature() {
+        let body = json_request_body(Some(json!({"title": "Привет", "count": 2}))).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(parsed["title"], "Привет");
+        assert_eq!(parsed["count"], 2);
     }
 }
