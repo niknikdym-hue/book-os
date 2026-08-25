@@ -94,6 +94,7 @@ class ClaimUpdateRequest(BaseModel):
 class ClaimReviewRequest(BaseModel):
     state: Literal["UNREVIEWED", "DISPUTED", "UNSUPPORTED", "REJECTED"]
     actor: Annotated[str, Field(min_length=1, max_length=128)] = "OWNER"
+    reason: NonEmpty
 
 
 class ClaimView(BaseModel):
@@ -116,6 +117,23 @@ class ClaimView(BaseModel):
 class SourceImportRequest(BaseModel):
     candidate: ResearchCandidate
     primary_secondary: Literal["PRIMARY", "SECONDARY", "UNCLASSIFIED"] = "UNCLASSIFIED"
+
+
+class SourceAccessRequest(BaseModel):
+    access_status: Literal["METADATA_ONLY", "ABSTRACT_AVAILABLE", "FULL_SOURCE_INSPECTED"]
+    actor: Annotated[str, Field(min_length=1, max_length=128)] = "OWNER"
+    note: str = ""
+
+    @field_validator("actor", "note")
+    @classmethod
+    def strip_access_fields(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def inspected_requires_note(self) -> SourceAccessRequest:
+        if self.access_status == "FULL_SOURCE_INSPECTED" and not self.note:
+            raise ValueError("FULL_SOURCE_INSPECTED requires an inspection note")
+        return self
 
 
 class SourceView(BaseModel):
@@ -296,6 +314,14 @@ class ResearchService:
                         "updated_at": now,
                     },
                 )
+                connection.execute(
+                    text(
+                        "INSERT INTO claim_state_history(state_event_id,claim_id,prior_state,new_state,"
+                        "actor,actor_kind,reason,created_at) VALUES (:event_id,:claim_id,NULL,"
+                        "'UNREVIEWED','OWNER','HUMAN','Claim registered',:created_at)"
+                    ),
+                    {"event_id": new_ulid(), "claim_id": claim_id, "created_at": now},
+                )
             return self.get_claim(book_id, claim_id)
         finally:
             engine.dispose()
@@ -309,7 +335,7 @@ class ResearchService:
                 row = (
                     connection.execute(
                         text(
-                            "SELECT chapter_id,unit_id FROM claims "
+                            "SELECT chapter_id,unit_id,verification_state FROM claims "
                             "WHERE book_id=:book_id AND claim_id=:claim_id"
                         ),
                         {"book_id": book_id, "claim_id": claim_id},
@@ -329,14 +355,15 @@ class ResearchService:
                 request.manuscript_revision_hash,
             )
             now = utc_now()
+            prior_state = cast(str, row["verification_state"])
             with engine.begin() as connection:
                 connection.execute(
                     text(
                         "UPDATE claims SET manuscript_revision_id=:revision_id,"
                         "manuscript_revision_hash=:revision_hash,normalized_text=:normalized_text,"
                         "claim_type=:claim_type,materiality=:materiality,"
-                        "required_evidence_level=:required_evidence_level,updated_at=:updated_at "
-                        "WHERE claim_id=:claim_id"
+                        "required_evidence_level=:required_evidence_level,verification_state='UNREVIEWED',"
+                        "updated_at=:updated_at WHERE claim_id=:claim_id"
                     ),
                     {
                         "revision_id": request.manuscript_revision_id,
@@ -349,6 +376,25 @@ class ResearchService:
                         "claim_id": claim_id,
                     },
                 )
+                connection.execute(
+                    text("UPDATE evidence SET status='SUPERSEDED' WHERE claim_id=:claim_id AND status='ACTIVE'"),
+                    {"claim_id": claim_id},
+                )
+                if prior_state != "UNREVIEWED":
+                    connection.execute(
+                        text(
+                            "INSERT INTO claim_state_history(state_event_id,claim_id,prior_state,new_state,"
+                            "actor,actor_kind,reason,created_at) VALUES (:event_id,:claim_id,:prior_state,"
+                            "'UNREVIEWED','SYSTEM','SYSTEM',"
+                            "'Claim edit invalidated prior evidence decision',:created_at)"
+                        ),
+                        {
+                            "event_id": new_ulid(),
+                            "claim_id": claim_id,
+                            "prior_state": prior_state,
+                            "created_at": now,
+                        },
+                    )
             return self.get_claim(book_id, claim_id)
         finally:
             engine.dispose()
@@ -518,6 +564,20 @@ class ResearchService:
                             "source_id": source_id,
                         },
                     )
+                if existing_id is None:
+                    connection.execute(
+                        text(
+                            "INSERT INTO source_access_history(access_event_id,source_id,access_status,"
+                            "actor,note,created_at) VALUES (:event_id,:source_id,:access_status,"
+                            "'SYSTEM','Imported provider metadata',:created_at)"
+                        ),
+                        {
+                            "event_id": new_ulid(),
+                            "source_id": source_id,
+                            "access_status": access_status,
+                            "created_at": now,
+                        },
+                    )
                 identifiers = [(candidate.provider, candidate.external_id, candidate.provider_url)]
                 for key, value in sorted(candidate.raw_identifiers.items()):
                     provider_key = key if key in {"openalex", "crossref", "semantic_scholar"} else f"{candidate.provider}:{key}"
@@ -539,6 +599,37 @@ class ResearchService:
                             "created_at": now,
                         },
                     )
+            return self.get_source(book_id, source_id)
+        finally:
+            engine.dispose()
+
+    def mark_source_access(
+        self, book_id: str, source_id: str, request: SourceAccessRequest
+    ) -> SourceView:
+        engine = self._engine(book_id)
+        try:
+            now = utc_now()
+            with engine.begin() as connection:
+                result = connection.execute(
+                    text("UPDATE sources SET access_status=:status,updated_at=:updated_at WHERE source_id=:source_id"),
+                    {"status": request.access_status, "updated_at": now, "source_id": source_id},
+                )
+                if result.rowcount != 1:
+                    raise ResearchNotFound("source not found")
+                connection.execute(
+                    text(
+                        "INSERT INTO source_access_history(access_event_id,source_id,access_status,"
+                        "actor,note,created_at) VALUES (:event_id,:source_id,:status,:actor,:note,:created_at)"
+                    ),
+                    {
+                        "event_id": new_ulid(),
+                        "source_id": source_id,
+                        "status": request.access_status,
+                        "actor": request.actor,
+                        "note": request.note,
+                        "created_at": now,
+                    },
+                )
             return self.get_source(book_id, source_id)
         finally:
             engine.dispose()
@@ -691,8 +782,9 @@ class ResearchService:
                 )
                 evidence = connection.execute(
                     text(
-                        "SELECT relationship,limitations FROM evidence "
-                        "WHERE claim_id=:claim_id AND status='ACTIVE'"
+                        "SELECT e.relationship,e.limitations,s.access_status FROM evidence e "
+                        "JOIN sources s ON s.source_id=e.source_id "
+                        "WHERE e.claim_id=:claim_id AND e.status='ACTIVE'"
                     ),
                     {"claim_id": claim_id},
                 ).mappings().all()
@@ -701,7 +793,11 @@ class ResearchService:
             if claim["verification_state"] == "REJECTED":
                 return self.get_claim(book_id, claim_id)
             has_contradiction = any(item["relationship"] == "CONTRADICTS" for item in evidence)
-            has_support = any(item["relationship"] == "SUPPORTS" for item in evidence)
+            has_full_support = any(
+                item["relationship"] == "SUPPORTS"
+                and item["access_status"] == "FULL_SOURCE_INSPECTED"
+                for item in evidence
+            )
             has_partial = any(
                 item["relationship"] == "PARTIALLY_SUPPORTS"
                 and bool(cast(str, item["limitations"]).strip())
@@ -709,20 +805,37 @@ class ResearchService:
             )
             if has_contradiction:
                 state: VerificationState = "DISPUTED"
-            elif has_support:
+            elif has_full_support:
                 state = "SUPPORTED"
             elif has_partial:
                 state = "PARTIALLY_SUPPORTED"
             else:
                 state = "UNREVIEWED"
-            with engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "UPDATE claims SET verification_state=:state,updated_at=:updated_at "
-                        "WHERE claim_id=:claim_id"
-                    ),
-                    {"state": state, "updated_at": utc_now(), "claim_id": claim_id},
-                )
+            prior_state = cast(str, claim["verification_state"])
+            if prior_state != state:
+                now = utc_now()
+                with engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            "UPDATE claims SET verification_state=:state,updated_at=:updated_at "
+                            "WHERE claim_id=:claim_id"
+                        ),
+                        {"state": state, "updated_at": now, "claim_id": claim_id},
+                    )
+                    connection.execute(
+                        text(
+                            "INSERT INTO claim_state_history(state_event_id,claim_id,prior_state,new_state,"
+                            "actor,actor_kind,reason,created_at) VALUES (:event_id,:claim_id,:prior_state,"
+                            ":new_state,'SYSTEM','SYSTEM','Deterministic evidence recalculation',:created_at)"
+                        ),
+                        {
+                            "event_id": new_ulid(),
+                            "claim_id": claim_id,
+                            "prior_state": prior_state,
+                            "new_state": state,
+                            "created_at": now,
+                        },
+                    )
             return self.get_claim(book_id, claim_id)
         finally:
             engine.dispose()
@@ -732,21 +845,44 @@ class ResearchService:
     ) -> ClaimView:
         engine = self._engine(book_id)
         try:
+            with engine.connect() as connection:
+                prior_state = connection.execute(
+                    text("SELECT verification_state FROM claims WHERE book_id=:book_id AND claim_id=:claim_id"),
+                    {"book_id": book_id, "claim_id": claim_id},
+                ).scalar_one_or_none()
+            if prior_state is None:
+                raise ResearchNotFound("claim not found")
+            now = utc_now()
             with engine.begin() as connection:
-                result = connection.execute(
+                connection.execute(
                     text(
                         "UPDATE claims SET verification_state=:state,updated_at=:updated_at "
                         "WHERE book_id=:book_id AND claim_id=:claim_id"
                     ),
                     {
                         "state": request.state,
-                        "updated_at": utc_now(),
+                        "updated_at": now,
                         "book_id": book_id,
                         "claim_id": claim_id,
                     },
                 )
-                if result.rowcount != 1:
-                    raise ResearchNotFound("claim not found")
+                if prior_state != request.state:
+                    connection.execute(
+                        text(
+                            "INSERT INTO claim_state_history(state_event_id,claim_id,prior_state,new_state,"
+                            "actor,actor_kind,reason,created_at) VALUES (:event_id,:claim_id,:prior_state,"
+                            ":new_state,:actor,'HUMAN',:reason,:created_at)"
+                        ),
+                        {
+                            "event_id": new_ulid(),
+                            "claim_id": claim_id,
+                            "prior_state": prior_state,
+                            "new_state": request.state,
+                            "actor": request.actor,
+                            "reason": request.reason,
+                            "created_at": now,
+                        },
+                    )
             return self.get_claim(book_id, claim_id)
         finally:
             engine.dispose()

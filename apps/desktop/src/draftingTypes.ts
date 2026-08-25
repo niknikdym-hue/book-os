@@ -14,6 +14,7 @@ export type DraftRunView = {
   input_revision_hash: string;
   unit_id: string | null;
   revision_id: string | null;
+  revision_hash: string | null;
   revision_status: string | null;
   text: string | null;
   notes: string[];
