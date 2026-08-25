@@ -31,6 +31,8 @@ def upgrade() -> None:
         sa.Column("prompt_hash", sa.String(64), nullable=False),
         sa.Column("section_objective", sa.Text(), nullable=False),
         sa.Column("untrusted_context_json", sa.Text(), nullable=False),
+        sa.Column("max_output_tokens", sa.Integer(), nullable=False),
+        sa.Column("max_cost_usd", sa.Float(), nullable=True),
         sa.Column("status", sa.String(32), nullable=False),
         sa.Column("output_unit_id", sa.String(26), nullable=True),
         sa.Column("created_at", sa.String(32), nullable=False),
@@ -66,7 +68,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.Column("completed_at", sa.String(32), nullable=True),
         sa.ForeignKeyConstraint(["task_id"], ["bounded_tasks.task_id"]),
-        sa.CheckConstraint("status IN ('RUNNING','SUCCEEDED','FAILED')", name="ck_model_run_status"),
+        sa.CheckConstraint(
+            "status IN ('RUNNING','SUCCEEDED','FAILED')", name="ck_model_run_status"
+        ),
     )
     op.create_index("ix_model_runs_task", "model_runs", ["task_id", "created_at"])
 

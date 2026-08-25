@@ -6,8 +6,7 @@ from typing import Protocol
 
 
 class SecretStore(Protocol):
-    def get_secret(self, name: str) -> str:
-        ...
+    def get_secret(self, name: str) -> str: ...
 
 
 class SecretNotFound(RuntimeError):

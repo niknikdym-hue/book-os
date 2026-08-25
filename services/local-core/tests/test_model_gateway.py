@@ -69,7 +69,9 @@ def test_openai_responses_adapter_is_mocked_structured_and_secret_safe() -> None
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     secrets = DictSecretStore({"openai_api_key": "super-secret-test-value"})
-    adapter = OpenAIResponsesAdapter(secrets, client=client, endpoint="https://example.test/v1/responses")
+    adapter = OpenAIResponsesAdapter(
+        secrets, client=client, endpoint="https://example.test/v1/responses"
+    )
     result = adapter.generate(request("openai", "test-model"), SECTION_DRAFT_V1)
 
     assert result.provider_run_id == "resp_test_123"

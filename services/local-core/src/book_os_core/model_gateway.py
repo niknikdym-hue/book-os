@@ -61,8 +61,7 @@ class ModelAdapterResult:
 class ModelAdapter(Protocol):
     provider_name: str
 
-    def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
-        ...
+    def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult: ...
 
 
 class ModelGateway:

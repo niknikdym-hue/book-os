@@ -240,9 +240,7 @@ def test_unapproved_chapter_contract_is_rejected(tmp_path: Path) -> None:
     chapter_id = project.chapters[0].chapter_id
     projects.save_chapter_contract(project.book_id, chapter_id, chapter_contract())
 
-    drafting = DraftingService(
-        tmp_path, ModelGateway({"fake": DeterministicFakeAdapter()})
-    )
+    drafting = DraftingService(tmp_path, ModelGateway({"fake": DeterministicFakeAdapter()}))
     with pytest.raises(DraftingGateError, match="approved"):
         drafting.generate_section_draft(
             project.book_id,

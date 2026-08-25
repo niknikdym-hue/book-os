@@ -124,9 +124,11 @@ class DraftingService:
                         "INSERT INTO bounded_tasks("
                         "task_id,book_id,chapter_id,task_type,role,input_revision_id,input_revision_hash,"
                         "prompt_id,prompt_version,prompt_hash,section_objective,untrusted_context_json,"
-                        "status,created_at,started_at) VALUES (:task_id,:book_id,:chapter_id,'SECTION_DRAFT',"
+                        "max_output_tokens,max_cost_usd,status,created_at,started_at) VALUES "
+                        "(:task_id,:book_id,:chapter_id,'SECTION_DRAFT',"
                         "'WRITER',:revision_id,:revision_hash,:prompt_id,:prompt_version,:prompt_hash,"
-                        ":objective,:untrusted_context,'RUNNING',:created_at,:started_at)"
+                        ":objective,:untrusted_context,:max_output_tokens,:max_cost_usd,'RUNNING',"
+                        ":created_at,:started_at)"
                     ),
                     {
                         "task_id": task_id,
@@ -141,6 +143,8 @@ class DraftingService:
                         "untrusted_context": canonical_json(
                             {"items": cast(list[JSONValue], request.untrusted_context)}
                         ),
+                        "max_output_tokens": request.max_output_tokens,
+                        "max_cost_usd": request.max_cost_usd,
                         "created_at": now,
                         "started_at": now,
                     },
@@ -190,7 +194,9 @@ class DraftingService:
             try:
                 output = SectionDraftOutput.model_validate(result.output)
             except ValidationError as exc:
-                raise ModelOutputError("model output failed SectionDraft schema validation") from exc
+                raise ModelOutputError(
+                    "model output failed SectionDraft schema validation"
+                ) from exc
 
             latest_head = authority.get_head(contract_entity_id)
             if (
@@ -198,7 +204,9 @@ class DraftingService:
                 or latest_head.revision_hash != contract_head.revision_hash
                 or latest_head.status not in {"APPROVED", "LOCKED"}
             ):
-                raise DraftingGateError("Chapter Contract authority changed while drafting; result discarded")
+                raise DraftingGateError(
+                    "Chapter Contract authority changed while drafting; result discarded"
+                )
 
             return self._persist_success(
                 engine,
