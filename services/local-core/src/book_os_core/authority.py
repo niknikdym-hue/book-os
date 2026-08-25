@@ -187,13 +187,17 @@ class AuthorityService(AuthorityStore):
         serialized = canonical_json(proposed_payload)
         digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
         with self.engine.begin() as connection:
-            base = connection.execute(
-                text(
-                    "SELECT entity_id, content_hash FROM revisions "
-                    "WHERE revision_id=:revision_id"
-                ),
-                {"revision_id": base_revision_id},
-            ).mappings().one_or_none()
+            base = (
+                connection.execute(
+                    text(
+                        "SELECT entity_id, content_hash FROM revisions "
+                        "WHERE revision_id=:revision_id"
+                    ),
+                    {"revision_id": base_revision_id},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if base is None or base["entity_id"] != entity_id:
                 raise AuthorityError("proposal base revision does not belong to target entity")
             if base["content_hash"] != base_revision_hash:
@@ -250,22 +254,30 @@ class AuthorityService(AuthorityStore):
         revision_id = new_ulid()
         approval_id = new_ulid()
         with self.engine.begin() as connection:
-            proposal = connection.execute(
-                text("SELECT * FROM change_proposals WHERE proposal_id=:proposal_id"),
-                {"proposal_id": proposal_id},
-            ).mappings().one_or_none()
+            proposal = (
+                connection.execute(
+                    text("SELECT * FROM change_proposals WHERE proposal_id=:proposal_id"),
+                    {"proposal_id": proposal_id},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if proposal is None:
                 raise AuthorityError(f"proposal not found: {proposal_id}")
             if proposal["status"] != "OPEN":
                 raise ProposalStateError(f"proposal is {proposal['status']}, expected OPEN")
 
-            head = connection.execute(
-                text(
-                    "SELECT revision_id,revision_hash FROM authority_heads "
-                    "WHERE entity_id=:entity_id"
-                ),
-                {"entity_id": proposal["entity_id"]},
-            ).mappings().one()
+            head = (
+                connection.execute(
+                    text(
+                        "SELECT revision_id,revision_hash FROM authority_heads "
+                        "WHERE entity_id=:entity_id"
+                    ),
+                    {"entity_id": proposal["entity_id"]},
+                )
+                .mappings()
+                .one()
+            )
             if (
                 head["revision_id"] != proposal["base_revision_id"]
                 or head["revision_hash"] != proposal["base_revision_hash"]
@@ -383,10 +395,14 @@ class AuthorityService(AuthorityStore):
         decision_id = new_ulid()
         now = utc_now()
         with self.engine.begin() as connection:
-            proposal = connection.execute(
-                text("SELECT status FROM change_proposals WHERE proposal_id=:proposal_id"),
-                {"proposal_id": proposal_id},
-            ).mappings().one_or_none()
+            proposal = (
+                connection.execute(
+                    text("SELECT status FROM change_proposals WHERE proposal_id=:proposal_id"),
+                    {"proposal_id": proposal_id},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if proposal is None:
                 raise AuthorityError(f"proposal not found: {proposal_id}")
             if proposal["status"] != "OPEN":
@@ -437,19 +453,27 @@ class AuthorityService(AuthorityStore):
                 created_at=utc_now(),
             )
 
-    def lock_authority(self, entity_id: str, *, actor: str, actor_kind: ActorKind, reason: str) -> None:
+    def lock_authority(
+        self, entity_id: str, *, actor: str, actor_kind: ActorKind, reason: str
+    ) -> None:
         if actor_kind != "HUMAN":
             raise HumanApprovalRequired("locking authority requires a human actor")
         with self.engine.begin() as connection:
-            head = connection.execute(
-                text("SELECT revision_id FROM authority_heads WHERE entity_id=:entity_id"),
-                {"entity_id": entity_id},
-            ).mappings().one_or_none()
+            head = (
+                connection.execute(
+                    text("SELECT revision_id FROM authority_heads WHERE entity_id=:entity_id"),
+                    {"entity_id": entity_id},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if head is None:
                 raise AuthorityError(f"authority head not found: {entity_id}")
             status = self._effective_status(connection, cast(str, head["revision_id"]))
             if status != "APPROVED":
-                raise InvalidAuthorityOperation(f"only APPROVED authority can be locked, got {status}")
+                raise InvalidAuthorityOperation(
+                    f"only APPROVED authority can be locked, got {status}"
+                )
             self._insert_status(
                 connection,
                 revision_id=cast(str, head["revision_id"]),
