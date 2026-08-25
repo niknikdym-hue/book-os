@@ -24,7 +24,7 @@ export function DraftingPanel({ project, chapter }: DraftingPanelProps) {
     )
       .then(setRuns)
       .catch((reason: unknown) => setError(String(reason)));
-  }, [chapter?.chapter_id, project.book_id]);
+  }, [chapter, project.book_id]);
 
   async function generate() {
     if (!chapter || !approved || !objective.trim()) return;
