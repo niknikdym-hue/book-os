@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { coreApi } from "./api";
 import { DraftingPanel } from "./DraftingPanel";
+import { ResearchPanel } from "./ResearchPanel";
 import type {
   ArchitectureChapter,
   BookArchitecturePayload,
@@ -694,6 +695,7 @@ export function App() {
                 </section>
               )}
               <DraftingPanel project={project} chapter={selectedChapter} />
+              <ResearchPanel project={project} chapter={selectedChapter} />
             </>
           )}
         </section>
