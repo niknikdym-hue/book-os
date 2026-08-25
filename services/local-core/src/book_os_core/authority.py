@@ -53,6 +53,10 @@ class AuthorityService(AuthorityStore):
         origin: ProvenanceOrigin = "HUMAN_WRITTEN",
         initial_status: AuthorityStatus = "APPROVED",
     ) -> AuthorityHead:
+        if initial_status not in {"DRAFT", "APPROVED", "LOCKED"}:
+            raise InvalidAuthorityOperation(
+                f"invalid initial authority status {initial_status}; use DRAFT or explicit human authority"
+            )
         if initial_status in {"APPROVED", "LOCKED"} and actor_kind != "HUMAN":
             raise HumanApprovalRequired("initial approved/locked authority requires a human actor")
         now = utc_now()
@@ -127,11 +131,16 @@ class AuthorityService(AuthorityStore):
         task_id: str | None = None,
         input_revision_ids: Sequence[str] = (),
     ) -> str:
+        if status != "DRAFT":
+            raise InvalidAuthorityOperation(
+                "new revisions must start DRAFT; use review transitions and formal Approval"
+            )
         now = utc_now()
         revision_id = new_ulid()
         provenance_id = new_ulid()
         serialized = canonical_json(payload)
         digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        provenance_inputs = tuple(dict.fromkeys((*parent_revision_ids, *input_revision_ids)))
         with self.engine.begin() as connection:
             entity_type = self._entity_type(connection, entity_id)
             self._insert_provenance(
@@ -140,7 +149,7 @@ class AuthorityService(AuthorityStore):
                 origin=origin,
                 actor=actor,
                 task_id=task_id,
-                input_revision_ids=input_revision_ids,
+                input_revision_ids=provenance_inputs,
                 created_at=now,
             )
             self._insert_revision(
@@ -186,6 +195,7 @@ class AuthorityService(AuthorityStore):
         now = utc_now()
         serialized = canonical_json(proposed_payload)
         digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        provenance_inputs = tuple(dict.fromkeys((base_revision_id, *input_revision_ids)))
         with self.engine.begin() as connection:
             base = (
                 connection.execute(
@@ -208,7 +218,7 @@ class AuthorityService(AuthorityStore):
                 origin=origin,
                 actor=actor,
                 task_id=task_id,
-                input_revision_ids=input_revision_ids,
+                input_revision_ids=provenance_inputs,
                 created_at=now,
             )
             connection.execute(
