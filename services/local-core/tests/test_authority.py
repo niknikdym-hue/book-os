@@ -203,7 +203,9 @@ def test_accept_reject_and_stale_proposals(tmp_path: Path) -> None:
     with service.engine.begin() as connection:
         with pytest.raises(IntegrityError):
             connection.execute(
-                text("UPDATE authority_heads SET revision_hash=:bad_hash WHERE entity_id=:entity_id"),
+                text(
+                    "UPDATE authority_heads SET revision_hash=:bad_hash WHERE entity_id=:entity_id"
+                ),
                 {"bad_hash": "0" * 64, "entity_id": initial.entity_id},
             )
 
