@@ -105,9 +105,9 @@ fn launch(data_dir: &Path) -> Result<Core, String> {
     })
 }
 
-fn read_json_response(response: ureq::http::Response<ureq::Body>) -> Result<Value, String> {
+fn read_json_response(mut response: ureq::http::Response<ureq::Body>) -> Result<Value, String> {
     let text = response
-        .into_body()
+        .body_mut()
         .read_to_string()
         .map_err(|e| e.to_string())?;
     serde_json::from_str(&text).map_err(|e| e.to_string())
