@@ -1,151 +1,119 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 0.9.0  
-**Date:** 2026-08-24  
+**Version:** 1.0.0  
+**Date:** 2026-08-25  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 1 — TASK 002 READY**
+**IMPLEMENTATION MILESTONE 2 — TASK 003 READY**
 
-## Latest accepted design authority
+## Accepted authority
 
 - Product/Authority baseline: `BOOK_OS_AUTHORITY.md`
-- Execution roles/plan: `PROJECT_EXECUTION_PLAN.md`
-- Core Ontology: `CORE_ONTOLOGY.md` v0.2.0 — accepted
 - Product spec: `PRODUCT_SPEC_v0.1.md`
-- Editorial contracts/roles/acceptance: `EDITORIAL_PROTOCOLS_v0.1.md`
-- Research/Claim Ledger: `RESEARCH_AND_CLAIMS_v0.1.md`
-- Model Gateway: `MODEL_GATEWAY_v0.1.md`
-- Book Memory: `BOOK_MEMORY_v0.1.md`
-- BookBench: `BOOKBENCH_v0.1.md`
+- Core Ontology: `CORE_ONTOLOGY.md` v0.2.0
+- Editorial contracts/gates: `EDITORIAL_PROTOCOLS_v0.1.md`
 - Technical Architecture: `TECHNICAL_ARCHITECTURE_v0.1.md`
 - Security/availability: `SECURITY_AVAILABILITY_v0.1.md`
-- Audio handoff: `AUDIO_HANDOFF_v0.1.md`
-- Implementation critical path: `IMPLEMENTATION_ROADMAP_v0.1.md`
-- Cross-cutting hardening: `PRE_IMPLEMENTATION_HARDENING_v0.1.md`
-- Task necessity/efficiency/acceptance control: `TASK_EXECUTION_PROTOCOL_v0.1.md`
-- Standard implementation task skeleton: `tasks/TASK_TEMPLATE.md`
+- Implementation roadmap: `IMPLEMENTATION_ROADMAP_v0.1.md`
+- Execution control: `TASK_EXECUTION_PROTOCOL_v0.1.md`
+- Complete recovery map: `DESIGN_INDEX.md`
 
-The complete recovery map is `DESIGN_INDEX.md`.
+## Completed milestones
 
-## Completed milestone
+### M0 / Task 001 — ACCEPTED AND MERGED
 
-### Task 001 / M0 — ACCEPTED AND MERGED
+- PR `#3 — Task 001 — executable local-first skeleton`
+- canonical M0 merge: `b2bbe3dd208e15cbca0420e90c1b4adadab7acda`
+- native Owner-Mac `Local Core healthy`: PASS
+- sidecar cleanup after normal close and Cmd-Q: PASS
 
-Merged PR:
+M0 provides the accepted Tauri + React desktop, Python local-core, authenticated loopback boundary, SQLite/Alembic bootstrap and non-paid CI baseline.
 
-`#3 — Task 001 — executable local-first skeleton`
+### M1 / Task 002 — ACCEPTED AND MERGED
 
-Accepted implementation commit:
+- contract: `docs/tasks/CODEX_TASK_002_AUTHORITY_PERSISTENCE.md`
+- PR: `#5 — Task 002 — Authority & Persistence Engine`
+- accepted implementation HEAD: `e6f749b8797def444d9c92036c713eef43198f92`
+- canonical M1 merge: `c2cf2e88c81797ff3f67873b1d406ecc7f806e84`
+- final strict CI run: `32878002451` — SUCCESS
+  - `local-core` — success (`ruff format --check`, `ruff check`, mypy, 15 pytest tests)
+  - `desktop` — success
+  - `tauri-smoke` — success
+  - `secret-scan` — success
+- external/model calls: `0`; paid calls: `0`
 
-`f4217dab4ff1d97e0cda14b3aacc87e1b61886cf`
+M1 now enforces/recoverably stores:
 
-Final accepted Task 001 branch checkpoint:
+- stable sortable authority identities;
+- immutable revision snapshots;
+- deterministic canonical JSON + SHA-256 hashes;
+- Authority Protocol status history;
+- exact revision-id/hash ChangeProposal baselines;
+- transactional stale-baseline compare-and-set;
+- human Decision / Approval;
+- append-only Provenance + input revision links;
+- rollback on injected authority-transition failure;
+- WAL-safe SQLite backup/restore with manifest/checksum/integrity/schema checks;
+- tampered/newer-schema restore rejection and no-silent-downgrade policy.
 
-`d6d5b3d5b9630c15c3d4e99cc4894cec94260ef4`
-
-Canonical M0 merge commit on `main`:
-
-`b2bbe3dd208e15cbca0420e90c1b4adadab7acda`
-
-Task 001 acceptance evidence:
-
-- implementation CI run `32738392596` — success;
-- final acceptance/state CI run `32748228147` — all jobs success;
-- Owner-Mac native gate 8 PASS — `Local Core healthy`;
-- Owner-Mac native gate 9 PASS — no `book_os_core` process after normal close or Cmd-Q;
-- external/model API calls = 0;
-- paid API calls = 0.
-
-M0 provides the accepted executable local-first foundation:
-
-- Tauri 2 + React/TypeScript desktop;
-- Python 3.12 local core;
-- authenticated loopback sidecar with random per-launch port/token;
-- SQLite + Alembic bootstrap;
-- deterministic sidecar launch/shutdown;
-- non-paid CI and secret scanning;
-- reproducible Owner-Mac setup.
+Synthetic M1 evidence used 100 entities / 2000 revisions / 1900 accepted proposals-decisions-approvals without external/paid calls.
 
 ## Active implementation task
 
-`docs/tasks/CODEX_TASK_002_AUTHORITY_PERSISTENCE.md`
+`docs/tasks/CODEX_TASK_003_BOOK_CREATION_CONTRACTS.md`
 
 **State:** `READY`
 
 Milestone:
 
-`M1 — Authority & Persistence Engine`
+`M2 — Book Creation / Book Contract / Architecture / Chapter Contract`
 
 Planned implementation branch:
 
-`codex/task-002-authority-persistence`
-
-The exact execution baseline SHA is the current canonical `origin/main` supplied by Central Brain at launch after this state/hash control update is complete. Codex must verify that exact SHA before implementation and return `BASELINE_DRIFT` if it differs.
+`brain/task-003-book-creation-contracts`
 
 ## WHY THIS IS NEXT
 
-M2 cannot safely persist Book Contracts, Chapter Contracts, manuscript authority, or future editorial decisions until BOOK OS can enforce and recover:
+M1 made authority safe but the product still cannot create a real book project. M2 is the shortest critical-path slice that converts the runtime/authority kernel into a usable authoring product surface.
 
-- stable entity identity;
-- immutable revision snapshots;
-- Authority Protocol statuses;
-- exact-baseline ChangeProposal;
-- stale-write rejection;
-- transactional Decision / Approval;
-- append-only Provenance;
-- deterministic revision hashes;
-- verified local backup/restore.
+After M2, the Owner must be able to complete this native local-first path without AI/chat state:
 
-Task 002 implements only this M1 kernel.
+`Projects → New Business Book → Book Contract approval → Architecture approval → Chapter → Chapter Contract approval`.
+
+## Task 003 scope guard
+
+M2 implements only structured local project creation/contracts and their minimal desktop/API surfaces.
+
+Do not implement yet:
+
+- model/provider gateway or generation;
+- manuscript drafting/editor;
+- Research Engine / Claim Ledger;
+- Book Memory/embeddings;
+- Editorial Inbox;
+- BookBench;
+- Russia provider lane;
+- Literary Master/export/audio handoff;
+- cloud accounts/sync/billing.
 
 ## Next permitted action
 
-1. Synchronize `docs/DESIGN_FILE_HASHES.sha256` for this state and Task 002 contract.
-2. Create `codex/task-002-authority-persistence` from the resulting exact `main` HEAD.
-3. Launch `CODEX_TASK_002_AUTHORITY_PERSISTENCE.md` in Codex Cloud Tasks against that exact branch/baseline.
-4. After the first implementation commit is published, Central Brain opens one PR to `main`.
-5. Review only Task 002 acceptance evidence; do not begin M2 until Central Brain ACCEPT and merge.
+1. Synchronize `docs/DESIGN_FILE_HASHES.sha256` after this state + Task 003 contract.
+2. Create `brain/task-003-book-creation-contracts` from the resulting exact `main` HEAD.
+3. Implement only `docs/tasks/CODEX_TASK_003_BOOK_CREATION_CONTRACTS.md`.
+4. Open one PR to `main`, run objective M2 acceptance, rework only concrete blockers.
+5. Central Brain ACCEPT + merge M2 before starting M3.
 
 ## Known blockers
 
-No architecture blocker.
-
-No Owner decision is required for Task 002 under the accepted M1 authority and execution protocol.
-
-GitHub `@codex` execution has previously been unreliable; manual Codex Cloud start/publication may still be required. This is an execution-channel constraint, not a product/architecture blocker.
-
-## Task 002 scope guard
-
-Do not implement M2/M3+ capabilities in M1:
-
-- no New Book / Book Contract UI;
-- no manuscript editor;
-- no Model Gateway/provider calls;
-- no Research/Claim Ledger;
-- no Book Memory/embeddings;
-- no BookBench;
-- no Russia provider lane;
-- no Literary Master;
-- no Audio Studio implementation;
-- no cloud/accounts/billing;
-- no distributed infrastructure.
+No architecture or Owner decision blocker for M2.
 
 ## Operational rule
 
-`main` contains accepted project state.
-
-Normal implementation flow:
-
-`accepted main baseline → bounded branch → implementation/evidence → PR → Central Brain ACCEPT → merge → PROJECT_STATE update`
-
-Central Brain may make small authority/project-control updates directly to `main` when a separate PR adds no meaningful review value. Implementation code still goes through a bounded branch/PR.
-
-## Stop conditions
-
-Escalate to Owner before changing product intent, human authority, regional-access requirement, public/private data boundary, major recurring cost, quality floor, or BOOK OS/Audio Studio authority boundary.
+`main` is accepted project-development authority. Implementation code uses bounded branches/PRs. Central Brain may make small project-control updates directly to `main` when a separate PR adds no review value.
 
 ## Recovery rule
 
@@ -153,8 +121,7 @@ If the chat disappears:
 
 1. Open repository `main`.
 2. Read README recovery order and `DESIGN_INDEX.md`.
-3. Read this file.
-4. Read `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-5. Read `docs/tasks/CODEX_TASK_002_AUTHORITY_PERSISTENCE.md`.
-6. Inspect `origin/main` and `codex/task-002-authority-persistence`.
-7. Continue only Task 002 until Central Brain acceptance/merge; do not start M2 automatically.
+3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
+4. Read `docs/tasks/CODEX_TASK_003_BOOK_CREATION_CONTRACTS.md`.
+5. Inspect `origin/main` and `brain/task-003-book-creation-contracts`.
+6. Continue only M2 until Central Brain ACCEPT/merge; do not start M3 automatically.
