@@ -1,7 +1,8 @@
 from pathlib import Path
 import hmac
 import os
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from . import __version__
@@ -46,27 +47,19 @@ def create_app(token: str | None = None, data_dir: Path | None = None) -> FastAP
         return projects
 
     @app.exception_handler(ProjectNotFound)
-    async def project_not_found(_, exc: ProjectNotFound):
-        from fastapi.responses import JSONResponse
-
+    async def project_not_found(_: Request, exc: ProjectNotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     @app.exception_handler(ProjectGateError)
-    async def project_gate_error(_, exc: ProjectGateError):
-        from fastapi.responses import JSONResponse
-
+    async def project_gate_error(_: Request, exc: ProjectGateError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(ProjectError)
-    async def project_error(_, exc: ProjectError):
-        from fastapi.responses import JSONResponse
-
+    async def project_error(_: Request, exc: ProjectError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     @app.exception_handler(ValidationError)
-    async def validation_error(_, exc: ValidationError):
-        from fastapi.responses import JSONResponse
-
+    async def validation_error(_: Request, exc: ValidationError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.get("/health")
