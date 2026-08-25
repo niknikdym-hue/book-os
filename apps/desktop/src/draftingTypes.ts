@@ -23,7 +23,14 @@ export type DraftRunView = {
   error_message: string | null;
 };
 
+export type DraftApi = <T>(
+  method: "GET" | "POST" | "PUT",
+  path: string,
+  body?: unknown,
+) => Promise<T>;
+
 export type DraftingPanelProps = {
   project: ProjectView;
   chapter: ChapterView | null;
+  api?: DraftApi;
 };
