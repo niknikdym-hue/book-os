@@ -9,9 +9,7 @@ import os
 from typing import Literal, TypeAlias
 import unicodedata
 
-JSONValue: TypeAlias = (
-    None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
-)
+JSONValue: TypeAlias = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
 AuthorityStatus: TypeAlias = Literal[
     "DRAFT", "PROPOSED", "REVIEWED", "APPROVED", "LOCKED", "SUPERSEDED"
 ]
