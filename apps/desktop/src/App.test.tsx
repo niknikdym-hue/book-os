@@ -120,7 +120,7 @@ it("routes Book Contract draft and approval through the token-safe native bridge
     ),
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Approve Book Contract" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Approve Book Contract" })[0]);
   expect(await screen.findByText("APPROVED")).toBeInTheDocument();
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
