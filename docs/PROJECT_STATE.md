@@ -1,13 +1,21 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Date:** 2026-08-25  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 2 — TASK 003 READY**
+**IMPLEMENTATION MILESTONE 4 — TASK 005 READY**
+
+Active contract:
+
+`docs/tasks/CODEX_TASK_005_RESEARCH_CLAIM_LEDGER.md`
+
+Planned implementation branch:
+
+`brain/task-005-research-claim-ledger`
 
 ## Accepted authority
 
@@ -15,6 +23,7 @@
 - Product spec: `PRODUCT_SPEC_v0.1.md`
 - Core Ontology: `CORE_ONTOLOGY.md` v0.2.0
 - Editorial contracts/gates: `EDITORIAL_PROTOCOLS_v0.1.md`
+- Model Gateway: `MODEL_GATEWAY_v0.1.md`
 - Technical Architecture: `TECHNICAL_ARCHITECTURE_v0.1.md`
 - Security/availability: `SECURITY_AVAILABILITY_v0.1.md`
 - Implementation roadmap: `IMPLEMENTATION_ROADMAP_v0.1.md`
@@ -25,91 +34,80 @@
 
 ### M0 / Task 001 — ACCEPTED AND MERGED
 
-- PR `#3 — Task 001 — executable local-first skeleton`
-- canonical M0 merge: `b2bbe3dd208e15cbca0420e90c1b4adadab7acda`
-- native Owner-Mac `Local Core healthy`: PASS
-- sidecar cleanup after normal close and Cmd-Q: PASS
-
-M0 provides the accepted Tauri + React desktop, Python local-core, authenticated loopback boundary, SQLite/Alembic bootstrap and non-paid CI baseline.
+- PR `#3`
+- canonical merge: `b2bbe3dd208e15cbca0420e90c1b4adadab7acda`
+- Owner-Mac `Local Core healthy`: PASS
+- deterministic sidecar shutdown after normal close + Cmd-Q: PASS
 
 ### M1 / Task 002 — ACCEPTED AND MERGED
 
-- contract: `docs/tasks/CODEX_TASK_002_AUTHORITY_PERSISTENCE.md`
-- PR: `#5 — Task 002 — Authority & Persistence Engine`
-- accepted implementation HEAD: `e6f749b8797def444d9c92036c713eef43198f92`
-- canonical M1 merge: `c2cf2e88c81797ff3f67873b1d406ecc7f806e84`
-- final strict CI run: `32878002451` — SUCCESS
-  - `local-core` — success (`ruff format --check`, `ruff check`, mypy, 15 pytest tests)
-  - `desktop` — success
-  - `tauri-smoke` — success
-  - `secret-scan` — success
-- external/model calls: `0`; paid calls: `0`
+- PR `#5 — Authority & Persistence Engine`
+- canonical merge: `c2cf2e88c81797ff3f67873b1d406ecc7f806e84`
+- immutable revisions, Authority statuses, exact-base ChangeProposal, Decision/Approval/Provenance, transactional stale-baseline protection and WAL-safe backup/restore accepted.
 
-M1 now enforces/recoverably stores:
+### M2 / Task 003 — ACCEPTED AND MERGED
 
-- stable sortable authority identities;
-- immutable revision snapshots;
-- deterministic canonical JSON + SHA-256 hashes;
-- Authority Protocol status history;
-- exact revision-id/hash ChangeProposal baselines;
-- transactional stale-baseline compare-and-set;
-- human Decision / Approval;
-- append-only Provenance + input revision links;
-- rollback on injected authority-transition failure;
-- WAL-safe SQLite backup/restore with manifest/checksum/integrity/schema checks;
-- tampered/newer-schema restore rejection and no-silent-downgrade policy.
+- PR `#6 — Book Creation, Contracts & Architecture`
+- accepted source HEAD: `182b8e45ae7092fd2655ee61e42126af4cac1542`
+- canonical merge: `5bd6c1af5dd1b502696e359c813f8e6544919cb8`
+- final CI `32882543129`: SUCCESS
+- accepted native product path:
+  `Projects → New Business Book → Book Contract approval → Architecture approval → Chapter → Chapter Contract approval`
+- per-book `project.sqlite`, restart discovery, stable chapters, authenticated local API and bounded Tauri proxy accepted.
 
-Synthetic M1 evidence used 100 entities / 2000 revisions / 1900 accepted proposals-decisions-approvals without external/paid calls.
+### M3 / Task 004 — ACCEPTED AND MERGED
 
-## Active implementation task
+- PR `#7 — Model Gateway + Controlled Drafting`
+- accepted source tree first reached at `16b724f056da5e2213b3e99dd003965573b41de0`
+- canonical M3 merge: `1814ac7fffe9f9a6666ea59125439f32b0cff879`
+- final full source-tree CI `32893389579`: SUCCESS
+  - `local-core`: Ruff format/check + mypy + **30/30 pytest PASS**
+  - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
+  - `tauri-smoke`: `cargo test --locked` + `cargo check --locked` PASS
+  - `secret-scan`: PASS
+- provider-neutral gateway, versioned prompt registry, macOS Keychain SecretStore, mocked OpenAI Responses development adapter, deterministic fake adapter, BoundedTask/ModelRun persistence and DRAFT-only ManuscriptUnit generation accepted.
+- exact Chapter Contract revision/hash provenance and stale-authority discard accepted.
+- AI/system actor cannot approve generated text.
+- CI external/model calls: `0`; paid calls: `0`.
 
-`docs/tasks/CODEX_TASK_003_BOOK_CREATION_CONTRACTS.md`
+## Active implementation task — M4
 
-**State:** `READY`
+`Task 005 — Research Engine + Claim Ledger`
 
-Milestone:
+M4 implements the first factual-evidence vertical:
 
-`M2 — Book Creation / Book Contract / Architecture / Chapter Contract`
+`ManuscriptUnit revision → Claim → research candidate → Source → Evidence → verification state`
 
-Planned implementation branch:
+Non-negotiable distinction:
 
-`brain/task-003-book-creation-contracts`
+`Source != Evidence != Claim`.
 
-## WHY THIS IS NEXT
+A material claim cannot become `SUPPORTED` merely because a search result/source exists. Support requires explicit Evidence with a real Source and concrete locator/pointer.
 
-M1 made authority safe but the product still cannot create a real book project. M2 is the shortest critical-path slice that converts the runtime/authority kernel into a usable authoring product surface.
+Initial metadata adapters are bounded to OpenAlex, Crossref and Semantic Scholar Academic Graph, with mocked HTTP in normal CI.
 
-After M2, the Owner must be able to complete this native local-first path without AI/chat state:
-
-`Projects → New Business Book → Book Contract approval → Architecture approval → Chapter → Chapter Contract approval`.
-
-## Task 003 scope guard
-
-M2 implements only structured local project creation/contracts and their minimal desktop/API surfaces.
+## Scope guard
 
 Do not implement yet:
 
-- model/provider gateway or generation;
-- manuscript drafting/editor;
-- Research Engine / Claim Ledger;
-- Book Memory/embeddings;
-- Editorial Inbox;
+- embeddings / Book Memory;
+- Developmental/Literary/Fact editorial workflows;
 - BookBench;
-- Russia provider lane;
+- Yandex/GigaChat Russia provider lane;
 - Literary Master/export/audio handoff;
-- cloud accounts/sync/billing.
+- accounts/cloud/billing.
 
 ## Next permitted action
 
-1. Synchronize `docs/DESIGN_FILE_HASHES.sha256` after this state + Task 003 contract.
-2. Create `brain/task-003-book-creation-contracts` from the resulting exact `main` HEAD.
-3. Implement only `docs/tasks/CODEX_TASK_003_BOOK_CREATION_CONTRACTS.md`.
-4. Open one PR to `main`, run objective M2 acceptance, rework only concrete blockers.
-5. Central Brain ACCEPT + merge M2 before starting M3.
+1. Synchronize design hash manifest for current control docs.
+2. Create `brain/task-005-research-claim-ledger` from the resulting exact `main` HEAD.
+3. Implement only Task 005 / M4.
+4. Open one PR, fix objective CI/acceptance blockers, then Central Brain ACCEPT + merge.
+5. Only then start M5 Book Memory.
 
 ## Known blockers
 
-No architecture or Owner decision blocker for M2.
+No Owner decision blocker for the bounded M4 metadata/evidence implementation. Paid research subscriptions, copyrighted full-text ingestion or paywall circumvention are stop conditions and are not authorized.
 
 ## Operational rule
 
@@ -117,11 +115,11 @@ No architecture or Owner decision blocker for M2.
 
 ## Recovery rule
 
-If the chat disappears:
+If chat context disappears:
 
 1. Open repository `main`.
-2. Read README recovery order and `DESIGN_INDEX.md`.
+2. Read README recovery order + `DESIGN_INDEX.md`.
 3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-4. Read `docs/tasks/CODEX_TASK_003_BOOK_CREATION_CONTRACTS.md`.
-5. Inspect `origin/main` and `brain/task-003-book-creation-contracts`.
-6. Continue only M2 until Central Brain ACCEPT/merge; do not start M3 automatically.
+4. Read `docs/tasks/CODEX_TASK_005_RESEARCH_CLAIM_LEDGER.md`.
+5. Inspect `origin/main` and `brain/task-005-research-claim-ledger`.
+6. Continue only M4 until Central Brain ACCEPT/merge; do not start M5 automatically.
