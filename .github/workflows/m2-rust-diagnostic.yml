@@ -1,0 +1,25 @@
+name: M2 Rust Diagnostic
+on: [push]
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/brain/task-003-book-creation-contracts'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: brain/task-003-book-creation-contracts }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Capture Rust test failure once
+        working-directory: apps/desktop/src-tauri
+        run: |
+          if [ -f RUST_TEST_DIAGNOSTIC.txt ]; then exit 0; fi
+          set +e
+          cargo test --locked > RUST_TEST_DIAGNOSTIC.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> RUST_TEST_DIAGNOSTIC.txt
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git add RUST_TEST_DIAGNOSTIC.txt
+          git commit -m "ci: capture M2 Rust diagnostic"
+          git push origin HEAD:brain/task-003-book-creation-contracts
