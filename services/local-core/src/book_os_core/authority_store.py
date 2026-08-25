@@ -22,16 +22,20 @@ class AuthorityStore:
 
     def get_head(self, entity_id: str) -> AuthorityHead:
         with self.engine.connect() as connection:
-            row = connection.execute(
-                text(
-                    "SELECT h.entity_id, h.revision_id, h.revision_hash, "
-                    "(SELECT s.status FROM revision_status_history s "
-                    " WHERE s.revision_id=h.revision_id "
-                    " ORDER BY s.created_at DESC, s.status_event_id DESC LIMIT 1) AS status "
-                    "FROM authority_heads h WHERE h.entity_id=:entity_id"
-                ),
-                {"entity_id": entity_id},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    text(
+                        "SELECT h.entity_id, h.revision_id, h.revision_hash, "
+                        "(SELECT s.status FROM revision_status_history s "
+                        " WHERE s.revision_id=h.revision_id "
+                        " ORDER BY s.created_at DESC, s.status_event_id DESC LIMIT 1) AS status "
+                        "FROM authority_heads h WHERE h.entity_id=:entity_id"
+                    ),
+                    {"entity_id": entity_id},
+                )
+                .mappings()
+                .one_or_none()
+            )
         if row is None:
             raise AuthorityError(f"authority head not found for entity {entity_id}")
         return AuthorityHead(
@@ -43,10 +47,14 @@ class AuthorityStore:
 
     def get_revision(self, revision_id: str) -> dict[str, Any]:
         with self.engine.connect() as connection:
-            row = connection.execute(
-                text("SELECT * FROM revisions WHERE revision_id=:revision_id"),
-                {"revision_id": revision_id},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    text("SELECT * FROM revisions WHERE revision_id=:revision_id"),
+                    {"revision_id": revision_id},
+                )
+                .mappings()
+                .one_or_none()
+            )
         if row is None:
             raise AuthorityError(f"revision not found: {revision_id}")
         result = dict(row)
