@@ -70,6 +70,17 @@ class AuthorityStore:
                     {"entity_id": entity_id},
                 ).mappings()
             ]
+            statuses = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        "SELECT s.* FROM revision_status_history s JOIN revisions r "
+                        "ON r.revision_id=s.revision_id WHERE r.entity_id=:entity_id "
+                        "ORDER BY s.created_at, s.status_event_id"
+                    ),
+                    {"entity_id": entity_id},
+                ).mappings()
+            ]
             proposals = [
                 dict(row)
                 for row in connection.execute(
@@ -115,12 +126,28 @@ class AuthorityStore:
                     {"entity_id": entity_id},
                 ).mappings()
             ]
+            provenance_inputs = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        "SELECT DISTINCT pi.* FROM provenance_inputs pi "
+                        "JOIN provenance_records pr ON pr.provenance_id=pi.provenance_id "
+                        "LEFT JOIN revisions r ON r.provenance_id=pr.provenance_id "
+                        "LEFT JOIN change_proposals p ON p.provenance_id=pr.provenance_id "
+                        "WHERE r.entity_id=:entity_id OR p.entity_id=:entity_id "
+                        "ORDER BY pi.provenance_id, pi.revision_id"
+                    ),
+                    {"entity_id": entity_id},
+                ).mappings()
+            ]
         return {
             "revisions": revisions,
+            "statuses": statuses,
             "proposals": proposals,
             "decisions": decisions,
             "approvals": approvals,
             "provenance": provenance,
+            "provenance_inputs": provenance_inputs,
         }
 
     @staticmethod
