@@ -59,8 +59,10 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.String(32), nullable=False),
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
         sa.ForeignKeyConstraint(["chapter_contract_entity_id"], ["authority_entities.entity_id"]),
-        sa.UniqueConstraint("book_id", "ordinal", name="uq_chapter_book_ordinal"),
     )
+    # Re-ordering is an atomic application operation. Keep an ordering index for reads, but do not
+    # impose an immediate SQLite UNIQUE constraint that would reject an otherwise valid 1↔2 swap
+    # before the transaction reaches its final ordered state.
     op.create_index("ix_chapters_book", "chapters", ["book_id", "ordinal"])
 
     op.execute("INSERT INTO schema_metadata (version) VALUES ('0003')")
