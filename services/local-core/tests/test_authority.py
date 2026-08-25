@@ -197,18 +197,13 @@ def test_accept_reject_and_stale_proposals(tmp_path: Path) -> None:
     statuses = {(row["revision_id"], row["status"]) for row in history["statuses"]}
     assert (initial.revision_id, "SUPERSEDED") in statuses
     assert (accepted.revision_id, "APPROVED") in statuses
-    assert any(
-        row["revision_id"] == initial.revision_id for row in history["provenance_inputs"]
-    )
+    assert any(row["revision_id"] == initial.revision_id for row in history["provenance_inputs"])
     assert any(row["task_id"] == "task-accept" for row in history["provenance"])
 
     with service.engine.begin() as connection:
         with pytest.raises(IntegrityError):
             connection.execute(
-                text(
-                    "UPDATE authority_heads SET revision_hash=:bad_hash "
-                    "WHERE entity_id=:entity_id"
-                ),
+                text("UPDATE authority_heads SET revision_hash=:bad_hash WHERE entity_id=:entity_id"),
                 {"bad_hash": "0" * 64, "entity_id": initial.entity_id},
             )
 
