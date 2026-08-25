@@ -31,9 +31,7 @@ def upgrade() -> None:
         sa.Column("architecture_entity_id", sa.String(26), nullable=True),
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.Column("updated_at", sa.String(32), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["book_contract_entity_id"], ["authority_entities.entity_id"]
-        ),
+        sa.ForeignKeyConstraint(["book_contract_entity_id"], ["authority_entities.entity_id"]),
         sa.ForeignKeyConstraint(["architecture_entity_id"], ["authority_entities.entity_id"]),
         sa.CheckConstraint("mode = 'BOOK_FROM_ZERO'", name="ck_m2_book_mode"),
         sa.CheckConstraint("domain = 'BUSINESS_NONFICTION'", name="ck_m2_book_domain"),
@@ -60,9 +58,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.Column("updated_at", sa.String(32), nullable=False),
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
-        sa.ForeignKeyConstraint(
-            ["chapter_contract_entity_id"], ["authority_entities.entity_id"]
-        ),
+        sa.ForeignKeyConstraint(["chapter_contract_entity_id"], ["authority_entities.entity_id"]),
         sa.UniqueConstraint("book_id", "ordinal", name="uq_chapter_book_ordinal"),
     )
     op.create_index("ix_chapters_book", "chapters", ["book_id", "ordinal"])

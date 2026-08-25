@@ -74,7 +74,9 @@ def create_app(token: str | None = None, data_dir: Path | None = None) -> FastAP
         return {"status": "healthy", "version": __version__}
 
     @app.get("/api/projects")
-    def list_projects(service: ProjectService = Depends(project_service)) -> list[dict[str, object]]:
+    def list_projects(
+        service: ProjectService = Depends(project_service),
+    ) -> list[dict[str, object]]:
         return [project.model_dump(mode="json") for project in service.list_projects()]
 
     @app.post("/api/projects")

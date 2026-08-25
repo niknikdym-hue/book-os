@@ -383,9 +383,7 @@ class ProjectService:
             engine.dispose()
         return self.get_project(book_id)
 
-    def save_architecture(
-        self, book_id: str, payload: BookArchitecturePayload
-    ) -> ProjectView:
+    def save_architecture(self, book_id: str, payload: BookArchitecturePayload) -> ProjectView:
         normalized = payload.model_copy(deep=True)
         for part in normalized.parts:
             for chapter in part.chapters:
@@ -643,7 +641,9 @@ class ProjectService:
                 text("SELECT revision_id FROM working_revisions WHERE entity_id=:entity_id"),
                 {"entity_id": entity_id},
             ).scalar_one_or_none()
-        parent = cast(str, working) if working is not None else authority.get_head(entity_id).revision_id
+        parent = (
+            cast(str, working) if working is not None else authority.get_head(entity_id).revision_id
+        )
         revision_id = authority.create_revision(
             entity_id=entity_id,
             payload=payload,

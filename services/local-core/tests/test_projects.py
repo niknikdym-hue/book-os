@@ -104,7 +104,10 @@ def test_m1_database_upgrades_to_m2(tmp_path: Path) -> None:
     command.upgrade(config, "head")
     engine = create_database(database)
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0003"
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0003"
+        )
         tables = {
             row[0]
             for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -114,7 +117,9 @@ def test_m1_database_upgrades_to_m2(tmp_path: Path) -> None:
 
 def test_business_profile_validation_is_bounded() -> None:
     for subtype in BUSINESS_SUBTYPES:
-        assert NewBookRequest(working_title="Book", primary_subtype=subtype).primary_subtype == subtype
+        assert (
+            NewBookRequest(working_title="Book", primary_subtype=subtype).primary_subtype == subtype
+        )
     with pytest.raises(ValueError):
         NewBookRequest(working_title="Book", primary_subtype="Invalid")
     with pytest.raises(ValueError):
@@ -159,12 +164,16 @@ def test_book_contract_approval_and_replacement_preserve_history(tmp_path: Path)
 
     engine = create_database(tmp_path / "projects" / project.book_id / "project.sqlite")
     with engine.connect() as connection:
-        revisions = connection.execute(
-            text(
-                "SELECT revision_id FROM revisions WHERE entity_id=:entity_id ORDER BY created_at"
-            ),
-            {"entity_id": reapproved.book_contract.entity_id},
-        ).scalars().all()
+        revisions = (
+            connection.execute(
+                text(
+                    "SELECT revision_id FROM revisions WHERE entity_id=:entity_id ORDER BY created_at"
+                ),
+                {"entity_id": reapproved.book_contract.entity_id},
+            )
+            .scalars()
+            .all()
+        )
         decisions = connection.execute(
             text(
                 "SELECT COUNT(*) FROM decisions d JOIN change_proposals p "
@@ -259,31 +268,39 @@ def test_authenticated_api_reaches_approved_chapter_contract(tmp_path: Path) -> 
     assert created.status_code == 200
     book_id = created.json()["book_id"]
 
-    assert client.put(
-        f"/api/projects/{book_id}/book-contract/draft",
-        headers=headers,
-        json=book_contract().model_dump(mode="json"),
-    ).status_code == 200
-    assert client.post(
-        f"/api/projects/{book_id}/book-contract/approve", headers=headers
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/api/projects/{book_id}/book-contract/draft",
+            headers=headers,
+            json=book_contract().model_dump(mode="json"),
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(f"/api/projects/{book_id}/book-contract/approve", headers=headers).status_code
+        == 200
+    )
     architecture_response = client.put(
         f"/api/projects/{book_id}/architecture/draft",
         headers=headers,
         json=architecture().model_dump(mode="json"),
     )
     assert architecture_response.status_code == 200
-    assert client.post(
-        f"/api/projects/{book_id}/architecture/approve", headers=headers
-    ).status_code == 200
+    assert (
+        client.post(f"/api/projects/{book_id}/architecture/approve", headers=headers).status_code
+        == 200
+    )
     chapter_id = client.get(f"/api/projects/{book_id}", headers=headers).json()["chapters"][0][
         "chapter_id"
     ]
-    assert client.put(
-        f"/api/projects/{book_id}/chapters/{chapter_id}/contract/draft",
-        headers=headers,
-        json=chapter_contract().model_dump(mode="json"),
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/api/projects/{book_id}/chapters/{chapter_id}/contract/draft",
+            headers=headers,
+            json=chapter_contract().model_dump(mode="json"),
+        ).status_code
+        == 200
+    )
     final = client.post(
         f"/api/projects/{book_id}/chapters/{chapter_id}/contract/approve", headers=headers
     )
