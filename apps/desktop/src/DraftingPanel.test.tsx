@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { coreApi } from "./api";
 import { DraftingPanel } from "./DraftingPanel";
 import type { ChapterView, ProjectView } from "./types";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-const invokeMock = vi.mocked(invoke);
+vi.mock("./api", () => ({ coreApi: vi.fn() }));
+const coreApiMock = vi.mocked(coreApi);
 
 const chapter: ChapterView = {
   chapter_id: "01JCHAPTER000000000000000",
@@ -37,14 +37,12 @@ const project: ProjectView = {
   chapters: [chapter],
 };
 
-beforeEach(() => invokeMock.mockReset());
+beforeEach(() => coreApiMock.mockReset());
 
-it("generates a bounded DRAFT preview through the native bridge", async () => {
-  invokeMock.mockImplementation(async (command, args) => {
-    if (command !== "core_api") throw new Error(`unexpected command: ${command}`);
-    const request = (args as { request: { method: string; path: string } }).request;
-    if (request.method === "GET") return [];
-    if (request.method === "POST") {
+it("generates a bounded DRAFT preview through the local API boundary", async () => {
+  coreApiMock.mockImplementation(async (method) => {
+    if (method === "GET") return [];
+    if (method === "POST") {
       return {
         task_id: "01JTASK0000000000000000000",
         run_id: "01JRUN00000000000000000000",
@@ -68,7 +66,7 @@ it("generates a bounded DRAFT preview through the native bridge", async () => {
         error_message: null,
       };
     }
-    throw new Error("unexpected request");
+    throw new Error(`unexpected method: ${method}`);
   });
 
   render(<DraftingPanel project={project} chapter={chapter} />);
@@ -83,13 +81,13 @@ it("generates a bounded DRAFT preview through the native bridge", async () => {
   expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
   expect(screen.getAllByText("DRAFT").length).toBeGreaterThan(0);
   expect(screen.getByText(/openai · test-writer/)).toBeInTheDocument();
-  expect(invokeMock).toHaveBeenCalledWith(
-    "core_api",
+  expect(coreApiMock).toHaveBeenCalledWith(
+    "POST",
+    expect.stringContaining("/drafts"),
     expect.objectContaining({
-      request: expect.objectContaining({
-        method: "POST",
-        path: expect.stringContaining("/drafts"),
-      }),
+      section_objective: "Explain the bounded mechanism",
+      provider: "openai",
+      model: "test-writer",
     }),
   );
 });
