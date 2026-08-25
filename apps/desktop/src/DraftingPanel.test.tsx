@@ -58,7 +58,11 @@ const success: DraftRunView = {
   error_message: null,
 };
 
-const fakeApi: DraftApi = async function fakeApi<T>(method, path, body): Promise<T> {
+const fakeApi: DraftApi = async function fakeApi<T>(
+  method: "GET" | "POST" | "PUT",
+  path: string,
+  body?: unknown,
+): Promise<T> {
   calls.push({ method, path, body });
   if (method === "GET") return [] as T;
   if (method === "POST") return success as T;
