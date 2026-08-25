@@ -6,12 +6,16 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 
 
-def create_database(path: Path) -> Engine:
-    """Upgrade a local SQLite database to the M0 bootstrap revision."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+def alembic_config(path: Path) -> Config:
     config = Config(str(Path(__file__).parents[2] / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
-    command.upgrade(config, "head")
+    return config
+
+
+def create_database(path: Path) -> Engine:
+    """Upgrade a local SQLite database to the current schema revision."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    command.upgrade(alembic_config(path), "head")
 
     engine = create_engine(f"sqlite:///{path}")
 
