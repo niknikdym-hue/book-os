@@ -49,6 +49,7 @@ const success: DraftRunView = {
   input_revision_hash: "b".repeat(64),
   unit_id: "01JUNIT0000000000000000000",
   revision_id: "01JDRAFTREV00000000000000",
+  revision_hash: "c".repeat(64),
   revision_status: "DRAFT",
   text: "A bounded generated section.",
   notes: ["not approved"],
