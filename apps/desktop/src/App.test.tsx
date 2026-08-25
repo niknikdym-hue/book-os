@@ -107,12 +107,15 @@ it("routes Book Contract draft and approval through the token-safe native bridge
   fireEvent.click(await screen.findByRole("button", { name: /Operating Book/ }));
   expect(await screen.findByText("DRAFT")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Save Draft" })[0]);
   await waitFor(() =>
     expect(invokeMock).toHaveBeenCalledWith(
       "core_api",
       expect.objectContaining({
-        request: expect.objectContaining({ method: "PUT", path: expect.stringContaining("book-contract/draft") }),
+        request: expect.objectContaining({
+          method: "PUT",
+          path: expect.stringContaining("book-contract/draft"),
+        }),
       }),
     ),
   );
@@ -122,7 +125,10 @@ it("routes Book Contract draft and approval through the token-safe native bridge
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
-      request: expect.objectContaining({ method: "POST", path: expect.stringContaining("book-contract/approve") }),
+      request: expect.objectContaining({
+        method: "POST",
+        path: expect.stringContaining("book-contract/approve"),
+      }),
     }),
   );
 });
