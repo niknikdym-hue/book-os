@@ -15,6 +15,8 @@ down_revision: str | None = "0004"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 
+CLAIM_STATES = "'UNREVIEWED','SUPPORTED','PARTIALLY_SUPPORTED','DISPUTED','UNSUPPORTED','REJECTED'"
+
 
 def upgrade() -> None:
     op.create_table(
@@ -28,7 +30,7 @@ def upgrade() -> None:
         sa.Column("normalized_text", sa.Text(), nullable=False),
         sa.Column("claim_type", sa.String(32), nullable=False),
         sa.Column("materiality", sa.String(16), nullable=False),
-        sa.Column("required_evidence_level", sa.String(32), nullable=False),
+        sa.Column("required_evidence_level", sa.String(128), nullable=False),
         sa.Column("verification_state", sa.String(32), nullable=False),
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.Column("updated_at", sa.String(32), nullable=False),
@@ -49,14 +51,35 @@ def upgrade() -> None:
             "materiality IN ('LOW','MEDIUM','HIGH','CRITICAL')", name="ck_claim_materiality"
         ),
         sa.CheckConstraint(
-            "verification_state IN ('UNREVIEWED','SUPPORTED','PARTIALLY_SUPPORTED','DISPUTED',"
-            "'UNSUPPORTED','REJECTED')",
-            name="ck_claim_verification_state",
+            f"verification_state IN ({CLAIM_STATES})", name="ck_claim_verification_state"
         ),
     )
     op.create_index("ix_claims_book_chapter", "claims", ["book_id", "chapter_id"])
     op.create_index("ix_claims_unit", "claims", ["unit_id", "manuscript_revision_id"])
     op.create_index("ix_claims_state", "claims", ["book_id", "verification_state"])
+
+    op.create_table(
+        "claim_state_history",
+        sa.Column("state_event_id", sa.String(26), primary_key=True),
+        sa.Column("claim_id", sa.String(26), nullable=False),
+        sa.Column("prior_state", sa.String(32), nullable=True),
+        sa.Column("new_state", sa.String(32), nullable=False),
+        sa.Column("actor", sa.String(128), nullable=False),
+        sa.Column("actor_kind", sa.String(16), nullable=False),
+        sa.Column("reason", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.String(32), nullable=False),
+        sa.ForeignKeyConstraint(["claim_id"], ["claims.claim_id"]),
+        sa.CheckConstraint(
+            f"prior_state IS NULL OR prior_state IN ({CLAIM_STATES})", name="ck_claim_history_prior"
+        ),
+        sa.CheckConstraint(f"new_state IN ({CLAIM_STATES})", name="ck_claim_history_new"),
+        sa.CheckConstraint("actor_kind IN ('HUMAN','SYSTEM')", name="ck_claim_history_actor_kind"),
+    )
+    op.create_index(
+        "ix_claim_state_history_claim_created",
+        "claim_state_history",
+        ["claim_id", "created_at"],
+    )
 
     op.create_table(
         "sources",
@@ -86,6 +109,26 @@ def upgrade() -> None:
             "access_status IN ('METADATA_ONLY','ABSTRACT_AVAILABLE','FULL_SOURCE_INSPECTED')",
             name="ck_source_access_status",
         ),
+    )
+
+    op.create_table(
+        "source_access_history",
+        sa.Column("access_event_id", sa.String(26), primary_key=True),
+        sa.Column("source_id", sa.String(26), nullable=False),
+        sa.Column("access_status", sa.String(32), nullable=False),
+        sa.Column("actor", sa.String(128), nullable=False),
+        sa.Column("note", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.String(32), nullable=False),
+        sa.ForeignKeyConstraint(["source_id"], ["sources.source_id"]),
+        sa.CheckConstraint(
+            "access_status IN ('METADATA_ONLY','ABSTRACT_AVAILABLE','FULL_SOURCE_INSPECTED')",
+            name="ck_source_access_history_status",
+        ),
+    )
+    op.create_index(
+        "ix_source_access_history_source_created",
+        "source_access_history",
+        ["source_id", "created_at"],
     )
 
     op.create_table(
@@ -136,7 +179,11 @@ def downgrade() -> None:
     op.drop_index("ix_evidence_claim", table_name="evidence")
     op.drop_table("evidence")
     op.drop_table("source_identifiers")
+    op.drop_index("ix_source_access_history_source_created", table_name="source_access_history")
+    op.drop_table("source_access_history")
     op.drop_table("sources")
+    op.drop_index("ix_claim_state_history_claim_created", table_name="claim_state_history")
+    op.drop_table("claim_state_history")
     op.drop_index("ix_claims_state", table_name="claims")
     op.drop_index("ix_claims_unit", table_name="claims")
     op.drop_index("ix_claims_book_chapter", table_name="claims")
