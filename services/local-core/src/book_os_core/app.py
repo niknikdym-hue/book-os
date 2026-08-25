@@ -1,9 +1,10 @@
 from pathlib import Path
 import hmac
 import os
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__
 from .drafting import DraftingError, DraftingGateError, DraftingService, DraftSectionRequest
@@ -24,7 +25,31 @@ from .projects import (
     ProjectNotFound,
     ProjectService,
 )
+from .research import (
+    ClaimCreateRequest,
+    ClaimReviewRequest,
+    ClaimUpdateRequest,
+    EvidenceCreateRequest,
+    ResearchError,
+    ResearchGateError,
+    ResearchNotFound,
+    ResearchSearchRequest,
+    ResearchService,
+    SourceAccessRequest,
+    SourceImportRequest,
+)
+from .research_adapters import (
+    CrossrefAdapter,
+    OpenAlexAdapter,
+    ResearchGateway,
+    ResearchProviderError,
+    SemanticScholarAdapter,
+)
 from .secrets import MacOSKeychainSecretStore, SecretNotFound
+
+
+class CitationIdentifierRequest(BaseModel):
+    identifier: str = Field(min_length=1, max_length=1000)
 
 
 def create_app(
@@ -32,6 +57,7 @@ def create_app(
     data_dir: Path | None = None,
     *,
     gateway: ModelGateway | None = None,
+    research_gateway: ResearchGateway | None = None,
 ) -> FastAPI:
     expected = token or os.environ.get("BOOK_OS_SESSION_TOKEN")
     if not expected:
@@ -46,6 +72,18 @@ def create_app(
     )
     drafting = (
         DraftingService(configured_data_dir, configured_gateway)
+        if configured_data_dir is not None
+        else None
+    )
+    configured_research_gateway = research_gateway or ResearchGateway(
+        {
+            "openalex": OpenAlexAdapter(),
+            "crossref": CrossrefAdapter(mailto=os.environ.get("BOOK_OS_CROSSREF_MAILTO")),
+            "semantic_scholar": SemanticScholarAdapter(),
+        }
+    )
+    research = (
+        ResearchService(configured_data_dir, configured_research_gateway)
         if configured_data_dir is not None
         else None
     )
@@ -75,6 +113,14 @@ def create_app(
                 detail="BOOK_OS_DATA_DIR is required for drafting operations",
             )
         return drafting
+
+    def research_service(_: None = Depends(require_token)) -> ResearchService:
+        if research is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="BOOK_OS_DATA_DIR is required for research operations",
+            )
+        return research
 
     @app.exception_handler(ProjectNotFound)
     async def project_not_found(_: Request, exc: ProjectNotFound) -> JSONResponse:
@@ -113,6 +159,22 @@ def create_app(
 
     @app.exception_handler(DraftingError)
     async def drafting_error(_: Request, exc: DraftingError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(ResearchNotFound)
+    async def research_not_found(_: Request, exc: ResearchNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(ResearchGateError)
+    async def research_gate_error(_: Request, exc: ResearchGateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ResearchProviderError)
+    async def research_provider_error(_: Request, exc: ResearchProviderError) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+    @app.exception_handler(ResearchError)
+    async def research_error(_: Request, exc: ResearchError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     @app.exception_handler(ValidationError)
@@ -202,5 +264,107 @@ def create_app(
         service: DraftingService = Depends(drafting_service),
     ) -> dict[str, object]:
         return service.generate_section_draft(book_id, chapter_id, payload).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/claims")
+    def list_claims(
+        book_id: str,
+        chapter_id: str | None = Query(default=None),
+        unit_id: str | None = Query(default=None),
+        verification_state: str | None = Query(default=None),
+        service: ResearchService = Depends(research_service),
+    ) -> list[dict[str, object]]:
+        return [
+            item.model_dump(mode="json")
+            for item in service.list_claims(
+                book_id,
+                chapter_id=chapter_id,
+                unit_id=unit_id,
+                verification_state=verification_state,
+            )
+        ]
+
+    @app.post("/api/projects/{book_id}/claims")
+    def create_claim(
+        book_id: str,
+        payload: ClaimCreateRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> dict[str, object]:
+        return service.create_claim(book_id, payload).model_dump(mode="json")
+
+    @app.put("/api/projects/{book_id}/claims/{claim_id}")
+    def update_claim(
+        book_id: str,
+        claim_id: str,
+        payload: ClaimUpdateRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> dict[str, object]:
+        return service.update_claim(book_id, claim_id, payload).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/claims/{claim_id}/review")
+    def review_claim(
+        book_id: str,
+        claim_id: str,
+        payload: ClaimReviewRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> dict[str, object]:
+        return service.review_claim(book_id, claim_id, payload).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/research/search")
+    def research_search(
+        book_id: str,
+        payload: ResearchSearchRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> list[dict[str, object]]:
+        service.list_claims(book_id)
+        return [candidate.model_dump(mode="json") for candidate in service.search(payload)]
+
+    @app.get("/api/projects/{book_id}/sources")
+    def list_sources(
+        book_id: str, service: ResearchService = Depends(research_service)
+    ) -> list[dict[str, object]]:
+        return [source.model_dump(mode="json") for source in service.list_sources(book_id)]
+
+    @app.post("/api/projects/{book_id}/sources/import")
+    def import_source(
+        book_id: str,
+        payload: SourceImportRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> dict[str, object]:
+        return service.import_source(book_id, payload).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/sources/{source_id}/access")
+    def mark_source_access(
+        book_id: str,
+        source_id: str,
+        payload: SourceAccessRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> dict[str, object]:
+        return service.mark_source_access(book_id, source_id, payload).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/claims/{claim_id}/evidence")
+    def list_evidence(
+        book_id: str,
+        claim_id: str,
+        service: ResearchService = Depends(research_service),
+    ) -> list[dict[str, object]]:
+        return [item.model_dump(mode="json") for item in service.list_evidence(book_id, claim_id)]
+
+    @app.post("/api/projects/{book_id}/claims/{claim_id}/evidence")
+    def add_evidence(
+        book_id: str,
+        claim_id: str,
+        payload: EvidenceCreateRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> dict[str, object]:
+        return service.add_evidence(book_id, claim_id, payload).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/claims/{claim_id}/citation-check")
+    def check_citation(
+        book_id: str,
+        claim_id: str,
+        payload: CitationIdentifierRequest,
+        service: ResearchService = Depends(research_service),
+    ) -> dict[str, object]:
+        return service.check_citation(book_id, claim_id, payload.identifier).model_dump(mode="json")
 
     return app
