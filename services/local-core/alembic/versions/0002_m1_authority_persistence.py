@@ -127,7 +127,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["provenance_id"], ["provenance_records.provenance_id"]),
         sa.CheckConstraint(f"status IN ({PROPOSAL_STATUSES})", name="ck_proposal_status"),
     )
-    op.create_index("ix_change_proposals_entity_status", "change_proposals", ["entity_id", "status"])
+    op.create_index(
+        "ix_change_proposals_entity_status", "change_proposals", ["entity_id", "status"]
+    )
 
     op.create_table(
         "decisions",
@@ -201,7 +203,9 @@ def downgrade() -> None:
     op.drop_index("ix_change_proposals_entity_status", table_name="change_proposals")
     op.drop_table("change_proposals")
     op.drop_table("authority_heads")
-    op.drop_index("ix_revision_status_history_revision_created", table_name="revision_status_history")
+    op.drop_index(
+        "ix_revision_status_history_revision_created", table_name="revision_status_history"
+    )
     op.drop_table("revision_status_history")
     op.drop_table("provenance_inputs")
     op.drop_table("revision_parents")
