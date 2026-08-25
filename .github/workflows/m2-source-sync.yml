@@ -1,0 +1,74 @@
+name: M2 Source Sync
+on: [push]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/brain/task-003-book-creation-contracts'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: brain/task-003-book-creation-contracts }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r services/local-core/requirements-dev.lock
+      - name: Apply exact M2 authority/regression corrections
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          tests = Path('services/local-core/tests/test_authority.py')
+          text = tests.read_text()
+          old = '== "0002"'
+          if old in text:
+              if text.count(old) != 2:
+                  raise SystemExit(f'unexpected old-schema assertion count: {text.count(old)}')
+              text = text.replace(old, '== "0003"')
+              tests.write_text(text)
+
+          projects = Path('services/local-core/src/book_os_core/projects.py')
+          text = projects.read_text()
+          old_line = '        architecture = BookArchitecturePayload.model_validate(project.architecture.content)'
+          new_line = '        architecture = BookArchitecturePayload.model_validate(\n            self._authority_content(book_id, project.architecture)\n        )'
+          if old_line in text:
+              text = text.replace(old_line, new_line, 1)
+          method_marker = '    def _authority_content(self, book_id: str, document: DocumentView) -> dict[str, Any]:\n'
+          if method_marker not in text:
+              insertion = '''    def _authority_content(self, book_id: str, document: DocumentView) -> dict[str, Any]:
+        engine = self._engine(book_id)
+        try:
+            revision = AuthorityService(engine).get_revision(document.authority_revision_id)
+            return cast(dict[str, Any], revision["content"])
+        finally:
+            engine.dispose()
+
+'''
+              anchor = '    def _save_project_document(\n'
+              if anchor not in text:
+                  raise SystemExit('project service insertion anchor missing')
+              text = text.replace(anchor, insertion + anchor, 1)
+          projects.write_text(text)
+
+          app = Path('apps/desktop/src/App.tsx')
+          text = app.read_text()
+          replacements = {
+              'status={project.book_contract?.authority_status}': 'status={project.book_contract?.status}',
+              'status={project.architecture?.authority_status}': 'status={project.architecture?.status}',
+              'status={selectedChapter?.chapter_contract?.authority_status}': 'status={selectedChapter?.chapter_contract?.status}',
+          }
+          for old_value, new_value in replacements.items():
+              if old_value in text:
+                  text = text.replace(old_value, new_value)
+          app.write_text(text)
+          PY
+      - run: ruff format services/local-core
+      - name: Commit synchronized M2 sources
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git add services/local-core apps/desktop/src/App.tsx
+          git commit -m "fix: close M2 authority and regression gaps"
+          git push origin HEAD:brain/task-003-book-creation-contracts
