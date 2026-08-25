@@ -1,0 +1,27 @@
+name: Sync Design Hashes
+on: [push]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - name: Recompute canonical design hashes
+        run: |
+          { awk '{print $2}' docs/DESIGN_FILE_HASHES.sha256; echo docs/tasks/CODEX_TASK_003_BOOK_CREATION_CONTRACTS.md; } | sort -u > /tmp/design-paths
+          xargs sha256sum < /tmp/design-paths > /tmp/design-hashes
+          mv /tmp/design-hashes docs/DESIGN_FILE_HASHES.sha256
+      - name: Commit synchronized manifest
+        run: |
+          if git diff --quiet -- docs/DESIGN_FILE_HASHES.sha256; then
+            echo "hash manifest already synchronized"
+            exit 0
+          fi
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git add docs/DESIGN_FILE_HASHES.sha256
+          git commit -m "docs: sync M2 task and project state hashes"
+          git push origin HEAD:main
