@@ -46,7 +46,10 @@ def test_fresh_and_m0_upgrade_preserve_fk_and_wal(tmp_path: Path) -> None:
     fresh = tmp_path / "fresh.sqlite"
     engine = create_database(fresh)
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0002"
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0002"
+        )
         assert connection.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
         assert connection.execute(text("PRAGMA journal_mode")).scalar_one().lower() == "wal"
 
@@ -58,7 +61,10 @@ def test_fresh_and_m0_upgrade_preserve_fk_and_wal(tmp_path: Path) -> None:
     command.upgrade(config, "head")
     with sqlite3.connect(upgraded) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0002",)
-        names = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        names = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
         assert "authority_entities" in names
         assert "approvals" in names
 
@@ -326,7 +332,9 @@ def test_backup_restore_preserves_authority_history_and_detects_tamper(tmp_path:
 
     # Leave committed WAL activity present; SQLite's online backup API must still produce a consistent copy.
     with service.engine.begin() as connection:
-        connection.execute(text("INSERT OR IGNORE INTO schema_metadata(version) VALUES ('wal-evidence')"))
+        connection.execute(
+            text("INSERT OR IGNORE INTO schema_metadata(version) VALUES ('wal-evidence')")
+        )
 
     backup_dir = tmp_path / "backup"
     create_backup(db_path, backup_dir)
