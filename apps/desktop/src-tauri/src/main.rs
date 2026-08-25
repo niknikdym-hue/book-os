@@ -113,6 +113,10 @@ fn read_json_response(mut response: ureq::http::Response<ureq::Body>) -> Result<
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
+fn json_request_body(body: Option<Value>) -> Result<String, String> {
+    serde_json::to_string(&body.unwrap_or(Value::Null)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn core_health(core: tauri::State<'_, Core>) -> Result<Value, String> {
     let url = format!("http://127.0.0.1:{}/health", core.port);
@@ -135,10 +139,12 @@ fn core_api(request: CoreApiRequest, core: tauri::State<'_, Core>) -> Result<Val
             .call(),
         "POST" => ureq::post(&url)
             .header("Authorization", &authorization)
-            .send_json(request.body.unwrap_or(Value::Null)),
+            .content_type("application/json")
+            .send(json_request_body(request.body)?),
         "PUT" => ureq::put(&url)
             .header("Authorization", &authorization)
-            .send_json(request.body.unwrap_or(Value::Null)),
+            .content_type("application/json")
+            .send(json_request_body(request.body)?),
         _ => unreachable!("validated method"),
     }
     .map_err(|e| e.to_string())?;
@@ -178,7 +184,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_python, validate_core_api_request};
+    use super::{json_request_body, resolve_python, validate_core_api_request};
+    use serde_json::json;
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -214,5 +221,13 @@ mod tests {
         assert!(validate_core_api_request("GET", "/health").is_err());
         assert!(validate_core_api_request("GET", "http://example.com/api/projects").is_err());
         assert!(validate_core_api_request("GET", "/api/../health").is_err());
+    }
+
+    #[test]
+    fn local_core_proxy_serializes_json_without_optional_ureq_json_feature() {
+        let body = json_request_body(Some(json!({"title": "Привет", "count": 2}))).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(parsed["title"], "Привет");
+        assert_eq!(parsed["count"], 2);
     }
 }
