@@ -9,7 +9,9 @@ from typing import Any
 
 SUPPORTED_ALEMBIC_REVISION = "0002"
 BACKUP_FORMAT_VERSION = 1
-DOWNGRADE_POLICY = "No silent automatic downgrade; use an application version that supports the backup schema."
+DOWNGRADE_POLICY = (
+    "No silent automatic downgrade; use an application version that supports the backup schema."
+)
 
 
 class BackupError(RuntimeError):
