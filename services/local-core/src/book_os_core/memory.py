@@ -771,8 +771,10 @@ class BookMemoryService:
                     text("SELECT * FROM memory_index_state WHERE book_id=:book_id"),
                     {"book_id": book_id},
                 ).mappings().one_or_none()
-            if state is None or state["config_hash"] is None or state["dimension"] is None:
-                raise MemoryGateError("semantic index is not built")
+            if state is None or state["status"] != "SEMANTIC_READY":
+                raise MemoryGateError("semantic index is stale or not built; rebuild required")
+            if state["config_hash"] is None or state["dimension"] is None:
+                raise MemoryGateError("semantic index configuration is incomplete")
             active_provider = provider or cast(str | None, state["provider"])
             active_model = model or cast(str | None, state["model"])
             if not active_provider or not active_model:
@@ -832,7 +834,10 @@ class BookMemoryService:
             matrix = np.stack(vectors).astype(np.float32, copy=False)
             query_vector = np.asarray(query_vector_list, dtype=np.float32)
             scores = exact_cosine_scores(query_vector, matrix)
-            order = sorted(range(len(eligible)), key=lambda index: (-float(scores[index]), eligible[index]["memory_id"]))
+            order = sorted(
+                range(len(eligible)),
+                key=lambda index: (-float(scores[index]), eligible[index]["memory_id"]),
+            )
             results: list[MemorySearchResult] = []
             for rank, index in enumerate(order[:limit], start=1):
                 results.append(
