@@ -106,7 +106,7 @@ def test_m1_database_upgrades_to_m2(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0005"
+            == "0006"
         )
         tables = {
             row[0]
