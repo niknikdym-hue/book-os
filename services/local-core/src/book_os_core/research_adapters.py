@@ -182,7 +182,7 @@ class CrossrefAdapter(_HttpAdapter):
         self.mailto = mailto
 
     def search(self, query: str, *, limit: int = 5) -> list[ResearchCandidate]:
-        params: dict[str, object] = {
+        params: dict[str, str | int | float | bool | None] = {
             "query.bibliographic": query,
             "rows": max(1, min(limit, 25)),
         }
