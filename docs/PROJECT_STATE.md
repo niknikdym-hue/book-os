@@ -1,31 +1,44 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 1.3.0  
+**Version:** 1.4.0  
 **Date:** 2026-08-26  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 6 — TASK 007 READY**
+**IMPLEMENTATION MILESTONE 7 — TASK 008 IN PROGRESS**
+
+Canonical `main` baseline at M7 start:
+
+`b5fc8e52233b57bc976954044d430cd7a4f612e3`
 
 Active contract:
 
-`docs/tasks/CODEX_TASK_007_EDITORIAL_WORKFLOWS.md`
+`docs/tasks/CODEX_TASK_008_BOOKBENCH.md`
 
-Planned implementation branch:
+Implementation branch:
 
-`brain/task-007-editorial-workflows`
+`brain/task-008-bookbench`
+
+Active pull request:
+
+`PR #11 — Task 008 — BookBench v0.1`
+
+Observed implementation HEAD at this checkpoint:
+
+`cefdd1c8ee868c81a2c292a459c77d3f485191cc`
 
 ## Accepted authority
 
 - Product/Authority baseline: `BOOK_OS_AUTHORITY.md`
 - Product spec: `PRODUCT_SPEC_v0.1.md`
-- Core Ontology: `CORE_ONTOLOGY.md` v0.2.0
+- Core Ontology: `CORE_ONTOLOGY.md`
 - Editorial contracts/gates: `EDITORIAL_PROTOCOLS_v0.1.md`
 - Model Gateway: `MODEL_GATEWAY_v0.1.md`
 - Research/Claim authority: `RESEARCH_AND_CLAIMS_v0.1.md`
 - Book Memory authority: `BOOK_MEMORY_v0.1.md`
+- BookBench authority: `BOOKBENCH_v0.1.md`
 - Technical Architecture: `TECHNICAL_ARCHITECTURE_v0.1.md`
 - Security/availability: `SECURITY_AVAILABILITY_v0.1.md`
 - Implementation roadmap: `IMPLEMENTATION_ROADMAP_v0.1.md`
@@ -35,112 +48,98 @@ Planned implementation branch:
 ## Completed milestones
 
 ### M0 / Task 001 — ACCEPTED AND MERGED
-
-- PR `#3`
-- canonical merge: `b2bbe3dd208e15cbca0420e90c1b4adadab7acda`
-- Owner-Mac `Local Core healthy`: PASS
-- deterministic sidecar shutdown after normal close + Cmd-Q: PASS
+Executable Tauri/React desktop + Python local-core baseline, authenticated loopback health, SQLite migration infrastructure and CI accepted.
 
 ### M1 / Task 002 — ACCEPTED AND MERGED
-
-- PR `#5 — Authority & Persistence Engine`
-- canonical merge: `c2cf2e88c81797ff3f67873b1d406ecc7f806e84`
-- immutable revisions, Authority statuses, exact-base ChangeProposal, Decision/Approval/Provenance, transactional stale-baseline protection and WAL-safe backup/restore accepted.
+Authority & Persistence Engine accepted: immutable revisions, authority states, exact-base proposals, decisions/approvals/provenance, stale-baseline protection and backup/restore.
 
 ### M2 / Task 003 — ACCEPTED AND MERGED
-
-- PR `#6 — Book Creation, Contracts & Architecture`
-- accepted source HEAD: `182b8e45ae7092fd2655ee61e42126af4cac1542`
-- canonical merge: `5bd6c1af5dd1b502696e359c813f8e6544919cb8`
-- final CI `32882543129`: SUCCESS
-- accepted native product path:
-  `Projects → New Business Book → Book Contract approval → Architecture approval → Chapter → Chapter Contract approval`.
+Book creation, Book Contract, Architecture and Chapter Contract workflow accepted.
 
 ### M3 / Task 004 — ACCEPTED AND MERGED
-
-- PR `#7 — Model Gateway + Controlled Drafting`
-- accepted source tree first reached at `16b724f056da5e2213b3e99dd003965573b41de0`
-- canonical merge: `1814ac7fffe9f9a6666ea59125439f32b0cff879`
-- final CI `32893389579`: SUCCESS
-  - `local-core`: Ruff format/check + mypy + **30/30 pytest PASS**
-  - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
-  - `tauri-smoke`: cargo test/check PASS
-  - `secret-scan`: PASS
-- provider-neutral gateway, Keychain secret boundary, mocked OpenAI development adapter and DRAFT-only ManuscriptUnit generation accepted.
+Provider-neutral Model Gateway + bounded controlled drafting accepted.
 
 ### M4 / Task 005 — ACCEPTED AND MERGED
-
-- PR `#8 — Research Engine + Claim Ledger`
-- accepted implementation HEAD: `f0967229c2f0eb7a7b089e006a9a76b8ac1aa8c9`
-- canonical M4 merge: `c15d2f12b3edd878720d1e2e251d4665525de688`
-- final CI `32955967341`: SUCCESS
-  - `local-core`: Ruff format/check + mypy + **43/43 pytest PASS**
-  - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
-  - `tauri-smoke`: cargo test/check PASS
-  - `secret-scan`: PASS
-- Claim / Source / Evidence persistence, research metadata adapters, evidence gates and native ResearchPanel accepted.
+Research Engine + Claim Ledger accepted.
 
 ### M5 / Task 006 — ACCEPTED AND MERGED
+Book Memory lexical/semantic/hybrid retrieval and authority isolation accepted.
 
-- PR `#9 — Book Memory`
-- accepted implementation HEAD: `1f831545dcde64cea992b2c57dedd5d16fd9671e`
-- canonical M5 merge: `eb073659d77b57b58cb28702d95e35e891005a4d`
-- final PR CI `32958990695`: SUCCESS
-  - `local-core`: Ruff format/check + mypy + **55/55 pytest PASS** (`55 passed in 14.29s`)
-  - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
-  - `tauri-smoke`: `cargo test --locked` + `cargo check --locked` PASS
-  - `secret-scan`: PASS
-- SQLite FTS5 lexical memory, local NumPy exact cosine semantic retrieval and deterministic hybrid fusion accepted.
-- provider/model/version/config/dimension embedding identity and deterministic rebuild accepted.
-- CURRENT/HISTORY isolation, stale semantic invalidation and exact stable revision references accepted.
-- deterministic fake embeddings in CI and mocked/Keychain-bounded OpenAI development adapter accepted.
-- authenticated Book Memory API and native Book Memory panel accepted.
-- 2,000-document exact local semantic benchmark is covered by acceptance tests.
-- CI external/model/embedding calls: `0`; paid calls: `0`.
+### M6 / Task 007 — ACCEPTED AND MERGED
+- PR `#10`
+- accepted implementation HEAD `8fcdd725b5c6ece2d7b9500ae87c55478e008bd4`
+- canonical merge `9cfa9b9e8966715c243410e44dbe011e363974c1`
+- final CI `32961531865`: SUCCESS
+- exact-revision editorial findings → exact-base ChangeProposal → Decision Inbox → HUMAN decision workflow accepted
+- normal CI external/model calls = `0`; paid calls = `0`
 
-## Active implementation task — M6
+## Active milestone — M7 / Task 008
 
-`Task 007 — Editorial Workflows + Decision Inbox`
+Goal:
 
-M6 implements the controlled editorial loop:
+`exact revision snapshot → versioned BookBench evaluation → actionable dimension findings → optional explicit M6 handoff → human review`
 
-`exact revision → EditorialFinding → exact-base ChangeProposal → Decision Inbox → human decision → accepted new authority or preserved prior authority`.
+Current PR #11 is a DRAFT and is **not yet accepted**.
 
-Core rules:
+Observed first implementation slice already includes:
+- schema migration `0008`;
+- exact evaluation snapshots/currentness;
+- immutable EvaluationRun/EvaluationFinding persistence;
+- deterministic BookBench registry/suite;
+- repetition/evidence/statistical checks;
+- initial deterministic AI-prose pathology signals;
+- grouped report without a universal magic score;
+- M7 schema regression updates.
 
-- finding is diagnosis, not edit;
-- proposal is not authority;
-- existing M1 ChangeProposal/Decision/Approval remains the only authority-transition path;
-- every material manuscript proposal uses exact base revision ID/hash;
-- AI/SYSTEM cannot accept, reject or waive material editorial changes for the Owner;
-- stale proposals cannot be accepted;
-- Decision Inbox preserves original → diagnosis → proposal → decision/reason → final revision.
-
-First deterministic v0.1 diagnostics are bounded to Developmental Chapter-Contract coverage, Cross-book repetition and Fact Checker Claim-state checks. Literary Editor and Style Guardian use the same typed finding/proposal/decision workflow without inventing M7 BookBench scoring.
+Still required before M7 ACCEPT/MERGE:
+- Author Voice Fingerprint;
+- M5-based semantic checks with exact embedding-config identity and stale-config gates;
+- bounded BookBench judge + pairwise framework through the existing M3 Model Gateway;
+- mocked OpenAI structured judge path and zero-live-call CI proof;
+- judge independence gate;
+- immutable M6-decision evaluation datasets;
+- two-configuration role/dimension scorecards;
+- explicit BookBench → M6 EditorialFinding handoff with currentness validation;
+- authenticated BookBench API;
+- native desktop BookBench workspace;
+- backup/restore through `0008`;
+- full M0–M6 regression + every Task 008 REQUIRED ACCEPTANCE gate;
+- final project-state/hash synchronization.
 
 ## Scope guard
 
-Do not implement yet:
+Do not implement M8+ inside PR #11.
 
-- M7 BookBench scoring, LLM judges, Author Voice Fingerprint or AI-prose pathology detector;
-- automatic whole-book/global rewrite;
-- autonomous editor agents;
-- Yandex/GigaChat Russia provider lane;
-- Literary Master/export/audio handoff;
-- accounts/cloud/billing/sync;
-- silent Claim rebinding after manuscript edits.
+In particular, do not start yet:
+- Russia/no-VPN provider promotion;
+- Yandex/GigaChat production routing;
+- Literary Master/release/export;
+- Audio Studio production handoff implementation;
+- real-book M10 pilot.
+
+## Critical path to launch
+
+No return to already accepted milestones.
+
+`M7 BookBench → M8 Russia/no-VPN provider lane → M9 Literary Master + exports → M10 real Business Nonfiction pilot → GO/NO-GO`
+
+MVP/Russia-ready cannot be declared before the applicable M7–M10 acceptance gates pass.
 
 ## Next permitted action
 
-1. Synchronize `docs/DESIGN_FILE_HASHES.sha256` for this state + Task 007.
-2. Create `brain/task-007-editorial-workflows` from the resulting exact `main` HEAD.
-3. Implement only `docs/tasks/CODEX_TASK_007_EDITORIAL_WORKFLOWS.md`.
-4. Open one PR, fix objective CI/acceptance blockers, then Central Brain ACCEPT + merge M6.
-5. Only then start M7 BookBench v0.1.
+1. Continue only PR #11 on `brain/task-008-bookbench`.
+2. Close every missing Task 008 acceptance item on the same PR.
+3. Run full PR CI with zero live/paid external model calls in normal CI.
+4. Central Brain reviews objective evidence.
+5. If all M7 gates pass: ACCEPT + merge PR #11.
+6. Synchronize canonical project state to M7 accepted.
+7. Immediately create and execute M8 bounded contract.
 
-## Known blockers
+## Owner-decision blockers
 
-No Owner decision blocker for the bounded M6 workflow implementation. AI material acceptance, weakened exact-base protection, automatic Claim rebinding, mandatory paid/live editorial model calls or M7 scope are stop conditions.
+None for completing the bounded M7 contract as currently accepted.
+
+Stop and request Owner decision only if implementation would weaken human authority, expose private manuscript/evaluation data, require material recurring infrastructure cost, weaken the Russia/no-VPN requirement, or lower a critical model-quality floor.
 
 ## Operational rule
 
@@ -153,6 +152,15 @@ If chat context disappears:
 1. Open repository `main`.
 2. Read README recovery order + `DESIGN_INDEX.md`.
 3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-4. Read `EDITORIAL_PROTOCOLS_v0.1.md` and `docs/tasks/CODEX_TASK_007_EDITORIAL_WORKFLOWS.md`.
-5. Inspect `origin/main` and `brain/task-007-editorial-workflows`.
-6. Continue only M6 until Central Brain ACCEPT/merge; do not start M7 automatically.
+4. Read `BOOKBENCH_v0.1.md` and `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
+5. Inspect PR #11 / `brain/task-008-bookbench`.
+6. Continue only M7 until objective ACCEPT/merge.
+7. Then follow the fixed launch path M8 → M9 → M10 → GO/NO-GO.
+
+## Change log
+
+### 1.4.0 — 2026-08-26
+- Corrected stale state that still showed M6 as active after PR #10 had been accepted and merged.
+- Recorded M6 canonical acceptance evidence.
+- Made M7 / Task 008 / PR #11 the sole active implementation path.
+- Recorded the fixed launch critical path: M7 → M8 → M9 → M10 → GO/NO-GO.
