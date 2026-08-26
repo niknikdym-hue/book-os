@@ -90,9 +90,7 @@ def ready_unit(data_dir: Path) -> tuple[str, str, str, str, str, str]:
     projects.save_chapter_contract(project.book_id, chapter_id, chapter_contract())
     projects.approve_chapter_contract(project.book_id, chapter_id)
 
-    drafting = DraftingService(
-        data_dir, ModelGateway({"fake": DeterministicFakeAdapter()})
-    )
+    drafting = DraftingService(data_dir, ModelGateway({"fake": DeterministicFakeAdapter()}))
     draft = drafting.generate_section_draft(
         project.book_id,
         chapter_id,
@@ -126,9 +124,7 @@ def test_authenticated_editorial_api_finding_proposal_accept_and_corpus(tmp_path
     headers = {"Authorization": "Bearer token"}
 
     assert client.get(f"/api/projects/{book_id}/editorial/inbox").status_code == 401
-    assert (
-        client.post(f"/api/projects/{book_id}/editorial/run/cross-book").status_code == 401
-    )
+    assert client.post(f"/api/projects/{book_id}/editorial/run/cross-book").status_code == 401
 
     developmental = client.post(
         f"/api/projects/{book_id}/editorial/run/developmental/{chapter_id}",
