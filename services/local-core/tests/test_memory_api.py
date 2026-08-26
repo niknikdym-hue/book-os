@@ -50,6 +50,11 @@ def test_authenticated_memory_api_sync_rebuild_and_hybrid_search(tmp_path: Path)
     assert status.json()["status"] == "LEXICAL_READY"
     assert status.json()["document_count"] == 1
 
+    synced = client.post(f"/api/projects/{book_id}/memory/sync", headers=headers)
+    assert synced.status_code == 200
+    assert synced.json()["status"] == "LEXICAL_READY"
+    assert synced.json()["document_count"] == 1
+
     lexical = client.post(
         f"/api/projects/{book_id}/memory/search",
         headers=headers,
