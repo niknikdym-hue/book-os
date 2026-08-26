@@ -1,0 +1,25 @@
+name: M5 Format API
+on: [push]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.ref == 'refs/heads/brain/task-006-book-memory'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-006-book-memory
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff==0.12.11
+      - run: ruff format services/local-core/src/book_os_core/app.py
+      - name: Remove helper and commit formatting
+        run: |
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git rm .github/workflows/m5-format-api.yml
+          git add services/local-core/src/book_os_core/app.py
+          git commit -m "style: format M5 Book Memory API"
+          git push origin HEAD:brain/task-006-book-memory
