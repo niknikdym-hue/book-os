@@ -1,21 +1,21 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 1.2.0  
+**Version:** 1.3.0  
 **Date:** 2026-08-26  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 5 — TASK 006 READY**
+**IMPLEMENTATION MILESTONE 6 — TASK 007 READY**
 
 Active contract:
 
-`docs/tasks/CODEX_TASK_006_BOOK_MEMORY.md`
+`docs/tasks/CODEX_TASK_007_EDITORIAL_WORKFLOWS.md`
 
 Planned implementation branch:
 
-`brain/task-006-book-memory`
+`brain/task-007-editorial-workflows`
 
 ## Accepted authority
 
@@ -54,23 +54,19 @@ Planned implementation branch:
 - canonical merge: `5bd6c1af5dd1b502696e359c813f8e6544919cb8`
 - final CI `32882543129`: SUCCESS
 - accepted native product path:
-  `Projects → New Business Book → Book Contract approval → Architecture approval → Chapter → Chapter Contract approval`
-- per-book `project.sqlite`, restart discovery, stable chapters, authenticated local API and bounded Tauri proxy accepted.
+  `Projects → New Business Book → Book Contract approval → Architecture approval → Chapter → Chapter Contract approval`.
 
 ### M3 / Task 004 — ACCEPTED AND MERGED
 
 - PR `#7 — Model Gateway + Controlled Drafting`
 - accepted source tree first reached at `16b724f056da5e2213b3e99dd003965573b41de0`
-- canonical M3 merge: `1814ac7fffe9f9a6666ea59125439f32b0cff879`
-- final full source-tree CI `32893389579`: SUCCESS
+- canonical merge: `1814ac7fffe9f9a6666ea59125439f32b0cff879`
+- final CI `32893389579`: SUCCESS
   - `local-core`: Ruff format/check + mypy + **30/30 pytest PASS**
   - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
-  - `tauri-smoke`: `cargo test --locked` + `cargo check --locked` PASS
+  - `tauri-smoke`: cargo test/check PASS
   - `secret-scan`: PASS
-- provider-neutral gateway, versioned prompt registry, macOS Keychain SecretStore, mocked OpenAI Responses development adapter, deterministic fake adapter, BoundedTask/ModelRun persistence and DRAFT-only ManuscriptUnit generation accepted.
-- exact Chapter Contract revision/hash provenance and stale-authority discard accepted.
-- AI/system actor cannot approve generated text.
-- CI external/model calls: `0`; paid calls: `0`.
+- provider-neutral gateway, Keychain secret boundary, mocked OpenAI development adapter and DRAFT-only ManuscriptUnit generation accepted.
 
 ### M4 / Task 005 — ACCEPTED AND MERGED
 
@@ -80,57 +76,71 @@ Planned implementation branch:
 - final CI `32955967341`: SUCCESS
   - `local-core`: Ruff format/check + mypy + **43/43 pytest PASS**
   - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
+  - `tauri-smoke`: cargo test/check PASS
+  - `secret-scan`: PASS
+- Claim / Source / Evidence persistence, research metadata adapters, evidence gates and native ResearchPanel accepted.
+
+### M5 / Task 006 — ACCEPTED AND MERGED
+
+- PR `#9 — Book Memory`
+- accepted implementation HEAD: `1f831545dcde64cea992b2c57dedd5d16fd9671e`
+- canonical M5 merge: `eb073659d77b57b58cb28702d95e35e891005a4d`
+- final PR CI `32958990695`: SUCCESS
+  - `local-core`: Ruff format/check + mypy + **55/55 pytest PASS** (`55 passed in 14.29s`)
+  - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
   - `tauri-smoke`: `cargo test --locked` + `cargo check --locked` PASS
   - `secret-scan`: PASS
-- Claim / Source / Evidence persistence and explicit verification states accepted.
-- exact ManuscriptUnit revision/hash Claim binding and stale-target rejection accepted.
-- OpenAlex/Crossref/Semantic Scholar metadata adapters are provider-neutral and mocked in normal CI.
-- DOI/provider/URL dedup, candidate/source ≠ Evidence ≠ Claim gates and citation-resolution gate accepted.
-- metadata-only sources cannot produce full `SUPPORTED`; source inspection/evidence history and contradiction → `DISPUTED` behavior accepted.
-- native ResearchPanel accepted.
-- CI external/model/research calls: `0`; paid calls: `0`.
+- SQLite FTS5 lexical memory, local NumPy exact cosine semantic retrieval and deterministic hybrid fusion accepted.
+- provider/model/version/config/dimension embedding identity and deterministic rebuild accepted.
+- CURRENT/HISTORY isolation, stale semantic invalidation and exact stable revision references accepted.
+- deterministic fake embeddings in CI and mocked/Keychain-bounded OpenAI development adapter accepted.
+- authenticated Book Memory API and native Book Memory panel accepted.
+- 2,000-document exact local semantic benchmark is covered by acceptance tests.
+- CI external/model/embedding calls: `0`; paid calls: `0`.
 
-## Active implementation task — M5
+## Active implementation task — M6
 
-`Task 006 — Book Memory`
+`Task 007 — Editorial Workflows + Decision Inbox`
 
-M5 implements rebuildable whole-book recall:
+M6 implements the controlled editorial loop:
 
-`current canonical state → FTS5 lexical index + versioned embeddings → exact local cosine → hybrid retrieval → stable revision references`
+`exact revision → EditorialFinding → exact-base ChangeProposal → Decision Inbox → human decision → accepted new authority or preserved prior authority`.
 
 Core rules:
 
-- Book Memory is derived state, never authority;
-- default retrieval is `CURRENT` only;
-- stale/non-current/history revisions cannot leak into default current-book search;
-- semantic vectors are local and versioned by provider/model/config;
-- no remote vector database is required for v0.1.
+- finding is diagnosis, not edit;
+- proposal is not authority;
+- existing M1 ChangeProposal/Decision/Approval remains the only authority-transition path;
+- every material manuscript proposal uses exact base revision ID/hash;
+- AI/SYSTEM cannot accept, reject or waive material editorial changes for the Owner;
+- stale proposals cannot be accepted;
+- Decision Inbox preserves original → diagnosis → proposal → decision/reason → final revision.
 
-The initial runtime semantic lane is provider-neutral. Normal CI uses deterministic fake embeddings. OpenAI embeddings are development/benchmark-only behind SecretStore with mocked HTTP in normal CI.
+First deterministic v0.1 diagnostics are bounded to Developmental Chapter-Contract coverage, Cross-book repetition and Fact Checker Claim-state checks. Literary Editor and Style Guardian use the same typed finding/proposal/decision workflow without inventing M7 BookBench scoring.
 
 ## Scope guard
 
 Do not implement yet:
 
-- M6 Developmental/Literary/Fact editorial workflows or Decision Inbox;
-- BookBench;
+- M7 BookBench scoring, LLM judges, Author Voice Fingerprint or AI-prose pathology detector;
+- automatic whole-book/global rewrite;
+- autonomous editor agents;
 - Yandex/GigaChat Russia provider lane;
 - Literary Master/export/audio handoff;
 - accounts/cloud/billing/sync;
-- remote vector database/ANN dependency;
-- cross-book/private-corpus indexing.
+- silent Claim rebinding after manuscript edits.
 
 ## Next permitted action
 
-1. Synchronize `docs/DESIGN_FILE_HASHES.sha256` for this state + Task 006.
-2. Create `brain/task-006-book-memory` from the resulting exact `main` HEAD.
-3. Implement only `docs/tasks/CODEX_TASK_006_BOOK_MEMORY.md`.
-4. Open one PR, fix objective CI/acceptance blockers, then Central Brain ACCEPT + merge M5.
-5. Only then start M6 Editorial Workflows.
+1. Synchronize `docs/DESIGN_FILE_HASHES.sha256` for this state + Task 007.
+2. Create `brain/task-007-editorial-workflows` from the resulting exact `main` HEAD.
+3. Implement only `docs/tasks/CODEX_TASK_007_EDITORIAL_WORKFLOWS.md`.
+4. Open one PR, fix objective CI/acceptance blockers, then Central Brain ACCEPT + merge M6.
+5. Only then start M7 BookBench v0.1.
 
 ## Known blockers
 
-No Owner decision blocker for the bounded M5 implementation. Mandatory remote vectors, paid embedding dependency, unapproved default manuscript egress, weakened current/non-current isolation or M6 scope are stop conditions.
+No Owner decision blocker for the bounded M6 workflow implementation. AI material acceptance, weakened exact-base protection, automatic Claim rebinding, mandatory paid/live editorial model calls or M7 scope are stop conditions.
 
 ## Operational rule
 
@@ -143,6 +153,6 @@ If chat context disappears:
 1. Open repository `main`.
 2. Read README recovery order + `DESIGN_INDEX.md`.
 3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-4. Read `BOOK_MEMORY_v0.1.md` and `docs/tasks/CODEX_TASK_006_BOOK_MEMORY.md`.
-5. Inspect `origin/main` and `brain/task-006-book-memory`.
-6. Continue only M5 until Central Brain ACCEPT/merge; do not start M6 automatically.
+4. Read `EDITORIAL_PROTOCOLS_v0.1.md` and `docs/tasks/CODEX_TASK_007_EDITORIAL_WORKFLOWS.md`.
+5. Inspect `origin/main` and `brain/task-007-editorial-workflows`.
+6. Continue only M6 until Central Brain ACCEPT/merge; do not start M7 automatically.
