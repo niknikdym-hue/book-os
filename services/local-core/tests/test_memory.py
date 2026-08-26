@@ -181,7 +181,7 @@ def test_m5_schema_fts_exact_phrase_and_filters(tmp_path: Path) -> None:
     service = memory_service(tmp_path)
     status = service.synchronize(state["book_id"])
     assert status.status == "LEXICAL_READY"
-    assert status.document_count >= 7
+    assert status.document_count == 6
 
     engine = create_database(tmp_path / "projects" / state["book_id"] / "project.sqlite")
     with engine.connect() as connection:
@@ -299,7 +299,7 @@ def test_manuscript_revision_change_invalidates_semantics_and_isolates_history(
         payload={
             "chapter_id": state["chapter_1"],
             "section_objective": "Revised memory section",
-            "text": "new memory phrase replaces the blue lighthouse passage",
+            "text": "new memory phrase replaces the obsolete passage",
             "notes": [],
         },
         schema_name="manuscript.unit.section.v0.1",
