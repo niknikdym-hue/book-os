@@ -1,21 +1,21 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 1.1.0  
-**Date:** 2026-08-25  
+**Version:** 1.2.0  
+**Date:** 2026-08-26  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 4 — TASK 005 READY**
+**IMPLEMENTATION MILESTONE 5 — TASK 006 READY**
 
 Active contract:
 
-`docs/tasks/CODEX_TASK_005_RESEARCH_CLAIM_LEDGER.md`
+`docs/tasks/CODEX_TASK_006_BOOK_MEMORY.md`
 
 Planned implementation branch:
 
-`brain/task-005-research-claim-ledger`
+`brain/task-006-book-memory`
 
 ## Accepted authority
 
@@ -24,6 +24,8 @@ Planned implementation branch:
 - Core Ontology: `CORE_ONTOLOGY.md` v0.2.0
 - Editorial contracts/gates: `EDITORIAL_PROTOCOLS_v0.1.md`
 - Model Gateway: `MODEL_GATEWAY_v0.1.md`
+- Research/Claim authority: `RESEARCH_AND_CLAIMS_v0.1.md`
+- Book Memory authority: `BOOK_MEMORY_v0.1.md`
 - Technical Architecture: `TECHNICAL_ARCHITECTURE_v0.1.md`
 - Security/availability: `SECURITY_AVAILABILITY_v0.1.md`
 - Implementation roadmap: `IMPLEMENTATION_ROADMAP_v0.1.md`
@@ -70,44 +72,65 @@ Planned implementation branch:
 - AI/system actor cannot approve generated text.
 - CI external/model calls: `0`; paid calls: `0`.
 
-## Active implementation task — M4
+### M4 / Task 005 — ACCEPTED AND MERGED
 
-`Task 005 — Research Engine + Claim Ledger`
+- PR `#8 — Research Engine + Claim Ledger`
+- accepted implementation HEAD: `f0967229c2f0eb7a7b089e006a9a76b8ac1aa8c9`
+- canonical M4 merge: `c15d2f12b3edd878720d1e2e251d4665525de688`
+- final CI `32955967341`: SUCCESS
+  - `local-core`: Ruff format/check + mypy + **43/43 pytest PASS**
+  - `desktop`: lint + typecheck + Vitest + build + dependency audit PASS
+  - `tauri-smoke`: `cargo test --locked` + `cargo check --locked` PASS
+  - `secret-scan`: PASS
+- Claim / Source / Evidence persistence and explicit verification states accepted.
+- exact ManuscriptUnit revision/hash Claim binding and stale-target rejection accepted.
+- OpenAlex/Crossref/Semantic Scholar metadata adapters are provider-neutral and mocked in normal CI.
+- DOI/provider/URL dedup, candidate/source ≠ Evidence ≠ Claim gates and citation-resolution gate accepted.
+- metadata-only sources cannot produce full `SUPPORTED`; source inspection/evidence history and contradiction → `DISPUTED` behavior accepted.
+- native ResearchPanel accepted.
+- CI external/model/research calls: `0`; paid calls: `0`.
 
-M4 implements the first factual-evidence vertical:
+## Active implementation task — M5
 
-`ManuscriptUnit revision → Claim → research candidate → Source → Evidence → verification state`
+`Task 006 — Book Memory`
 
-Non-negotiable distinction:
+M5 implements rebuildable whole-book recall:
 
-`Source != Evidence != Claim`.
+`current canonical state → FTS5 lexical index + versioned embeddings → exact local cosine → hybrid retrieval → stable revision references`
 
-A material claim cannot become `SUPPORTED` merely because a search result/source exists. Support requires explicit Evidence with a real Source and concrete locator/pointer.
+Core rules:
 
-Initial metadata adapters are bounded to OpenAlex, Crossref and Semantic Scholar Academic Graph, with mocked HTTP in normal CI.
+- Book Memory is derived state, never authority;
+- default retrieval is `CURRENT` only;
+- stale/non-current/history revisions cannot leak into default current-book search;
+- semantic vectors are local and versioned by provider/model/config;
+- no remote vector database is required for v0.1.
+
+The initial runtime semantic lane is provider-neutral. Normal CI uses deterministic fake embeddings. OpenAI embeddings are development/benchmark-only behind SecretStore with mocked HTTP in normal CI.
 
 ## Scope guard
 
 Do not implement yet:
 
-- embeddings / Book Memory;
-- Developmental/Literary/Fact editorial workflows;
+- M6 Developmental/Literary/Fact editorial workflows or Decision Inbox;
 - BookBench;
 - Yandex/GigaChat Russia provider lane;
 - Literary Master/export/audio handoff;
-- accounts/cloud/billing.
+- accounts/cloud/billing/sync;
+- remote vector database/ANN dependency;
+- cross-book/private-corpus indexing.
 
 ## Next permitted action
 
-1. Synchronize design hash manifest for current control docs.
-2. Create `brain/task-005-research-claim-ledger` from the resulting exact `main` HEAD.
-3. Implement only Task 005 / M4.
-4. Open one PR, fix objective CI/acceptance blockers, then Central Brain ACCEPT + merge.
-5. Only then start M5 Book Memory.
+1. Synchronize `docs/DESIGN_FILE_HASHES.sha256` for this state + Task 006.
+2. Create `brain/task-006-book-memory` from the resulting exact `main` HEAD.
+3. Implement only `docs/tasks/CODEX_TASK_006_BOOK_MEMORY.md`.
+4. Open one PR, fix objective CI/acceptance blockers, then Central Brain ACCEPT + merge M5.
+5. Only then start M6 Editorial Workflows.
 
 ## Known blockers
 
-No Owner decision blocker for the bounded M4 metadata/evidence implementation. Paid research subscriptions, copyrighted full-text ingestion or paywall circumvention are stop conditions and are not authorized.
+No Owner decision blocker for the bounded M5 implementation. Mandatory remote vectors, paid embedding dependency, unapproved default manuscript egress, weakened current/non-current isolation or M6 scope are stop conditions.
 
 ## Operational rule
 
@@ -120,6 +143,6 @@ If chat context disappears:
 1. Open repository `main`.
 2. Read README recovery order + `DESIGN_INDEX.md`.
 3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-4. Read `docs/tasks/CODEX_TASK_005_RESEARCH_CLAIM_LEDGER.md`.
-5. Inspect `origin/main` and `brain/task-005-research-claim-ledger`.
-6. Continue only M4 until Central Brain ACCEPT/merge; do not start M5 automatically.
+4. Read `BOOK_MEMORY_v0.1.md` and `docs/tasks/CODEX_TASK_006_BOOK_MEMORY.md`.
+5. Inspect `origin/main` and `brain/task-006-book-memory`.
+6. Continue only M5 until Central Brain ACCEPT/merge; do not start M6 automatically.
