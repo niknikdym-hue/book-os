@@ -105,7 +105,11 @@ const source: SourceView = {
 let claim: ClaimView | null = null;
 let evidence: EvidenceView[] = [];
 
-const api: ResearchApi = async function api<T>(method, path, body): Promise<T> {
+const api: ResearchApi = async function api<T>(
+  method: "GET" | "POST" | "PUT",
+  path: string,
+  body?: unknown,
+): Promise<T> {
   if (method === "GET" && path.includes("/drafts")) return [draft] as T;
   if (method === "GET" && path.includes("/claims?") ) return (claim ? [claim] : []) as T;
   if (method === "GET" && path.includes("/evidence")) return evidence as T;

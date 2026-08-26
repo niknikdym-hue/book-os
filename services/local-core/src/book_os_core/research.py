@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import re
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
