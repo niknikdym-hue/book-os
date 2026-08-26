@@ -1,0 +1,31 @@
+name: M4 Drain Stale CI
+on: [push]
+permissions:
+  actions: write
+  contents: write
+jobs:
+  drain:
+    if: github.ref == 'refs/heads/brain/task-005-research-claim-ledger'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-005-research-claim-ledger
+      - name: Cancel stale CI runs for this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=brain/task-005-research-claim-ledger&per_page=100" \
+            --jq '.workflow_runs[] | select(.name == "CI" and (.status == "queued" or .status == "in_progress")) | .id' \
+            | while read -r run_id; do
+                [ -z "$run_id" ] && continue
+                echo "Cancelling stale CI run $run_id"
+                gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel" || true
+              done
+      - name: Remove drain workflow and publish clean head
+        run: |
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git rm .github/workflows/m4-drain-stale-ci.yml
+          git commit -m "ci: remove temporary M4 queue drain"
+          git push origin HEAD:brain/task-005-research-claim-ledger
