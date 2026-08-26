@@ -1,0 +1,198 @@
+name: M7 Control Baseline Sync
+on: [push]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Update M7 project state and design hashes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          state = '''# BOOK OS — PROJECT STATE
+
+**Status:** ACTIVE CHECKPOINT  
+**Version:** 1.4.0  
+**Date:** 2026-08-26  
+**Canonical repository:** `https://github.com/niknikdym-hue/book-os`
+
+## Current phase
+
+**IMPLEMENTATION MILESTONE 7 — TASK 008 READY**
+
+Active contract:
+
+`docs/tasks/CODEX_TASK_008_BOOKBENCH.md`
+
+Planned implementation branch:
+
+`brain/task-008-bookbench`
+
+## Accepted authority
+
+- Product/Authority baseline: `BOOK_OS_AUTHORITY.md`
+- Product spec: `PRODUCT_SPEC_v0.1.md`
+- Core Ontology: `CORE_ONTOLOGY.md` v0.2.0
+- Editorial contracts/gates: `EDITORIAL_PROTOCOLS_v0.1.md`
+- Model Gateway: `MODEL_GATEWAY_v0.1.md`
+- Research/Claim authority: `RESEARCH_AND_CLAIMS_v0.1.md`
+- Book Memory authority: `BOOK_MEMORY_v0.1.md`
+- BookBench authority: `BOOKBENCH_v0.1.md`
+- Technical Architecture: `TECHNICAL_ARCHITECTURE_v0.1.md`
+- Security/availability: `SECURITY_AVAILABILITY_v0.1.md`
+- Implementation roadmap: `IMPLEMENTATION_ROADMAP_v0.1.md`
+- Execution control: `TASK_EXECUTION_PROTOCOL_v0.1.md`
+- Complete recovery map: `DESIGN_INDEX.md`
+
+## Completed milestones
+
+### M0 / Task 001 — ACCEPTED AND MERGED
+- PR `#3`
+- canonical merge: `b2bbe3dd208e15cbca0420e90c1b4adadab7acda`
+- native lifecycle/auth/sidecar shutdown accepted.
+
+### M1 / Task 002 — ACCEPTED AND MERGED
+- PR `#5 — Authority & Persistence Engine`
+- canonical merge: `c2cf2e88c81797ff3f67873b1d406ecc7f806e84`
+- immutable revision/Decision/Approval/Provenance and backup/restore kernel accepted.
+
+### M2 / Task 003 — ACCEPTED AND MERGED
+- PR `#6 — Book Creation, Contracts & Architecture`
+- accepted source HEAD: `182b8e45ae7092fd2655ee61e42126af4cac1542`
+- canonical merge: `5bd6c1af5dd1b502696e359c813f8e6544919cb8`
+- final CI `32882543129`: SUCCESS.
+
+### M3 / Task 004 — ACCEPTED AND MERGED
+- PR `#7 — Model Gateway + Controlled Drafting`
+- accepted source tree: `16b724f056da5e2213b3e99dd003965573b41de0`
+- canonical merge: `1814ac7fffe9f9a6666ea59125439f32b0cff879`
+- final CI `32893389579`: SUCCESS; 30/30 pytest plus desktop/Rust/secret gates.
+
+### M4 / Task 005 — ACCEPTED AND MERGED
+- PR `#8 — Research Engine + Claim Ledger`
+- accepted HEAD: `f0967229c2f0eb7a7b089e006a9a76b8ac1aa8c9`
+- canonical merge: `c15d2f12b3edd878720d1e2e251d4665525de688`
+- final CI `32955967341`: SUCCESS; 43/43 pytest plus desktop/Rust/secret gates.
+
+### M5 / Task 006 — ACCEPTED AND MERGED
+- PR `#9 — Book Memory`
+- accepted HEAD: `1f831545dcde64cea992b2c57dedd5d16fd9671e`
+- canonical merge: `eb073659d77b57b58cb28702d95e35e891005a4d`
+- final CI `32958990695`: SUCCESS; 55/55 pytest plus desktop/Rust/secret gates.
+- FTS5 lexical memory, local exact NumPy cosine, deterministic hybrid retrieval and CURRENT/HISTORY isolation accepted.
+
+### M6 / Task 007 — ACCEPTED AND MERGED
+- PR `#10 — Editorial Workflows + Decision Inbox`
+- accepted HEAD: `8fcdd725b5c6ece2d7b9500ae87c55478e008bd4`
+- canonical M6 merge: `9cfa9b9e8966715c243410e44dbe011e363974c1`
+- final PR CI `32961531865`: SUCCESS
+  - local-core: Ruff format/check + mypy + **65/65 pytest PASS**
+  - desktop: lint + typecheck + Vitest + build + dependency audit PASS
+  - tauri-smoke: `cargo test --locked` + `cargo check --locked` PASS
+  - secret-scan: PASS
+- exact-current EditorialFinding, M1 ChangeProposal reuse, Decision Inbox, HUMAN ACCEPT/REJECT/REQUEST REVISION/WAIVE and stale gates accepted.
+- deterministic Developmental/Cross-book/Fact diagnostics accepted.
+- Decision corpus original → diagnosis → proposal → decision → final revision accepted.
+- Book Memory invalidation and Claim non-rebinding regressions accepted.
+- CI external/model calls: `0`; paid calls: `0`.
+
+## Active implementation task — M7
+
+`Task 008 — BookBench v0.1`
+
+M7 implements versioned internal evaluation against exact revisions:
+
+`exact snapshot → deterministic/semantic/judge/pairwise checks → EvaluationRun → actionable findings/report → optional explicit Editorial Inbox handoff`.
+
+Core rules:
+
+- BookBench is derived diagnostic state, never authority;
+- there is **no single magic overall book/model score**;
+- every run stores exact target revisions/hashes and check/rubric/evaluator version/config;
+- findings carry exact location/evidence/severity/confidence/recommended action;
+- deterministic signals do not masquerade as semantic truth;
+- semantic similarity does not prove contradiction/factual truth;
+- AI-prose pathology reports measured patterns/locations, never authorship probability;
+- Author Voice Fingerprint is versioned diagnostic state from explicit exact reference revisions;
+- LLM judge/pairwise reuses the existing provider-neutral Model Gateway and normal CI remains fake/mocked with zero paid calls;
+- same writer/judge configuration is explicitly non-independent;
+- private evaluation/decision datasets stay in project SQLite.
+
+## Scope guard
+
+Do not implement yet:
+
+- M8 Yandex/GigaChat/Russia-ready provider lane or provider production promotion;
+- Literary Master/export/audio handoff;
+- cloud/accounts/billing/sync;
+- bestseller prediction or one universal BookBench score;
+- automatic manuscript rewrite/authority mutation from evals;
+- hidden LLM judge authority;
+- remote vector database/ANN dependency.
+
+## Next permitted action
+
+1. Use this synchronized state/hash commit as the exact implementation baseline.
+2. Create `brain/task-008-bookbench` from exact `main` HEAD.
+3. Implement only `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
+4. Open one PR, fix objective CI/acceptance blockers, then Central Brain ACCEPT + merge M7.
+5. Only then start M8 Russia-ready/no-VPN provider lane.
+
+## Known blockers
+
+No Owner decision blocker for bounded M7. A required paid/live judge, magic global score, BookBench authority mutation, hidden same-config dependence, private dataset publication or M8 scope are stop conditions.
+
+## Operational rule
+
+`main` is accepted project-development authority. Implementation code uses bounded branches/PRs. Central Brain may make small project-control updates directly to `main` when a separate PR adds no review value.
+
+## Recovery rule
+
+If chat context disappears:
+
+1. Open repository `main`.
+2. Read README recovery order + `DESIGN_INDEX.md`.
+3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
+4. Read `BOOKBENCH_v0.1.md` and `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
+5. Inspect `origin/main` and `brain/task-008-bookbench`.
+6. Continue only M7 until Central Brain ACCEPT/merge; do not start M8 automatically.
+'''
+          Path('docs/PROJECT_STATE.md').write_text(state, encoding='utf-8')
+
+          manifest = Path('docs/DESIGN_FILE_HASHES.sha256')
+          lines = manifest.read_text(encoding='utf-8').splitlines()
+          ordered: list[str] = []
+          hashes: dict[str, str] = {}
+          for line in lines:
+              if not line.strip():
+                  continue
+              digest, path = line.split('  ', 1)
+              ordered.append(path)
+              hashes[path] = digest
+          for path in ('docs/PROJECT_STATE.md', 'docs/tasks/CODEX_TASK_008_BOOKBENCH.md'):
+              hashes[path] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+              if path not in ordered:
+                  ordered.append(path)
+          manifest.write_text(
+              ''.join(f'{hashes[path]}  {path}\n' for path in ordered),
+              encoding='utf-8',
+          )
+          PY
+      - name: Remove helper and publish canonical M7 baseline
+        run: |
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git rm .github/workflows/m7-control-sync.yml
+          git add docs/PROJECT_STATE.md docs/DESIGN_FILE_HASHES.sha256
+          git commit -m "Synchronize M7 BookBench control baseline"
+          git push origin HEAD:main
