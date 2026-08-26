@@ -55,6 +55,7 @@ class DraftRunView(BaseModel):
     input_revision_hash: str
     unit_id: str | None = None
     revision_id: str | None = None
+    revision_hash: str | None = None
     revision_status: str | None = None
     text: str | None = None
     notes: list[str] = Field(default_factory=list)
@@ -390,6 +391,7 @@ class DraftingService:
             input_revision_hash=model_request.authority_inputs[0].revision_hash,
             unit_id=unit_id,
             revision_id=revision_id,
+            revision_hash=digest,
             revision_status="DRAFT",
             text=output.text,
             notes=output.notes,
@@ -449,6 +451,7 @@ class DraftingService:
             results: list[DraftRunView] = []
             for row in rows:
                 revision_id = None
+                revision_hash = None
                 revision_status = None
                 text_value = None
                 notes: list[str] = []
@@ -456,6 +459,7 @@ class DraftingService:
                     head = authority.get_head(cast(str, row["authority_entity_id"]))
                     revision = authority.get_revision(head.revision_id)
                     revision_id = head.revision_id
+                    revision_hash = head.revision_hash
                     revision_status = head.status
                     content = cast(dict[str, Any], revision["content"])
                     text_value = cast(str | None, content.get("text"))
@@ -475,6 +479,7 @@ class DraftingService:
                         input_revision_hash=cast(str, row["input_revision_hash"]),
                         unit_id=cast(str | None, row["output_unit_id"]),
                         revision_id=revision_id,
+                        revision_hash=revision_hash,
                         revision_status=revision_status,
                         text=text_value,
                         notes=notes,
