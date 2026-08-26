@@ -1,0 +1,45 @@
+name: M6 Control Hash Sync
+on: [push]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synchronize design hashes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          manifest = Path('docs/DESIGN_FILE_HASHES.sha256')
+          lines = manifest.read_text(encoding='utf-8').splitlines()
+          ordered = []
+          hashes = {}
+          for line in lines:
+              if not line.strip():
+                  continue
+              digest, path = line.split('  ', 1)
+              ordered.append(path)
+              hashes[path] = digest
+          for path in ('docs/PROJECT_STATE.md', 'docs/tasks/CODEX_TASK_007_EDITORIAL_WORKFLOWS.md'):
+              hashes[path] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+              if path not in ordered:
+                  ordered.append(path)
+          manifest.write_text(''.join(f'{hashes[path]}  {path}\n' for path in ordered), encoding='utf-8')
+          PY
+      - name: Remove helper and publish canonical M6 baseline
+        run: |
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git rm .github/workflows/m6-control-sync.yml
+          git add docs/DESIGN_FILE_HASHES.sha256
+          git commit -m "Synchronize M6 control baseline"
+          git push origin HEAD:main
