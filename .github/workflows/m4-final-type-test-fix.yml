@@ -1,0 +1,24 @@
+name: M4 Final Type Test Fix
+on: [push]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.ref == 'refs/heads/brain/task-005-research-claim-ledger'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-005-research-claim-ledger
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python .github/scripts/m4_final_type_test_fix.py
+      - name: Commit bounded fix
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git add services/local-core/src/book_os_core/research.py services/local-core/src/book_os_core/research_adapters.py apps/desktop/src/ResearchPanel.test.tsx
+          git commit -m "fix: satisfy M4 mypy and ResearchPanel assertion"
+          git push origin HEAD:brain/task-005-research-claim-ledger
