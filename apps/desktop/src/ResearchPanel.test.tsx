@@ -195,5 +195,8 @@ it("runs Claim → Source → Evidence and makes verification state visible", as
   });
   fireEvent.click(screen.getByRole("button", { name: "Add Evidence" }));
   expect(await screen.findByText(/SUPPORTED · Evidence quality/)).toBeInTheDocument();
-  expect(screen.getByText(/SUPPORTS · Section 2 · ACTIVE/)).toBeInTheDocument();
+  const supportLabel = screen
+    .getAllByText("SUPPORTS")
+    .find((element) => element.tagName === "STRONG");
+  expect(supportLabel?.parentElement).toHaveTextContent("SUPPORTS · Section 2 · ACTIVE");
 });

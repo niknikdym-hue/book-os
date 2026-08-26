@@ -90,7 +90,12 @@ class _HttpAdapter:
         self._client = client or httpx.Client(timeout=timeout, follow_redirects=True)
         self._timeout = timeout
 
-    def _get(self, url: str, *, params: Mapping[str, object]) -> dict[str, Any]:
+    def _get(
+        self,
+        url: str,
+        *,
+        params: Mapping[str, str | int | float | bool | None],
+    ) -> dict[str, Any]:
         try:
             response = self._client.get(url, params=params, timeout=self._timeout)
             response.raise_for_status()

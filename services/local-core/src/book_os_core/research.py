@@ -201,10 +201,16 @@ class CitationCheckView(BaseModel):
     reason: str
 
 
+def _default_research_providers() -> list[
+    Literal["openalex", "crossref", "semantic_scholar"]
+]:
+    return ["openalex", "crossref", "semantic_scholar"]
+
+
 class ResearchSearchRequest(BaseModel):
     query: Annotated[str, Field(min_length=1, max_length=1000)]
     providers: list[Literal["openalex", "crossref", "semantic_scholar"]] = Field(
-        default_factory=lambda: ["openalex", "crossref", "semantic_scholar"]
+        default_factory=_default_research_providers
     )
     limit_per_provider: Annotated[int, Field(ge=1, le=10)] = 5
 
