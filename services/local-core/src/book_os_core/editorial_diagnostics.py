@@ -125,7 +125,9 @@ class EditorialDiagnostics:
             )
 
     @staticmethod
-    def _current_units(engine: Engine, book_id: str, chapter_id: str | None = None) -> list[dict[str, Any]]:
+    def _current_units(
+        engine: Engine, book_id: str, chapter_id: str | None = None
+    ) -> list[dict[str, Any]]:
         where = "mu.book_id=:book_id"
         params: dict[str, object] = {"book_id": book_id}
         if chapter_id:
@@ -178,7 +180,9 @@ class EditorialDiagnostics:
                     .one_or_none()
                 )
             if row is None or row["chapter_contract_entity_id"] is None:
-                raise ValueError("approved/current Chapter Contract is required for developmental audit")
+                raise ValueError(
+                    "approved/current Chapter Contract is required for developmental audit"
+                )
             entity_id = cast(str, row["chapter_contract_entity_id"])
             head = authority.get_head(entity_id)
             revision = authority.get_revision(head.revision_id)
@@ -276,9 +280,7 @@ class EditorialDiagnostics:
                         )
                     )
             self._finish_run(engine, run_id)
-            return EditorialRunResult(
-                run_id=run_id, role="DEVELOPMENTAL_EDITOR", findings=findings
-            )
+            return EditorialRunResult(run_id=run_id, role="DEVELOPMENTAL_EDITOR", findings=findings)
         except Exception as exc:
             if run_id is not None:
                 self._finish_run(engine, run_id, exc)
@@ -347,9 +349,7 @@ class EditorialDiagnostics:
                         )
                     )
             self._finish_run(engine, run_id)
-            return EditorialRunResult(
-                run_id=run_id, role="CROSS_BOOK_AUDITOR", findings=findings
-            )
+            return EditorialRunResult(run_id=run_id, role="CROSS_BOOK_AUDITOR", findings=findings)
         except Exception as exc:
             if run_id is not None:
                 self._finish_run(engine, run_id, exc)

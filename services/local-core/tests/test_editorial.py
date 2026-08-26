@@ -244,7 +244,10 @@ def test_m6_schema_and_finding_exact_baseline_do_not_mutate_authority(tmp_path: 
     entity_id, before = current_unit_head(tmp_path, state["book_id"], state["unit_1"])
     engine = create_database(tmp_path / "projects" / state["book_id"] / "project.sqlite")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0007"
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0007"
+        )
         tables = {
             row[0]
             for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -289,7 +292,10 @@ def test_deterministic_developmental_cross_book_and_fact_runs_only_create_findin
     developmental = diagnostics.run_developmental(state["book_id"], state["chapter_1"])
     assert developmental.role == "DEVELOPMENTAL_EDITOR"
     assert any(item.category == "REQUIRED_CLAIM_LEXICAL_GAP" for item in developmental.findings)
-    assert all("Lexical" in item.risks or "lexical" in item.diagnosis.lower() for item in developmental.findings)
+    assert all(
+        "Lexical" in item.risks or "lexical" in item.diagnosis.lower()
+        for item in developmental.findings
+    )
 
     cross_book = diagnostics.run_cross_book(state["book_id"])
     assert cross_book.role == "CROSS_BOOK_AUDITOR"
@@ -473,7 +479,9 @@ def test_stale_proposal_cannot_be_accepted(tmp_path: Path) -> None:
     winning_proposal = service.create_manuscript_proposal(
         state["book_id"],
         winning_finding.finding_id,
-        ProposalCreateRequest(proposed_text="Winning current revision.", rationale="winning candidate"),
+        ProposalCreateRequest(
+            proposed_text="Winning current revision.", rationale="winning candidate"
+        ),
     )
     service.accept(
         state["book_id"],
@@ -551,7 +559,9 @@ def test_book_memory_sync_after_accept_uses_new_current_revision_and_keeps_old_i
     memory.synchronize(state["book_id"])
 
     current = memory.lexical_search(
-        state["book_id"], "Unique accepted editorial memory phrase", object_kinds=["MANUSCRIPT_UNIT"]
+        state["book_id"],
+        "Unique accepted editorial memory phrase",
+        object_kinds=["MANUSCRIPT_UNIT"],
     )
     assert current[0].revision_id == accepted.accepted_revision_id
     assert current[0].currentness == "CURRENT"

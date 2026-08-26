@@ -387,7 +387,9 @@ class EditorialService:
                 target.revision_id != request.base_revision_id
                 or target.revision_hash != request.base_revision_hash
             ):
-                raise EditorialGateError("finding baseline must match the exact current target revision")
+                raise EditorialGateError(
+                    "finding baseline must match the exact current target revision"
+                )
             finding_id = self._create_finding_for_target(
                 engine,
                 book_id,
@@ -466,9 +468,9 @@ class EditorialService:
             engine.dispose()
 
     @staticmethod
-    def _proposal_origin(actor_kind: ActorKind) -> Literal[
-        "HUMAN_WRITTEN", "AI_ASSISTED", "SYSTEM_DERIVED"
-    ]:
+    def _proposal_origin(
+        actor_kind: ActorKind,
+    ) -> Literal["HUMAN_WRITTEN", "AI_ASSISTED", "SYSTEM_DERIVED"]:
         if actor_kind == "AI":
             return "AI_ASSISTED"
         if actor_kind == "SYSTEM":
@@ -628,9 +630,7 @@ class EditorialService:
         severity: str | None = None,
     ) -> list[InboxItem]:
         items: list[InboxItem] = []
-        for finding in self.list_findings(
-            book_id, role=role, status=status, severity=severity
-        ):
+        for finding in self.list_findings(book_id, role=role, status=status, severity=severity):
             proposals = self.list_proposals(book_id, finding.finding_id)
             latest = proposals[-1] if proposals else None
             items.append(
@@ -654,7 +654,9 @@ class EditorialService:
         reason: str,
     ) -> None:
         if actor_kind != "HUMAN" and new_state in {"RESOLVED", "WAIVED"}:
-            raise HumanApprovalRequired("material editorial finding resolution requires a human actor")
+            raise HumanApprovalRequired(
+                "material editorial finding resolution requires a human actor"
+            )
         now = utc_now()
         with engine.begin() as connection:
             prior = connection.execute(
@@ -830,7 +832,9 @@ class EditorialService:
                     ).scalar_one_or_none()
                     if existing is None:
                         raise EditorialNotFound("proposal is not linked to finding")
-                decision_proposal = proposal_id or (cast(str, linked_open[-1]) if linked_open else None)
+                decision_proposal = proposal_id or (
+                    cast(str, linked_open[-1]) if linked_open else None
+                )
                 connection.execute(
                     text(
                         "INSERT INTO decisions(decision_id,proposal_id,subject,actor,actor_kind,"
@@ -896,8 +900,7 @@ class EditorialService:
                 if proposal_ids:
                     placeholders = ",".join(f":p{index}" for index in range(len(proposal_ids)))
                     params: dict[str, object] = {
-                        f"p{index}": proposal_id
-                        for index, proposal_id in enumerate(proposal_ids)
+                        f"p{index}": proposal_id for index, proposal_id in enumerate(proposal_ids)
                     }
                     decisions = list(
                         connection.execute(

@@ -16,8 +16,7 @@ branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 
 EDITORIAL_ROLES = (
-    "'DEVELOPMENTAL_EDITOR','CROSS_BOOK_AUDITOR','FACT_CHECKER',"
-    "'LITERARY_EDITOR','STYLE_GUARDIAN'"
+    "'DEVELOPMENTAL_EDITOR','CROSS_BOOK_AUDITOR','FACT_CHECKER','LITERARY_EDITOR','STYLE_GUARDIAN'"
 )
 FINDING_STATES = "'OPEN','RESOLVED','WAIVED','SUPERSEDED'"
 FINDING_SEVERITIES = "'INFO','MINOR','MAJOR','CRITICAL'"
@@ -133,9 +132,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             f"new_state IN ({FINDING_STATES})", name="ck_editorial_finding_new_state"
         ),
-        sa.CheckConstraint(
-            f"actor_kind IN ({ACTOR_KINDS})", name="ck_editorial_state_actor_kind"
-        ),
+        sa.CheckConstraint(f"actor_kind IN ({ACTOR_KINDS})", name="ck_editorial_state_actor_kind"),
     )
     op.create_index(
         "ix_editorial_finding_state_history",
@@ -217,9 +214,13 @@ def downgrade() -> None:
         op.execute(f"DROP TRIGGER IF EXISTS {table}_no_delete")
         op.execute(f"DROP TRIGGER IF EXISTS {table}_no_update")
     op.execute("DROP TRIGGER IF EXISTS editorial_findings_immutable_content")
-    op.drop_index("ix_editorial_finding_proposals_finding", table_name="editorial_finding_proposals")
+    op.drop_index(
+        "ix_editorial_finding_proposals_finding", table_name="editorial_finding_proposals"
+    )
     op.drop_table("editorial_finding_proposals")
-    op.drop_index("ix_editorial_finding_state_history", table_name="editorial_finding_state_history")
+    op.drop_index(
+        "ix_editorial_finding_state_history", table_name="editorial_finding_state_history"
+    )
     op.drop_table("editorial_finding_state_history")
     op.drop_index("ix_editorial_findings_target", table_name="editorial_findings")
     op.drop_index("ix_editorial_findings_inbox", table_name="editorial_findings")
