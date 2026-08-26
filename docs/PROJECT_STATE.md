@@ -1,17 +1,17 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 1.4.1  
+**Version:** 1.4.2  
 **Date:** 2026-08-26  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 7 — TASK 008 RECOVERY IN PROGRESS**
+**IMPLEMENTATION MILESTONE 7 — TASK 008 RECOVERY TRANSPORT IN PROGRESS**
 
-Canonical `main` baseline at M7 start:
+Canonical `main` at this checkpoint:
 
-`b5fc8e52233b57bc976954044d430cd7a4f612e3`
+`2108da9ce333429978fdcd77df1d8cbbcf9b8f65`
 
 Active contract:
 
@@ -79,9 +79,9 @@ Goal:
 
 `exact revision snapshot → versioned BookBench evaluation → actionable dimension findings → optional explicit M6 handoff → human review`
 
-Current PR #11 is a DRAFT and is **not yet accepted**.
+PR #11 remains DRAFT and is **not accepted**.
 
-Authoritative GitHub implementation currently includes:
+Authoritative GitHub implementation at HEAD `198455286335e9a0ea5203d2497449fe282d5102` includes:
 - schema migration `0008`;
 - exact evaluation snapshots/currentness;
 - immutable EvaluationRun/EvaluationFinding persistence;
@@ -91,43 +91,73 @@ Authoritative GitHub implementation currently includes:
 - grouped report without a universal magic score;
 - M7 schema regression updates.
 
-Last authoritative GitHub CI on HEAD `198455286335e9a0ea5203d2497449fe282d5102`:
+Last authoritative GitHub CI on that HEAD:
 - workflow run `32970871777`;
 - `desktop`: PASS;
 - `tauri-smoke`: PASS;
 - `secret-scan`: PASS;
 - `local-core`: FAIL at Ruff `F401` before mypy/pytest because `BookBenchDimension` is imported but unused in `bookbench.py`.
 
-## M7 recovery state
+## M7 recovery transport
 
-A Codex execution reported a larger local follow-up commit:
+The earlier unpublished Codex commit `9b3b5a0bb3600cd1eb0ae3d29f789b816fe1b182` remains LOST and is not acceptance evidence.
 
-`9b3b5a0bb3600cd1eb0ae3d29f789b816fe1b182`
+Codex has now reconstructed a **coherent first recovery slice** from exact parent:
 
-That object was **never published to GitHub**. A later Codex workspace proved it is neither reachable nor dangling, and GitHub confirms no such commit exists in this repository. Therefore:
+`198455286335e9a0ea5203d2497449fe282d5102`
 
-- the reported local implementation is treated as LOST;
-- it is not acceptance evidence;
-- no acceptance gate may cite that local-only SHA;
-- reconstruction from the authoritative GitHub HEAD is permitted;
-- reconstruction must stay inside PR #11 and M7 scope;
-- because the Codex execution environment cannot push, recovery output must include a byte-exact transport artifact (gzip+base64 unified diff + SHA256) before it can be transferred into GitHub.
+Local reconstructed HEAD:
 
-Still required before M7 ACCEPT/MERGE:
-- remove the objective Ruff F401 blocker without weakening lint policy;
-- Author Voice Fingerprint;
-- M5-based semantic checks with exact embedding-config identity and stale-config gates;
-- bounded BookBench judge + pairwise framework through the existing M3 Model Gateway;
-- mocked OpenAI structured judge path and zero-live-call CI proof;
-- judge independence gate;
-- immutable M6-decision evaluation datasets;
+`0dca25cf1f221eb14f96b44e51eaa12d23d3eb18`
+
+This reconstructed HEAD is still **local-only** and therefore is not yet authoritative GitHub code.
+
+Recovery artifact evidence posted in PR #11 comment `5427446407`:
+- raw unified patch SHA256: `d90dfb0b98da2ac9c9bd9863a1293e9ebd6c5bf8c13d688018af4ad8a3a31a48`;
+- gzip SHA256: `6c26523ac13d2e0f0313dbe324b421529d7f28758b3c172968cac8e3e0a63f04`;
+- patch size: `34015` bytes;
+- gzip size: `9039` bytes;
+- diff stat: `8 files changed, 513 insertions(+), 31 deletions(-)`.
+
+The first recovery slice reports local PASS for:
+- Ruff format/check;
+- mypy over 21 source files;
+- pytest: `71 passed`;
+- desktop lint/typecheck;
+- desktop tests: `5 files / 6 tests passed`;
+- desktop production build;
+- `git diff --check`.
+
+The first recovery slice covers:
+- removal of the known Ruff F401 blocker;
+- versioned Author Voice Fingerprint foundations with exact revision references and diagnostic deltas;
+- typed `BOOKBENCH_JUDGE/EVALUATOR` and `BOOKBENCH_PAIRWISE/EVALUATOR` Model Gateway foundations;
+- deterministic fake judge/pairwise responses for normal CI;
+- mocked OpenAI structured-output regression path preserving `store=false`;
+- authenticated BookBench snapshot/deterministic/report/Voice Fingerprint API operations.
+
+It intentionally does **not** complete all M7 acceptance gates.
+
+Because the original base64 transport comment is larger than reliable connector retrieval, Central Brain requested the exact gzip payload be reposted as sequential <=2000-character chunks in PR #11 comment `5427671508`. Do not mutate the implementation branch until all chunks are retrieved, the gzip SHA256 matches, and the patch is transferred byte-exactly.
+
+## Still required before M7 ACCEPT/MERGE
+
+After the first recovery slice is safely transferred into GitHub:
+- M5-based semantic checks with exact embedding-config identity and stale/incompatible-config gates;
+- complete judge/pairwise persistence/execution and required dimension/rubric evidence;
+- judge independence `INDEPENDENT | SAME_CONFIG | UNKNOWN` and release-grade gate;
+- immutable M6 decision-dataset snapshots/version/hash;
 - two-configuration role/dimension scorecards;
-- explicit BookBench → M6 EditorialFinding handoff with currentness validation;
-- authenticated BookBench API;
-- native desktop BookBench workspace;
-- backup/restore through `0008`;
-- full M0–M6 regression + every Task 008 REQUIRED ACCEPTANCE gate;
+- explicit BookBench → M6 EditorialFinding handoff with exact-current validation and stale block;
+- complete authenticated API operations required by Task 008;
+- native desktop BookBench workspace and tests;
+- backup/restore migration regressions through `0008`;
+- full M0–M6 regression suite;
+- every numbered REQUIRED ACCEPTANCE item in `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`;
+- authoritative PR CI PASS including dependency audit, Rust/Tauri and secret-scan;
 - final project-state/hash synchronization.
+
+Normal CI must keep external/model/judge live calls = `0` and paid calls = `0`.
 
 ## Scope guard
 
@@ -150,21 +180,20 @@ MVP/Russia-ready cannot be declared before the applicable M7–M10 acceptance ga
 
 ## Next permitted action
 
-1. Continue only PR #11 on `brain/task-008-bookbench` from GitHub HEAD `198455286335e9a0ea5203d2497449fe282d5102`.
-2. Reconstruct the lost M7 follow-up under the exact Task 008 contract.
-3. Transfer reconstructed bytes into the actual GitHub branch; local-only commits do not count.
-4. Close every missing Task 008 acceptance item on the same PR.
-5. Run full PR CI with zero live/paid external model calls in normal CI.
-6. Central Brain reviews objective evidence.
-7. If all M7 gates pass: ACCEPT + merge PR #11.
-8. Synchronize canonical project state to M7 accepted.
-9. Immediately create and execute M8 bounded contract.
+1. Retrieve every sequential base64 transport chunk for gzip SHA256 `6c26523ac13d2e0f0313dbe324b421529d7f28758b3c172968cac8e3e0a63f04`.
+2. Reassemble/decode/decompress and verify both artifact SHA256 values.
+3. Apply the verified patch byte-exactly to PR #11 branch from parent `198455286335e9a0ea5203d2497449fe282d5102`.
+4. Run authoritative GitHub CI and review the first recovered slice.
+5. Continue reconstruction of only the remaining M7 Task 008 gates on the resulting GitHub HEAD.
+6. ACCEPT + merge PR #11 only after all M7 gates and CI pass.
+7. Synchronize canonical project state to M7 accepted.
+8. Immediately create and execute M8 bounded contract.
 
 ## Owner-decision blockers
 
 None for completing the bounded M7 contract as currently accepted.
 
-The current recovery problem is an execution/delivery defect, not an Owner product decision.
+The current recovery/transport problem is an execution-delivery defect, not an Owner product decision.
 
 Stop and request Owner decision only if implementation would weaken human authority, expose private manuscript/evaluation data, require material recurring infrastructure cost, weaken the Russia/no-VPN requirement, or lower a critical model-quality floor.
 
@@ -181,12 +210,18 @@ If chat context disappears:
 3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
 4. Read `BOOKBENCH_v0.1.md` and `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
 5. Inspect PR #11 / `brain/task-008-bookbench`.
-6. Treat `198455286335e9a0ea5203d2497449fe282d5102` as the current authoritative GitHub M7 implementation until a newer PR HEAD is actually published.
-7. Do not treat lost local Codex commit `9b3b5a0b...` as evidence.
+6. Treat GitHub PR HEAD `198455286335e9a0ea5203d2497449fe282d5102` as authoritative until the verified recovery patch is actually transferred.
+7. Do not treat local-only SHAs as evidence.
 8. Continue only M7 until objective ACCEPT/merge.
 9. Then follow the fixed launch path M8 → M9 → M10 → GO/NO-GO.
 
 ## Change log
+
+### 1.4.2 — 2026-08-26
+- Recorded first reconstructed M7 recovery slice `0dca25cf...` as local-only, not authoritative.
+- Recorded byte-exact patch hashes, size, diff stat and local test evidence.
+- Recorded which M7 gates the first slice covers and which remain.
+- Added chunked transport recovery step before any GitHub branch mutation.
 
 ### 1.4.1 — 2026-08-26
 - Recorded actual authoritative PR #11 HEAD `198455286335e9a0ea5203d2497449fe282d5102`.
