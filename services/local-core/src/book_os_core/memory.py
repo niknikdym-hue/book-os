@@ -286,16 +286,16 @@ class BookMemoryService:
             )
 
         for row in chapters:
-            entity_id = cast(str | None, row["chapter_contract_entity_id"])
-            if not entity_id:
+            chapter_contract_entity_id = cast(str | None, row["chapter_contract_entity_id"])
+            if not chapter_contract_entity_id:
                 continue
-            head = authority.get_head(entity_id)
+            head = authority.get_head(chapter_contract_entity_id)
             revision = authority.get_revision(head.revision_id)
             payload = cast(dict[str, Any], revision["content"])
             documents.append(
                 _CanonicalDocument(
                     object_kind="CHAPTER_CONTRACT",
-                    object_id=entity_id,
+                    object_id=chapter_contract_entity_id,
                     chapter_id=cast(str, row["chapter_id"]),
                     revision_id=head.revision_id,
                     revision_hash=head.revision_hash,
