@@ -63,7 +63,9 @@ class ClaimCreateRequest(BaseModel):
     normalized_text: NonEmpty
     claim_type: ClaimType
     materiality: Materiality = "HIGH"
-    required_evidence_level: Annotated[str, Field(min_length=1, max_length=128)] = "TRACEABLE_SOURCE"
+    required_evidence_level: Annotated[str, Field(min_length=1, max_length=128)] = (
+        "TRACEABLE_SOURCE"
+    )
 
     @field_validator("normalized_text", "required_evidence_level")
     @classmethod
@@ -326,9 +328,7 @@ class ResearchService:
         finally:
             engine.dispose()
 
-    def update_claim(
-        self, book_id: str, claim_id: str, request: ClaimUpdateRequest
-    ) -> ClaimView:
+    def update_claim(self, book_id: str, claim_id: str, request: ClaimUpdateRequest) -> ClaimView:
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
@@ -377,7 +377,9 @@ class ResearchService:
                     },
                 )
                 connection.execute(
-                    text("UPDATE evidence SET status='SUPERSEDED' WHERE claim_id=:claim_id AND status='ACTIVE'"),
+                    text(
+                        "UPDATE evidence SET status='SUPERSEDED' WHERE claim_id=:claim_id AND status='ACTIVE'"
+                    ),
                     {"claim_id": claim_id},
                 )
                 if prior_state != "UNREVIEWED":
@@ -534,7 +536,9 @@ class ResearchService:
                             "abstract": candidate.abstract,
                             "citation_count": candidate.citation_count,
                             "primary_secondary": request.primary_secondary,
-                            "reliability_json": json.dumps(reliability, ensure_ascii=False, sort_keys=True),
+                            "reliability_json": json.dumps(
+                                reliability, ensure_ascii=False, sort_keys=True
+                            ),
                             "access_status": access_status,
                             "created_at": now,
                             "updated_at": now,
@@ -580,7 +584,11 @@ class ResearchService:
                     )
                 identifiers = [(candidate.provider, candidate.external_id, candidate.provider_url)]
                 for key, value in sorted(candidate.raw_identifiers.items()):
-                    provider_key = key if key in {"openalex", "crossref", "semantic_scholar"} else f"{candidate.provider}:{key}"
+                    provider_key = (
+                        key
+                        if key in {"openalex", "crossref", "semantic_scholar"}
+                        else f"{candidate.provider}:{key}"
+                    )
                     identifiers.append((provider_key, value, candidate.provider_url))
                 for provider, external_id, provider_url in identifiers:
                     if not provider or not external_id:
@@ -611,7 +619,9 @@ class ResearchService:
             now = utc_now()
             with engine.begin() as connection:
                 result = connection.execute(
-                    text("UPDATE sources SET access_status=:status,updated_at=:updated_at WHERE source_id=:source_id"),
+                    text(
+                        "UPDATE sources SET access_status=:status,updated_at=:updated_at WHERE source_id=:source_id"
+                    ),
                     {"status": request.access_status, "updated_at": now, "source_id": source_id},
                 )
                 if result.rowcount != 1:
@@ -646,18 +656,24 @@ class ResearchService:
                     .mappings()
                     .one_or_none()
                 )
-                identifiers = connection.execute(
-                    text(
-                        "SELECT provider,external_id FROM source_identifiers "
-                        "WHERE source_id=:source_id ORDER BY provider,external_id"
-                    ),
-                    {"source_id": source_id},
-                ).mappings().all()
+                identifiers = (
+                    connection.execute(
+                        text(
+                            "SELECT provider,external_id FROM source_identifiers "
+                            "WHERE source_id=:source_id ORDER BY provider,external_id"
+                        ),
+                        {"source_id": source_id},
+                    )
+                    .mappings()
+                    .all()
+                )
             if row is None:
                 raise ResearchNotFound("source not found")
             grouped: dict[str, list[str]] = {}
             for item in identifiers:
-                grouped.setdefault(cast(str, item["provider"]), []).append(cast(str, item["external_id"]))
+                grouped.setdefault(cast(str, item["provider"]), []).append(
+                    cast(str, item["external_id"])
+                )
             values = dict(row)
             values["authors"] = json.loads(cast(str, values.pop("authors_json")))
             values["identifiers"] = grouped
@@ -753,14 +769,18 @@ class ResearchService:
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
-                rows = connection.execute(
-                    text(
-                        "SELECT e.* FROM evidence e JOIN claims c ON c.claim_id=e.claim_id "
-                        "WHERE c.book_id=:book_id AND e.claim_id=:claim_id "
-                        "ORDER BY e.created_at,e.evidence_id"
-                    ),
-                    {"book_id": book_id, "claim_id": claim_id},
-                ).mappings().all()
+                rows = (
+                    connection.execute(
+                        text(
+                            "SELECT e.* FROM evidence e JOIN claims c ON c.claim_id=e.claim_id "
+                            "WHERE c.book_id=:book_id AND e.claim_id=:claim_id "
+                            "ORDER BY e.created_at,e.evidence_id"
+                        ),
+                        {"book_id": book_id, "claim_id": claim_id},
+                    )
+                    .mappings()
+                    .all()
+                )
             return [EvidenceView(**dict(row)) for row in rows]
         finally:
             engine.dispose()
@@ -780,14 +800,18 @@ class ResearchService:
                     .mappings()
                     .one_or_none()
                 )
-                evidence = connection.execute(
-                    text(
-                        "SELECT e.relationship,e.limitations,s.access_status FROM evidence e "
-                        "JOIN sources s ON s.source_id=e.source_id "
-                        "WHERE e.claim_id=:claim_id AND e.status='ACTIVE'"
-                    ),
-                    {"claim_id": claim_id},
-                ).mappings().all()
+                evidence = (
+                    connection.execute(
+                        text(
+                            "SELECT e.relationship,e.limitations,s.access_status FROM evidence e "
+                            "JOIN sources s ON s.source_id=e.source_id "
+                            "WHERE e.claim_id=:claim_id AND e.status='ACTIVE'"
+                        ),
+                        {"claim_id": claim_id},
+                    )
+                    .mappings()
+                    .all()
+                )
             if claim is None:
                 raise ResearchNotFound("claim not found")
             if claim["verification_state"] == "REJECTED":
@@ -840,14 +864,14 @@ class ResearchService:
         finally:
             engine.dispose()
 
-    def review_claim(
-        self, book_id: str, claim_id: str, request: ClaimReviewRequest
-    ) -> ClaimView:
+    def review_claim(self, book_id: str, claim_id: str, request: ClaimReviewRequest) -> ClaimView:
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
                 prior_state = connection.execute(
-                    text("SELECT verification_state FROM claims WHERE book_id=:book_id AND claim_id=:claim_id"),
+                    text(
+                        "SELECT verification_state FROM claims WHERE book_id=:book_id AND claim_id=:claim_id"
+                    ),
                     {"book_id": book_id, "claim_id": claim_id},
                 ).scalar_one_or_none()
             if prior_state is None:

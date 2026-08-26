@@ -136,7 +136,8 @@ def candidate(
         authors=["A. Researcher"],
         publication_year=2024,
         doi=doi,
-        canonical_url=url or (f"https://doi.org/{doi}" if doi else f"https://example.org/{external_id}"),
+        canonical_url=url
+        or (f"https://doi.org/{doi}" if doi else f"https://example.org/{external_id}"),
         container_title="Evidence Journal",
         abstract=abstract,
         provider_url=f"https://provider.test/{external_id}",
@@ -187,9 +188,12 @@ def test_m4_schema_and_claim_attach_to_exact_current_draft(tmp_path: Path) -> No
 
     engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
     with engine.connect() as connection:
-        assert connection.execute(
-            text("SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1")
-        ).scalar_one() == "0005"
+        assert (
+            connection.execute(
+                text("SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1")
+            ).scalar_one()
+            == "0005"
+        )
         history = connection.execute(
             text("SELECT new_state,actor_kind FROM claim_state_history WHERE claim_id=:claim_id"),
             {"claim_id": claim.claim_id},
@@ -219,7 +223,9 @@ def test_same_doi_deduplicates_across_providers_but_title_alone_does_not(tmp_pat
     )
     second = service.import_source(
         book_id,
-        SourceImportRequest(candidate=candidate("crossref", "10.1111/same.1", doi="10.1111/same.1")),
+        SourceImportRequest(
+            candidate=candidate("crossref", "10.1111/same.1", doi="10.1111/same.1")
+        ),
     )
     assert first.source_id == second.source_id
     merged = service.get_source(book_id, first.source_id)
@@ -281,7 +287,9 @@ def test_candidate_or_metadata_source_never_auto_supports_claim(tmp_path: Path) 
     assert service.get_claim(book_id, claim.claim_id).verification_state == "UNREVIEWED"
 
 
-def test_explicit_source_inspection_supports_and_claim_edit_invalidates_old_evidence(tmp_path: Path) -> None:
+def test_explicit_source_inspection_supports_and_claim_edit_invalidates_old_evidence(
+    tmp_path: Path,
+) -> None:
     book_id, chapter_id, unit_id, revision_id, revision_hash = ready_draft(tmp_path)
     service = make_service(tmp_path)
     claim = create_claim(service, book_id, chapter_id, unit_id, revision_id, revision_hash)

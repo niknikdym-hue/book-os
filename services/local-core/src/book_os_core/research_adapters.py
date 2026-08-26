@@ -107,7 +107,9 @@ class OpenAlexAdapter(_HttpAdapter):
     endpoint = "https://api.openalex.org/works"
 
     def search(self, query: str, *, limit: int = 5) -> list[ResearchCandidate]:
-        payload = self._get(self.endpoint, params={"search": query, "per-page": max(1, min(limit, 25))})
+        payload = self._get(
+            self.endpoint, params={"search": query, "per-page": max(1, min(limit, 25))}
+        )
         rows = payload.get("results")
         if not isinstance(rows, list):
             return []
@@ -147,7 +149,9 @@ class OpenAlexAdapter(_HttpAdapter):
                     publication_date=_text(raw.get("publication_date")),
                     publication_year=_year(raw.get("publication_year")),
                     doi=doi,
-                    canonical_url=normalize_url(landing or (f"https://doi.org/{doi}" if doi else external_id)),
+                    canonical_url=normalize_url(
+                        landing or (f"https://doi.org/{doi}" if doi else external_id)
+                    ),
                     container_title=container,
                     source_type=_text(raw.get("type")) or "scholarly-work",
                     citation_count=_year(raw.get("cited_by_count")),
@@ -211,7 +215,9 @@ class CrossrefAdapter(_HttpAdapter):
                 if isinstance(container_value, list) and container_value
                 else None
             )
-            date_value = raw.get("published-print") or raw.get("published-online") or raw.get("issued")
+            date_value = (
+                raw.get("published-print") or raw.get("published-online") or raw.get("issued")
+            )
             year: int | None = None
             if isinstance(date_value, dict):
                 parts = date_value.get("date-parts")
@@ -225,7 +231,9 @@ class CrossrefAdapter(_HttpAdapter):
                     authors=authors,
                     publication_year=year,
                     doi=doi,
-                    canonical_url=normalize_url(_text(raw.get("URL")) or (f"https://doi.org/{doi}" if doi else None)),
+                    canonical_url=normalize_url(
+                        _text(raw.get("URL")) or (f"https://doi.org/{doi}" if doi else None)
+                    ),
                     container_title=container,
                     source_type=_text(raw.get("type")) or "scholarly-work",
                     citation_count=_year(raw.get("is-referenced-by-count")),
@@ -248,7 +256,9 @@ class SemanticScholarAdapter(_HttpAdapter):
         api_key: str | None = None,
     ) -> None:
         headers = {"x-api-key": api_key} if api_key else None
-        owned_client = client or httpx.Client(timeout=timeout, follow_redirects=True, headers=headers)
+        owned_client = client or httpx.Client(
+            timeout=timeout, follow_redirects=True, headers=headers
+        )
         super().__init__(client=owned_client, timeout=timeout)
 
     def search(self, query: str, *, limit: int = 5) -> list[ResearchCandidate]:
@@ -302,7 +312,9 @@ class SemanticScholarAdapter(_HttpAdapter):
                     publication_date=_text(raw.get("publicationDate")),
                     publication_year=_year(raw.get("year")),
                     doi=doi,
-                    canonical_url=normalize_url(_text(raw.get("url")) or (f"https://doi.org/{doi}" if doi else None)),
+                    canonical_url=normalize_url(
+                        _text(raw.get("url")) or (f"https://doi.org/{doi}" if doi else None)
+                    ),
                     container_title=_text(raw.get("venue")),
                     source_type=source_type,
                     abstract=_text(raw.get("abstract")),

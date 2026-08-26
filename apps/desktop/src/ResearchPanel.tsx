@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
 import type { DraftRunView } from "./draftingTypes";
 import type {
@@ -63,19 +63,22 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
     [claims, selectedClaimId],
   );
 
-  async function reloadClaims(draft: DraftRunView) {
-    if (!chapter || !draft.unit_id) return;
-    const items = await api<ClaimView[]>(
-      "GET",
-      `/api/projects/${project.book_id}/claims?chapter_id=${encodeURIComponent(chapter.chapter_id)}&unit_id=${encodeURIComponent(draft.unit_id)}`,
-    );
-    setClaims(items);
-    setSelectedClaimId((current) =>
-      current && items.some((item) => item.claim_id === current)
-        ? current
-        : (items[0]?.claim_id ?? null),
-    );
-  }
+  const reloadClaims = useCallback(
+    async (draft: DraftRunView) => {
+      if (!chapter || !draft.unit_id) return;
+      const items = await api<ClaimView[]>(
+        "GET",
+        `/api/projects/${project.book_id}/claims?chapter_id=${encodeURIComponent(chapter.chapter_id)}&unit_id=${encodeURIComponent(draft.unit_id)}`,
+      );
+      setClaims(items);
+      setSelectedClaimId((current) =>
+        current && items.some((item) => item.claim_id === current)
+          ? current
+          : (items[0]?.claim_id ?? null),
+      );
+    },
+    [api, chapter, project.book_id],
+  );
 
   useEffect(() => {
     setDrafts([]);
@@ -104,7 +107,7 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
         if (draft) await reloadClaims(draft);
       })
       .catch((reason: unknown) => setError(String(reason)));
-  }, [api, chapter, project.book_id]);
+  }, [api, chapter, project.book_id, reloadClaims]);
 
   useEffect(() => {
     setEvidence([]);
