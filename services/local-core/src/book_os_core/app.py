@@ -436,9 +436,9 @@ def create_app(
         payload: MemoryRebuildRequest,
         service: BookMemoryService = Depends(memory_service),
     ) -> dict[str, object]:
-        return service.rebuild(
-            book_id, provider=payload.provider, model=payload.model
-        ).model_dump(mode="json")
+        return service.rebuild(book_id, provider=payload.provider, model=payload.model).model_dump(
+            mode="json"
+        )
 
     @app.post("/api/projects/{book_id}/memory/search")
     def memory_search(
