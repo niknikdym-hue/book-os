@@ -1,0 +1,65 @@
+name: M6 Format Schema
+on: [push]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.ref == 'refs/heads/brain/task-007-editorial-workflows'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-007-editorial-workflows
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff==0.12.11
+      - name: Format M6 files and advance current-schema expectations
+        run: |
+          ruff format \
+            services/local-core/alembic/versions/0007_m6_editorial_workflows.py \
+            services/local-core/src/book_os_core/editorial.py \
+            services/local-core/src/book_os_core/editorial_diagnostics.py \
+            services/local-core/tests/test_editorial.py
+          python - <<'PY'
+          from pathlib import Path
+
+          backup = Path('services/local-core/src/book_os_core/backup.py')
+          text = backup.read_text(encoding='utf-8')
+          old = 'SUPPORTED_ALEMBIC_REVISION = "0006"'
+          if old not in text:
+              raise SystemExit('backup supported schema 0006 not found')
+          backup.write_text(text.replace(old, 'SUPPORTED_ALEMBIC_REVISION = "0007"', 1), encoding='utf-8')
+
+          for path in (
+              'services/local-core/tests/test_authority.py',
+              'services/local-core/tests/test_backup_compat.py',
+              'services/local-core/tests/test_core.py',
+              'services/local-core/tests/test_projects.py',
+              'services/local-core/tests/test_research.py',
+              'services/local-core/tests/test_memory.py',
+          ):
+              file = Path(path)
+              source = file.read_text(encoding='utf-8')
+              source = source.replace('== "0006"', '== "0007"')
+              source = source.replace('== ("0006",)', '== ("0007",)')
+              file.write_text(source, encoding='utf-8')
+
+          core = Path('services/local-core/tests/test_core.py')
+          source = core.read_text(encoding='utf-8')
+          if '            "0006",\n        }' in source:
+              source = source.replace(
+                  '            "0006",\n        }',
+                  '            "0006",\n            "0007",\n        }',
+                  1,
+              )
+          core.write_text(source, encoding='utf-8')
+          PY
+      - name: Remove helper and commit bounded fix
+        run: |
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git rm .github/workflows/m6-format-schema.yml
+          git add services/local-core/alembic/versions/0007_m6_editorial_workflows.py services/local-core/src/book_os_core/editorial.py services/local-core/src/book_os_core/editorial_diagnostics.py services/local-core/src/book_os_core/backup.py services/local-core/tests/test_editorial.py services/local-core/tests/test_authority.py services/local-core/tests/test_backup_compat.py services/local-core/tests/test_core.py services/local-core/tests/test_projects.py services/local-core/tests/test_research.py services/local-core/tests/test_memory.py
+          git commit -m "style: format M6 core and advance schema regressions"
+          git push origin HEAD:brain/task-007-editorial-workflows
