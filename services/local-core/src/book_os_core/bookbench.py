@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine
 
 from .authority import AuthorityService, new_ulid
 from .authority_types import utc_now
-from .bookbench_registry import BookBenchDimension, CheckSpec, get_check, registry_hash
+from .bookbench_registry import CheckSpec, get_check, registry_hash
 from .db import create_database
 
 SnapshotScope = Literal["MANUSCRIPT_UNIT", "CHAPTER", "BOOK"]
@@ -156,6 +156,29 @@ class BookBenchReport(BaseModel):
     dimensions: list[DimensionReport]
     blocking_dimensions: list[str]
     generated_at: str
+
+
+class VoiceFingerprintView(BaseModel):
+    fingerprint_id: str
+    book_id: str
+    name: str
+    extractor_id: str
+    extractor_version: str
+    extractor_hash: str
+    reference_snapshot_id: str
+    reference_revisions: list[dict[str, str]]
+    features: dict[str, Any]
+    fingerprint_hash: str
+    created_at: str
+
+
+class VoiceComparisonView(BaseModel):
+    fingerprint_id: str
+    target_snapshot_id: str
+    target_revisions: list[dict[str, str]]
+    feature_deltas: dict[str, float]
+    target_features: dict[str, Any]
+    diagnostic_only: bool = True
 
 
 @dataclass(frozen=True)
@@ -414,24 +437,24 @@ class BookBenchService:
             ordinal += 1
 
         for raw_row in claims:
-            row = dict(raw_row)
+            claim_row = dict(raw_row)
             targets.append(
                 SnapshotTargetView(
                     ordinal=ordinal,
                     target_kind="CLAIM",
-                    target_id=cast(str, row["claim_id"]),
-                    chapter_id=cast(str, row["chapter_id"]),
-                    unit_id=cast(str, row["unit_id"]),
-                    revision_id=cast(str, row["manuscript_revision_id"]),
-                    revision_hash=cast(str, row["manuscript_revision_hash"]),
-                    content_hash=self._claim_content_hash(row),
-                    source_status=cast(str, row["verification_state"]),
-                    text=cast(str, row["normalized_text"]),
+                    target_id=cast(str, claim_row["claim_id"]),
+                    chapter_id=cast(str, claim_row["chapter_id"]),
+                    unit_id=cast(str, claim_row["unit_id"]),
+                    revision_id=cast(str, claim_row["manuscript_revision_id"]),
+                    revision_hash=cast(str, claim_row["manuscript_revision_hash"]),
+                    content_hash=self._claim_content_hash(claim_row),
+                    source_status=cast(str, claim_row["verification_state"]),
+                    text=cast(str, claim_row["normalized_text"]),
                     metadata={
-                        "claim_type": row["claim_type"],
-                        "materiality": row["materiality"],
-                        "required_evidence_level": row["required_evidence_level"],
-                        "updated_at": row["updated_at"],
+                        "claim_type": claim_row["claim_type"],
+                        "materiality": claim_row["materiality"],
+                        "required_evidence_level": claim_row["required_evidence_level"],
+                        "updated_at": claim_row["updated_at"],
                     },
                 )
             )
@@ -918,9 +941,9 @@ class BookBenchService:
                     )
                     start = index + len(phrase)
             for sentence in _sentences(unit.text):
-                start = _first_words(sentence, 4)
-                if start:
-                    repeated_starts[start] += 1
+                opening = _first_words(sentence, 4)
+                if opening:
+                    repeated_starts[opening] += 1
         repeated = {key: count for key, count in repeated_starts.items() if count >= 3}
         if repeated and units:
             findings.append(
@@ -1297,3 +1320,178 @@ class BookBenchService:
             )
         finally:
             engine.dispose()
+
+    VOICE_EXTRACTOR_ID = "author-voice-fingerprint"
+    VOICE_EXTRACTOR_VERSION = "1.0.0"
+
+    @classmethod
+    def _voice_extractor_hash(cls) -> str:
+        return _sha256(
+            {
+                "id": cls.VOICE_EXTRACTOR_ID,
+                "version": cls.VOICE_EXTRACTOR_VERSION,
+                "features": [
+                    "sentence_length",
+                    "paragraph_length",
+                    "punctuation",
+                    "sentence_starts",
+                    "first_person",
+                    "questions",
+                    "concrete_numbers",
+                    "transitions",
+                ],
+            }
+        )
+
+    @staticmethod
+    def _voice_features(targets: list[SnapshotTargetView]) -> dict[str, Any]:
+        texts = [target.text for target in targets]
+        joined = "\n\n".join(texts)
+        sentences = [sentence for value in texts for sentence in _sentences(value)]
+        paragraphs = [paragraph for value in texts for paragraph in _paragraphs(value)]
+        tokens = _tokens(joined)
+        sentence_lengths = [len(_tokens(sentence)) for sentence in sentences]
+        paragraph_lengths = [len(_tokens(paragraph)) for paragraph in paragraphs]
+        first_person = sum(
+            1 for token in tokens if token in {"я", "мы", "мой", "моя", "наш", "наша"}
+        )
+        starts = Counter(_first_words(sentence, 1) for sentence in sentences if sentence)
+        transitions = {
+            phrase: joined.casefold().count(phrase)
+            for phrase in _GENERIC_TRANSITIONS
+            if joined.casefold().count(phrase)
+        }
+        return {
+            "sentence_count": len(sentences),
+            "sentence_length_mean": _mean(sentence_lengths),
+            "sentence_length_p95": _p95(sentence_lengths),
+            "paragraph_count": len(paragraphs),
+            "paragraph_length_mean": _mean(paragraph_lengths),
+            "paragraph_length_p95": _p95(paragraph_lengths),
+            "punctuation_per_1000_tokens": {
+                mark: joined.count(mark) * 1000 / max(len(tokens), 1) for mark in ",;:—!?"
+            },
+            "common_sentence_starts": dict(starts.most_common(10)),
+            "first_person_rate": first_person / max(len(tokens), 1),
+            "rhetorical_question_rate": joined.count("?") / max(len(sentences), 1),
+            "concrete_number_density": len(re.findall(r"\b\d+(?:[.,]\d+)?%?\b", joined))
+            / max(len(tokens), 1),
+            "transition_frequencies": transitions,
+            "construction_metadata": {
+                "blacklist": list(_GENERIC_TRANSITIONS),
+                "tolerance": "diagnostic occurrences only; human review required",
+            },
+        }
+
+    def create_voice_fingerprint(
+        self, book_id: str, snapshot_id: str, *, name: str
+    ) -> VoiceFingerprintView:
+        snapshot = self.get_snapshot(book_id, snapshot_id)
+        references = self._manuscript_targets(snapshot)
+        if not references:
+            raise BookBenchGateError("voice fingerprint requires exact manuscript revisions")
+        features = self._voice_features(references)
+        fingerprint_hash = _sha256(
+            {
+                "extractor_hash": self._voice_extractor_hash(),
+                "references": [[target.revision_id, target.revision_hash] for target in references],
+                "features": features,
+            }
+        )
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                existing = connection.execute(
+                    text(
+                        "SELECT fingerprint_id FROM voice_fingerprints WHERE book_id=:book_id AND fingerprint_hash=:fingerprint_hash"
+                    ),
+                    {"book_id": book_id, "fingerprint_hash": fingerprint_hash},
+                ).scalar_one_or_none()
+            if existing is None:
+                fingerprint_id = new_ulid()
+                with engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            "INSERT INTO voice_fingerprints(fingerprint_id,book_id,name,extractor_id,extractor_version,extractor_hash,reference_snapshot_id,features_json,fingerprint_hash,created_at) VALUES (:fingerprint_id,:book_id,:name,:extractor_id,:extractor_version,:extractor_hash,:reference_snapshot_id,:features_json,:fingerprint_hash,:created_at)"
+                        ),
+                        {
+                            "fingerprint_id": fingerprint_id,
+                            "book_id": book_id,
+                            "name": name,
+                            "extractor_id": self.VOICE_EXTRACTOR_ID,
+                            "extractor_version": self.VOICE_EXTRACTOR_VERSION,
+                            "extractor_hash": self._voice_extractor_hash(),
+                            "reference_snapshot_id": snapshot_id,
+                            "features_json": _canonical_json(features),
+                            "fingerprint_hash": fingerprint_hash,
+                            "created_at": utc_now(),
+                        },
+                    )
+            else:
+                fingerprint_id = cast(str, existing)
+            return self.get_voice_fingerprint(book_id, fingerprint_id)
+        finally:
+            engine.dispose()
+
+    def get_voice_fingerprint(self, book_id: str, fingerprint_id: str) -> VoiceFingerprintView:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        text(
+                            "SELECT * FROM voice_fingerprints WHERE book_id=:book_id AND fingerprint_id=:fingerprint_id"
+                        ),
+                        {"book_id": book_id, "fingerprint_id": fingerprint_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+            if row is None:
+                raise BookBenchNotFound("voice fingerprint not found")
+            snapshot = self.get_snapshot(book_id, cast(str, row["reference_snapshot_id"]))
+            references = self._manuscript_targets(snapshot)
+            return VoiceFingerprintView(
+                fingerprint_id=fingerprint_id,
+                book_id=book_id,
+                name=cast(str, row["name"]),
+                extractor_id=cast(str, row["extractor_id"]),
+                extractor_version=cast(str, row["extractor_version"]),
+                extractor_hash=cast(str, row["extractor_hash"]),
+                reference_snapshot_id=snapshot.snapshot_id,
+                reference_revisions=[
+                    {"revision_id": item.revision_id, "revision_hash": item.revision_hash}
+                    for item in references
+                ],
+                features=json.loads(cast(str, row["features_json"])),
+                fingerprint_hash=cast(str, row["fingerprint_hash"]),
+                created_at=cast(str, row["created_at"]),
+            )
+        finally:
+            engine.dispose()
+
+    def compare_voice(
+        self, book_id: str, fingerprint_id: str, target_snapshot_id: str
+    ) -> VoiceComparisonView:
+        fingerprint = self.get_voice_fingerprint(book_id, fingerprint_id)
+        target = self.get_snapshot(book_id, target_snapshot_id)
+        targets = self._manuscript_targets(target)
+        features = self._voice_features(targets)
+        numeric = (
+            "sentence_length_mean",
+            "paragraph_length_mean",
+            "first_person_rate",
+            "rhetorical_question_rate",
+            "concrete_number_density",
+        )
+        deltas = {key: float(features[key]) - float(fingerprint.features[key]) for key in numeric}
+        return VoiceComparisonView(
+            fingerprint_id=fingerprint_id,
+            target_snapshot_id=target_snapshot_id,
+            target_revisions=[
+                {"revision_id": item.revision_id, "revision_hash": item.revision_hash}
+                for item in targets
+            ],
+            feature_deltas=deltas,
+            target_features=features,
+        )

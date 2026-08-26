@@ -81,7 +81,7 @@ Goal:
 
 Current PR #11 is a DRAFT and is **not yet accepted**.
 
-Observed first implementation slice already includes:
+Observed recovery implementation includes:
 - schema migration `0008`;
 - exact evaluation snapshots/currentness;
 - immutable EvaluationRun/EvaluationFinding persistence;
@@ -89,18 +89,20 @@ Observed first implementation slice already includes:
 - repetition/evidence/statistical checks;
 - initial deterministic AI-prose pathology signals;
 - grouped report without a universal magic score;
+- versioned Author Voice Fingerprints from explicitly selected exact revisions and diagnostic deltas;
+- bounded typed `BOOKBENCH_JUDGE/EVALUATOR` and `BOOKBENCH_PAIRWISE/EVALUATOR` Model Gateway tasks;
+- versioned injection-safe judge/pairwise prompts, deterministic fake outputs, and a mocked
+  OpenAI structured judge regression that asserts `store=false`;
+- authenticated snapshot, deterministic report, and Voice Fingerprint API operations;
 - M7 schema regression updates.
 
 Still required before M7 ACCEPT/MERGE:
-- Author Voice Fingerprint;
 - M5-based semantic checks with exact embedding-config identity and stale-config gates;
-- bounded BookBench judge + pairwise framework through the existing M3 Model Gateway;
-- mocked OpenAI structured judge path and zero-live-call CI proof;
 - judge independence gate;
 - immutable M6-decision evaluation datasets;
 - two-configuration role/dimension scorecards;
 - explicit BookBench → M6 EditorialFinding handoff with currentness validation;
-- authenticated BookBench API;
+- remaining semantic/judge/pairwise/dataset/scorecard/handoff BookBench API operations;
 - native desktop BookBench workspace;
 - backup/restore through `0008`;
 - full M0–M6 regression + every Task 008 REQUIRED ACCEPTANCE gate;

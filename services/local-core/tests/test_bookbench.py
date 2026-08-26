@@ -255,6 +255,33 @@ def test_m7_schema_snapshot_exactness_and_currentness(tmp_path: Path) -> None:
     assert old.snapshot_hash == snapshot.snapshot_hash
 
 
+def test_voice_fingerprint_uses_exact_references_and_is_diagnostic(tmp_path: Path) -> None:
+    state = ready_book(tmp_path)
+    service = BookBenchService(tmp_path)
+    reference = service.create_snapshot(state["book_id"], scope="BOOK")
+    fingerprint = service.create_voice_fingerprint(
+        state["book_id"], reference.snapshot_id, name="Explicit synthetic references"
+    )
+    assert fingerprint.extractor_version == "1.0.0"
+    assert fingerprint.reference_revisions
+    assert fingerprint.reference_revisions[0]["revision_hash"]
+    assert "rhetorical_question_rate" in fingerprint.features
+
+    comparison = service.compare_voice(
+        state["book_id"], fingerprint.fingerprint_id, reference.snapshot_id
+    )
+    assert comparison.diagnostic_only is True
+    assert set(comparison.feature_deltas) == {
+        "sentence_length_mean",
+        "paragraph_length_mean",
+        "first_person_rate",
+        "rhetorical_question_rate",
+        "concrete_number_density",
+    }
+    assert all(delta == 0 for delta in comparison.feature_deltas.values())
+    assert comparison.target_revisions == fingerprint.reference_revisions
+
+
 def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(
     tmp_path: Path,
 ) -> None:
