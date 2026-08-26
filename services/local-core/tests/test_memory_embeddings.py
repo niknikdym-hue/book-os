@@ -28,9 +28,9 @@ def test_fake_embeddings_are_deterministic_and_mapping_can_prove_paraphrase() ->
 
     assert first.vectors == second.vectors
     assert first.vectors[0] == [1.0, 0.0, 0.0]
-    assert gateway.embed(
-        ["semantic paraphrase"], provider="fake", model="memory-test"
-    ).vectors[0] == [0.99, 0.01, 0.0]
+    assert gateway.embed(["semantic paraphrase"], provider="fake", model="memory-test").vectors[
+        0
+    ] == [0.99, 0.01, 0.0]
     assert adapter.calls
 
 

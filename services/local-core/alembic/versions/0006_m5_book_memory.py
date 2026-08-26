@@ -37,9 +37,7 @@ def upgrade() -> None:
             "object_kind IN ('MANUSCRIPT_UNIT','BOOK_CONTRACT','CHAPTER_CONTRACT','CLAIM')",
             name="ck_memory_object_kind",
         ),
-        sa.CheckConstraint(
-            "currentness IN ('CURRENT','HISTORY')", name="ck_memory_currentness"
-        ),
+        sa.CheckConstraint("currentness IN ('CURRENT','HISTORY')", name="ck_memory_currentness"),
         sa.UniqueConstraint(
             "book_id",
             "object_kind",

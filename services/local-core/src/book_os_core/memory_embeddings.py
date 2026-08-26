@@ -64,7 +64,9 @@ class EmbeddingGateway:
         try:
             adapter = self._adapters[provider]
         except KeyError as exc:
-            raise EmbeddingProviderError(f"embedding provider is not configured: {provider}") from exc
+            raise EmbeddingProviderError(
+                f"embedding provider is not configured: {provider}"
+            ) from exc
         result = adapter.embed(texts, model)
         if len(result.vectors) != len(texts):
             raise EmbeddingOutputError("embedding provider returned the wrong number of vectors")

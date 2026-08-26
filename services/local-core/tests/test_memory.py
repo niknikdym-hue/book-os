@@ -169,7 +169,9 @@ def ready_memory_book(data_dir: Path) -> dict[str, str]:
     }
 
 
-def memory_service(data_dir: Path, mapping: dict[str, list[float]] | None = None) -> BookMemoryService:
+def memory_service(
+    data_dir: Path, mapping: dict[str, list[float]] | None = None
+) -> BookMemoryService:
     adapter = DeterministicFakeEmbeddingAdapter(mapping=mapping, dimension=3)
     return BookMemoryService(data_dir, EmbeddingGateway({"fake": adapter}))
 
@@ -183,10 +185,16 @@ def test_m5_schema_fts_exact_phrase_and_filters(tmp_path: Path) -> None:
 
     engine = create_database(tmp_path / "projects" / state["book_id"] / "project.sqlite")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0006"
-        assert connection.execute(
-            text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_fts'")
-        ).scalar_one() == 1
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0006"
+        )
+        assert (
+            connection.execute(
+                text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_fts'")
+            ).scalar_one()
+            == 1
+        )
 
     phrase = service.lexical_search(
         state["book_id"],
@@ -200,18 +208,24 @@ def test_m5_schema_fts_exact_phrase_and_filters(tmp_path: Path) -> None:
     assert phrase[0].revision_hash == state["revision_hash_1"]
     assert phrase[0].currentness == "CURRENT"
 
-    assert service.lexical_search(
-        state["book_id"],
-        "blue lighthouse",
-        chapter_id=state["chapter_2"],
-        object_kinds=["MANUSCRIPT_UNIT"],
-    ) == []
-    assert service.lexical_search(
-        state["book_id"],
-        "copper compass",
-        chapter_id=state["chapter_2"],
-        object_kinds=["MANUSCRIPT_UNIT"],
-    )[0].object_id == state["unit_2"]
+    assert (
+        service.lexical_search(
+            state["book_id"],
+            "blue lighthouse",
+            chapter_id=state["chapter_2"],
+            object_kinds=["MANUSCRIPT_UNIT"],
+        )
+        == []
+    )
+    assert (
+        service.lexical_search(
+            state["book_id"],
+            "copper compass",
+            chapter_id=state["chapter_2"],
+            object_kinds=["MANUSCRIPT_UNIT"],
+        )[0].object_id
+        == state["unit_2"]
+    )
 
 
 def test_semantic_paraphrase_and_hybrid_are_deterministic(tmp_path: Path) -> None:
@@ -256,7 +270,9 @@ def test_semantic_paraphrase_and_hybrid_are_deterministic(tmp_path: Path) -> Non
     assert first[0].fused_rank == 1
 
 
-def test_manuscript_revision_change_invalidates_semantics_and_isolates_history(tmp_path: Path) -> None:
+def test_manuscript_revision_change_invalidates_semantics_and_isolates_history(
+    tmp_path: Path,
+) -> None:
     state = ready_memory_book(tmp_path)
     service = memory_service(
         tmp_path,
@@ -315,9 +331,12 @@ def test_manuscript_revision_change_invalidates_semantics_and_isolates_history(t
             state["book_id"], "new memory phrase", provider="fake", model="memory-test"
         )
 
-    assert service.lexical_search(
-        state["book_id"], "blue lighthouse", object_kinds=["MANUSCRIPT_UNIT"]
-    ) == []
+    assert (
+        service.lexical_search(
+            state["book_id"], "blue lighthouse", object_kinds=["MANUSCRIPT_UNIT"]
+        )
+        == []
+    )
     current = service.lexical_search(
         state["book_id"], "new memory phrase", object_kinds=["MANUSCRIPT_UNIT"]
     )
@@ -443,9 +462,7 @@ def test_rebuild_is_idempotent_and_config_change_requires_rebuild(tmp_path: Path
     assert first.config_hash == second.config_hash
 
     with pytest.raises(MemoryGateError, match="requires rebuild"):
-        service.semantic_search(
-            state["book_id"], "context", provider="fake", model="model-b"
-        )
+        service.semantic_search(state["book_id"], "context", provider="fake", model="model-b")
 
 
 def test_failed_embedding_rebuild_does_not_mutate_authority(tmp_path: Path) -> None:
@@ -481,9 +498,7 @@ def test_2000_document_exact_semantic_history_query_is_under_two_seconds(tmp_pat
     projects.approve_book_contract(project.book_id)
 
     query_text = "benchmark semantic query"
-    adapter = DeterministicFakeEmbeddingAdapter(
-        mapping={query_text: [1.0, 0.0, 0.0]}, dimension=3
-    )
+    adapter = DeterministicFakeEmbeddingAdapter(mapping={query_text: [1.0, 0.0, 0.0]}, dimension=3)
     service = BookMemoryService(tmp_path, EmbeddingGateway({"fake": adapter}))
     ready = service.rebuild(project.book_id, provider="fake", model="benchmark")
     assert ready.status == "SEMANTIC_READY"

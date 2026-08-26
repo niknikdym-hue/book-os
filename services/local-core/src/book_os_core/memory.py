@@ -453,13 +453,17 @@ class BookMemoryService:
                         },
                     )
 
-                prior_state = connection.execute(
-                    text(
-                        "SELECT status,provider,model,model_version,config_hash,dimension "
-                        "FROM memory_index_state WHERE book_id=:book_id"
-                    ),
-                    {"book_id": book_id},
-                ).mappings().one_or_none()
+                prior_state = (
+                    connection.execute(
+                        text(
+                            "SELECT status,provider,model,model_version,config_hash,dimension "
+                            "FROM memory_index_state WHERE book_id=:book_id"
+                        ),
+                        {"book_id": book_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
                 if not canonical_documents:
                     status = "EMPTY"
                 elif changed or prior_state is None:
@@ -479,7 +483,9 @@ class BookMemoryService:
                     ),
                     {
                         "book_id": book_id,
-                        "provider": cast(str | None, prior_state["provider"]) if prior_state else None,
+                        "provider": cast(str | None, prior_state["provider"])
+                        if prior_state
+                        else None,
                         "model": cast(str | None, prior_state["model"]) if prior_state else None,
                         "model_version": (
                             cast(str | None, prior_state["model_version"]) if prior_state else None
@@ -487,7 +493,9 @@ class BookMemoryService:
                         "config_hash": (
                             cast(str | None, prior_state["config_hash"]) if prior_state else None
                         ),
-                        "dimension": cast(int | None, prior_state["dimension"]) if prior_state else None,
+                        "dimension": cast(int | None, prior_state["dimension"])
+                        if prior_state
+                        else None,
                         "document_count": len(canonical_documents),
                         "status": status,
                         "updated_at": now,
@@ -503,10 +511,14 @@ class BookMemoryService:
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
-                state = connection.execute(
-                    text("SELECT * FROM memory_index_state WHERE book_id=:book_id"),
-                    {"book_id": book_id},
-                ).mappings().one_or_none()
+                state = (
+                    connection.execute(
+                        text("SELECT * FROM memory_index_state WHERE book_id=:book_id"),
+                        {"book_id": book_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
                 embedding_count = cast(
                     int,
                     connection.execute(
@@ -566,7 +578,9 @@ class BookMemoryService:
                     texts[offset : offset + batch_size], provider=provider, model=model
                 )
                 if result.provider != provider or result.model != model:
-                    raise EmbeddingOutputError("embedding adapter returned unexpected provider/model")
+                    raise EmbeddingOutputError(
+                        "embedding adapter returned unexpected provider/model"
+                    )
                 if model_version is None:
                     model_version = result.model_version
                 elif model_version != result.model_version:
@@ -767,10 +781,14 @@ class BookMemoryService:
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
-                state = connection.execute(
-                    text("SELECT * FROM memory_index_state WHERE book_id=:book_id"),
-                    {"book_id": book_id},
-                ).mappings().one_or_none()
+                state = (
+                    connection.execute(
+                        text("SELECT * FROM memory_index_state WHERE book_id=:book_id"),
+                        {"book_id": book_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
             if state is None or state["status"] != "SEMANTIC_READY":
                 raise MemoryGateError("semantic index is stale or not built; rebuild required")
             if state["config_hash"] is None or state["dimension"] is None:
@@ -902,7 +920,9 @@ class BookMemoryService:
                 existing.semantic_rank = result.semantic_rank
             rank = result.semantic_rank or candidate_limit
             scores[result.memory_id] = scores.get(result.memory_id, 0.0) + 1.0 / (rrf_k + rank)
-        ordered_ids = sorted(combined, key=lambda memory_id: (-scores[memory_id], memory_id))[:limit]
+        ordered_ids = sorted(combined, key=lambda memory_id: (-scores[memory_id], memory_id))[
+            :limit
+        ]
         output: list[MemorySearchResult] = []
         for rank, memory_id in enumerate(ordered_ids, start=1):
             result = combined[memory_id]
