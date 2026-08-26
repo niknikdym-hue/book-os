@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { coreApi } from "./api";
 import { BookMemoryPanel } from "./BookMemoryPanel";
 import { DraftingPanel } from "./DraftingPanel";
+import { EditorialPanel } from "./EditorialPanel";
 import { ResearchPanel } from "./ResearchPanel";
 import type {
   ArchitectureChapter,
@@ -698,6 +699,7 @@ export function App() {
               <DraftingPanel project={project} chapter={selectedChapter} />
               <ResearchPanel project={project} chapter={selectedChapter} />
               <BookMemoryPanel project={project} chapter={selectedChapter} />
+              <EditorialPanel project={project} chapter={selectedChapter} />
             </>
           )}
         </section>

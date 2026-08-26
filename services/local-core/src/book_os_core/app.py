@@ -1,13 +1,26 @@
 from pathlib import Path
 import hmac
 import os
+from typing import cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__
+from .authority import HumanApprovalRequired, ProposalStateError, StaleBaselineError
 from .drafting import DraftingError, DraftingGateError, DraftingService, DraftSectionRequest
+from .editorial import (
+    DecisionRequest,
+    EditorialDecisionError,
+    EditorialError,
+    EditorialGateError,
+    EditorialNotFound,
+    EditorialService,
+    FindingCreateRequest,
+    ProposalCreateRequest,
+)
+from .editorial_diagnostics import EditorialDiagnostics
 from .memory import (
     BookMemoryService,
     MemoryError,
@@ -110,6 +123,12 @@ def create_app(
         if configured_data_dir is not None
         else None
     )
+    editorial = EditorialService(configured_data_dir) if configured_data_dir is not None else None
+    editorial_diagnostics = (
+        EditorialDiagnostics(configured_data_dir, editorial)
+        if configured_data_dir is not None and editorial is not None
+        else None
+    )
 
     app = FastAPI(title="BOOK OS Local Core", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -152,6 +171,22 @@ def create_app(
                 detail="BOOK_OS_DATA_DIR is required for Book Memory operations",
             )
         return memory
+
+    def editorial_service(_: None = Depends(require_token)) -> EditorialService:
+        if editorial is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="BOOK_OS_DATA_DIR is required for editorial operations",
+            )
+        return editorial
+
+    def diagnostics_service(_: None = Depends(require_token)) -> EditorialDiagnostics:
+        if editorial_diagnostics is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="BOOK_OS_DATA_DIR is required for editorial diagnostics",
+            )
+        return editorial_diagnostics
 
     @app.exception_handler(ProjectNotFound)
     async def project_not_found(_: Request, exc: ProjectNotFound) -> JSONResponse:
@@ -226,6 +261,34 @@ def create_app(
 
     @app.exception_handler(MemoryError)
     async def memory_error(_: Request, exc: MemoryError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(EditorialNotFound)
+    async def editorial_not_found(_: Request, exc: EditorialNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(EditorialGateError)
+    async def editorial_gate_error(_: Request, exc: EditorialGateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(EditorialDecisionError)
+    async def editorial_decision_error(_: Request, exc: EditorialDecisionError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(HumanApprovalRequired)
+    async def human_approval_required(_: Request, exc: HumanApprovalRequired) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(StaleBaselineError)
+    async def stale_baseline_error(_: Request, exc: StaleBaselineError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ProposalStateError)
+    async def proposal_state_error(_: Request, exc: ProposalStateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(EditorialError)
+    async def editorial_error(_: Request, exc: EditorialError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     @app.exception_handler(ValidationError)
@@ -447,5 +510,138 @@ def create_app(
         service: BookMemoryService = Depends(memory_service),
     ) -> list[dict[str, object]]:
         return [item.model_dump(mode="json") for item in service.search(book_id, payload)]
+
+    @app.post("/api/projects/{book_id}/editorial/run/developmental/{chapter_id}")
+    def run_developmental_editor(
+        book_id: str,
+        chapter_id: str,
+        service: EditorialDiagnostics = Depends(diagnostics_service),
+    ) -> dict[str, object]:
+        return service.run_developmental(book_id, chapter_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/editorial/run/cross-book")
+    def run_cross_book_audit(
+        book_id: str, service: EditorialDiagnostics = Depends(diagnostics_service)
+    ) -> dict[str, object]:
+        return service.run_cross_book(book_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/editorial/run/fact-check")
+    def run_fact_check_audit(
+        book_id: str, service: EditorialDiagnostics = Depends(diagnostics_service)
+    ) -> dict[str, object]:
+        return service.run_fact_checker(book_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/editorial/findings")
+    def create_editorial_finding(
+        book_id: str,
+        payload: FindingCreateRequest,
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return service.create_finding(book_id, payload).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/editorial/findings")
+    def list_editorial_findings(
+        book_id: str,
+        role: str | None = Query(default=None),
+        finding_status: str | None = Query(default=None, alias="status"),
+        severity: str | None = Query(default=None),
+        service: EditorialService = Depends(editorial_service),
+    ) -> list[dict[str, object]]:
+        return [
+            item.model_dump(mode="json")
+            for item in service.list_findings(
+                book_id, role=role, status=finding_status, severity=severity
+            )
+        ]
+
+    @app.get("/api/projects/{book_id}/editorial/findings/{finding_id}")
+    def get_editorial_finding(
+        book_id: str,
+        finding_id: str,
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return service.get_finding(book_id, finding_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/editorial/findings/{finding_id}/proposals")
+    def create_editorial_proposal(
+        book_id: str,
+        finding_id: str,
+        payload: ProposalCreateRequest,
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return service.create_manuscript_proposal(book_id, finding_id, payload).model_dump(
+            mode="json"
+        )
+
+    @app.get("/api/projects/{book_id}/editorial/inbox")
+    def editorial_inbox(
+        book_id: str,
+        role: str | None = Query(default=None),
+        finding_status: str | None = Query(default="OPEN", alias="status"),
+        severity: str | None = Query(default=None),
+        service: EditorialService = Depends(editorial_service),
+    ) -> list[dict[str, object]]:
+        return [
+            item.model_dump(mode="json")
+            for item in service.inbox(book_id, role=role, status=finding_status, severity=severity)
+        ]
+
+    @app.post(
+        "/api/projects/{book_id}/editorial/findings/{finding_id}/proposals/{proposal_id}/accept"
+    )
+    def accept_editorial_proposal(
+        book_id: str,
+        finding_id: str,
+        proposal_id: str,
+        payload: DecisionRequest,
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return service.accept(book_id, finding_id, proposal_id, payload).model_dump(mode="json")
+
+    @app.post(
+        "/api/projects/{book_id}/editorial/findings/{finding_id}/proposals/{proposal_id}/reject"
+    )
+    def reject_editorial_proposal(
+        book_id: str,
+        finding_id: str,
+        proposal_id: str,
+        payload: DecisionRequest,
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return service.reject(book_id, finding_id, proposal_id, payload).model_dump(mode="json")
+
+    @app.post(
+        "/api/projects/{book_id}/editorial/findings/{finding_id}/proposals/{proposal_id}/request-revision"
+    )
+    def request_editorial_revision(
+        book_id: str,
+        finding_id: str,
+        proposal_id: str,
+        payload: DecisionRequest,
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return service.request_revision(book_id, finding_id, proposal_id, payload).model_dump(
+            mode="json"
+        )
+
+    @app.post("/api/projects/{book_id}/editorial/findings/{finding_id}/waive")
+    def waive_editorial_finding(
+        book_id: str,
+        finding_id: str,
+        payload: DecisionRequest,
+        proposal_id: str | None = Query(default=None),
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return service.waive(book_id, finding_id, payload, proposal_id=proposal_id).model_dump(
+            mode="json"
+        )
+
+    @app.get("/api/projects/{book_id}/editorial/findings/{finding_id}/corpus")
+    def editorial_decision_corpus(
+        book_id: str,
+        finding_id: str,
+        service: EditorialService = Depends(editorial_service),
+    ) -> dict[str, object]:
+        return cast(dict[str, object], service.decision_corpus(book_id, finding_id))
 
     return app
