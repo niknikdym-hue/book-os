@@ -1,17 +1,17 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** ACTIVE CHECKPOINT  
-**Version:** 1.4.0  
+**Version:** 1.4.3  
 **Date:** 2026-08-26  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 7 — TASK 008 IN PROGRESS**
+**IMPLEMENTATION MILESTONE 7 — TASK 008 RECOVERY SLICE 1 PUBLISHED**
 
-Canonical `main` baseline at M7 start:
+Canonical `main` control baseline before this state update:
 
-`b5fc8e52233b57bc976954044d430cd7a4f612e3`
+`627eca9b5eabaa1bac52d21849f1ae0591f3f8bd`
 
 Active contract:
 
@@ -25,9 +25,9 @@ Active pull request:
 
 `PR #11 — Task 008 — BookBench v0.1`
 
-Observed implementation HEAD at this checkpoint:
+Current authoritative GitHub PR HEAD:
 
-`cefdd1c8ee868c81a2c292a459c77d3f485191cc`
+`ac1a6cff2b316460a96bfcb1aebcac1a5a1f22e6`
 
 ## Accepted authority
 
@@ -79,9 +79,11 @@ Goal:
 
 `exact revision snapshot → versioned BookBench evaluation → actionable dimension findings → optional explicit M6 handoff → human review`
 
-Current PR #11 is a DRAFT and is **not yet accepted**.
+PR #11 remains DRAFT and is **not accepted**.
 
-Observed recovery implementation includes:
+### Authoritative GitHub implementation now present
+
+The original M7 backend slice from HEAD `198455286335e9a0ea5203d2497449fe282d5102` included:
 - schema migration `0008`;
 - exact evaluation snapshots/currentness;
 - immutable EvaluationRun/EvaluationFinding persistence;
@@ -89,24 +91,59 @@ Observed recovery implementation includes:
 - repetition/evidence/statistical checks;
 - initial deterministic AI-prose pathology signals;
 - grouped report without a universal magic score;
-- versioned Author Voice Fingerprints from explicitly selected exact revisions and diagnostic deltas;
-- bounded typed `BOOKBENCH_JUDGE/EVALUATOR` and `BOOKBENCH_PAIRWISE/EVALUATOR` Model Gateway tasks;
-- versioned injection-safe judge/pairwise prompts, deterministic fake outputs, and a mocked
-  OpenAI structured judge regression that asserts `store=false`;
-- authenticated snapshot, deterministic report, and Voice Fingerprint API operations;
 - M7 schema regression updates.
 
-Still required before M7 ACCEPT/MERGE:
-- M5-based semantic checks with exact embedding-config identity and stale-config gates;
-- judge independence gate;
-- immutable M6-decision evaluation datasets;
-- two-configuration role/dimension scorecards;
-- explicit BookBench → M6 EditorialFinding handoff with currentness validation;
-- remaining semantic/judge/pairwise/dataset/scorecard/handoff BookBench API operations;
-- native desktop BookBench workspace;
-- backup/restore through `0008`;
-- full M0–M6 regression + every Task 008 REQUIRED ACCEPTANCE gate;
-- final project-state/hash synchronization.
+The first reconstructed recovery slice has now been transferred byte-exactly into GitHub and is part of authoritative PR HEAD:
+
+`ac1a6cff2b316460a96bfcb1aebcac1a5a1f22e6`
+
+Transport evidence:
+- source PR comment: `5427446407`;
+- exact recovery parent: `198455286335e9a0ea5203d2497449fe282d5102`;
+- raw unified patch SHA256: `d90dfb0b98da2ac9c9bd9863a1293e9ebd6c5bf8c13d688018af4ad8a3a31a48`;
+- gzip SHA256: `6c26523ac13d2e0f0313dbe324b421529d7f28758b3c172968cac8e3e0a63f04`;
+- raw patch size: `34015` bytes;
+- gzip size: `9039` bytes;
+- diff stat: `8 files changed, 513 insertions(+), 31 deletions(-)`;
+- both SHA256 values were independently reassembled and verified before application.
+
+This first recovery slice adds:
+- removal of the known Ruff F401 blocker;
+- versioned Author Voice Fingerprints from explicit exact revision references;
+- deterministic voice-feature extraction and diagnostic target deltas;
+- typed `BOOKBENCH_JUDGE/EVALUATOR` and `BOOKBENCH_PAIRWISE/EVALUATOR` Model Gateway foundations;
+- deterministic fake judge/pairwise outputs for normal CI;
+- mocked OpenAI structured-output regression path preserving `store=false`;
+- authenticated BookBench snapshot/deterministic/report/Voice Fingerprint API foundations.
+
+Codex local evidence for the exact transported slice reported:
+- Ruff format/check PASS;
+- mypy PASS over 21 source files;
+- pytest `71 passed`;
+- desktop lint/typecheck PASS;
+- desktop tests `5 files / 6 tests passed`;
+- desktop production build PASS;
+- `git diff --check` PASS.
+
+These local results are supporting evidence only. M7 acceptance still requires authoritative GitHub CI on the actual PR HEAD.
+
+## Still required before M7 ACCEPT/MERGE
+
+1. Synchronize the current canonical project-state/hash files into PR #11 and obtain authoritative GitHub CI on the first recovered slice.
+2. M5-based semantic checks with exact embedding-config identity and stale/incompatible-config gates.
+3. Complete judge/pairwise persistence/execution and required dimension/rubric evidence.
+4. Judge independence `INDEPENDENT | SAME_CONFIG | UNKNOWN` and release-grade gate.
+5. Immutable M6 decision-dataset snapshots/version/hash.
+6. Two-configuration role/dimension scorecards without a universal score.
+7. Explicit BookBench → M6 EditorialFinding handoff with exact-current validation and stale block.
+8. Complete authenticated API operations required by Task 008.
+9. Native desktop BookBench workspace and tests.
+10. Backup/restore migration regressions through `0008`.
+11. Full M0–M6 regression suite and every numbered REQUIRED ACCEPTANCE item in `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
+12. Final authoritative PR CI PASS including dependency audit, Rust/Tauri and secret-scan.
+13. Final project-state/hash synchronization.
+
+Normal CI must keep external/model/judge live calls = `0` and paid calls = `0`.
 
 ## Scope guard
 
@@ -129,11 +166,11 @@ MVP/Russia-ready cannot be declared before the applicable M7–M10 acceptance ga
 
 ## Next permitted action
 
-1. Continue only PR #11 on `brain/task-008-bookbench`.
-2. Close every missing Task 008 acceptance item on the same PR.
-3. Run full PR CI with zero live/paid external model calls in normal CI.
-4. Central Brain reviews objective evidence.
-5. If all M7 gates pass: ACCEPT + merge PR #11.
+1. Synchronize this canonical project state and its design hash into PR #11.
+2. Trigger and inspect authoritative GitHub CI on the resulting PR HEAD.
+3. Fix objective first-slice blockers if any.
+4. Continue only the remaining M7 Task 008 gates on that accepted first-slice baseline.
+5. ACCEPT + merge PR #11 only after every M7 acceptance gate and CI pass.
 6. Synchronize canonical project state to M7 accepted.
 7. Immediately create and execute M8 bounded contract.
 
@@ -156,10 +193,30 @@ If chat context disappears:
 3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
 4. Read `BOOKBENCH_v0.1.md` and `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
 5. Inspect PR #11 / `brain/task-008-bookbench`.
-6. Continue only M7 until objective ACCEPT/merge.
-7. Then follow the fixed launch path M8 → M9 → M10 → GO/NO-GO.
+6. Treat GitHub PR HEAD `ac1a6cff2b316460a96bfcb1aebcac1a5a1f22e6` (or its verified descendants) as authoritative implementation evidence.
+7. Do not treat local-only SHAs as evidence.
+8. Continue only M7 until objective ACCEPT/merge.
+9. Then follow the fixed launch path M8 → M9 → M10 → GO/NO-GO.
 
 ## Change log
+
+### 1.4.3 — 2026-08-26
+- Reassembled the complete recovery payload from PR comment `5427446407`.
+- Independently verified gzip SHA256 and raw-patch SHA256 and exact byte sizes.
+- Transferred the first M7 recovery slice byte-exactly into PR #11.
+- Advanced authoritative GitHub implementation HEAD to `ac1a6cff...`.
+- Removed the transport-only execution blocker; remaining work is now normal M7 implementation/acceptance.
+
+### 1.4.2 — 2026-08-26
+- Recorded first reconstructed M7 recovery slice `0dca25cf...` as local-only, not authoritative.
+- Recorded byte-exact patch hashes, size, diff stat and local test evidence.
+- Recorded which M7 gates the first slice covers and which remain.
+
+### 1.4.1 — 2026-08-26
+- Recorded actual authoritative PR #11 HEAD `198455286335e9a0ea5203d2497449fe282d5102`.
+- Recorded authoritative CI run `32970871777` and exact Ruff F401 blocker.
+- Marked unpublished Codex commit `9b3b5a0b...` as irrecoverably lost and non-authoritative.
+- Defined M7 reconstruction/transport recovery protocol while preserving the fixed launch path.
 
 ### 1.4.0 — 2026-08-26
 - Corrected stale state that still showed M6 as active after PR #10 had been accepted and merged.
