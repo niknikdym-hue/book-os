@@ -8,6 +8,20 @@ from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__
 from .drafting import DraftingError, DraftingGateError, DraftingService, DraftSectionRequest
+from .memory import (
+    BookMemoryService,
+    MemoryError,
+    MemoryGateError,
+    MemoryNotFound,
+    MemoryRebuildRequest,
+    MemorySearchRequest,
+)
+from .memory_embeddings import (
+    EmbeddingGateway,
+    EmbeddingOutputError,
+    EmbeddingProviderError,
+    OpenAIEmbeddingAdapter,
+)
 from .model_gateway import (
     ModelBudgetError,
     ModelGateway,
@@ -58,6 +72,7 @@ def create_app(
     *,
     gateway: ModelGateway | None = None,
     research_gateway: ResearchGateway | None = None,
+    embedding_gateway: EmbeddingGateway | None = None,
 ) -> FastAPI:
     expected = token or os.environ.get("BOOK_OS_SESSION_TOKEN")
     if not expected:
@@ -84,6 +99,14 @@ def create_app(
     )
     research = (
         ResearchService(configured_data_dir, configured_research_gateway)
+        if configured_data_dir is not None
+        else None
+    )
+    configured_embedding_gateway = embedding_gateway or EmbeddingGateway(
+        {"openai": OpenAIEmbeddingAdapter(MacOSKeychainSecretStore())}
+    )
+    memory = (
+        BookMemoryService(configured_data_dir, configured_embedding_gateway)
         if configured_data_dir is not None
         else None
     )
@@ -121,6 +144,14 @@ def create_app(
                 detail="BOOK_OS_DATA_DIR is required for research operations",
             )
         return research
+
+    def memory_service(_: None = Depends(require_token)) -> BookMemoryService:
+        if memory is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="BOOK_OS_DATA_DIR is required for Book Memory operations",
+            )
+        return memory
 
     @app.exception_handler(ProjectNotFound)
     async def project_not_found(_: Request, exc: ProjectNotFound) -> JSONResponse:
@@ -175,6 +206,26 @@ def create_app(
 
     @app.exception_handler(ResearchError)
     async def research_error(_: Request, exc: ResearchError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(MemoryNotFound)
+    async def memory_not_found(_: Request, exc: MemoryNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(MemoryGateError)
+    async def memory_gate_error(_: Request, exc: MemoryGateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(EmbeddingProviderError)
+    async def embedding_provider_error(_: Request, exc: EmbeddingProviderError) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+    @app.exception_handler(EmbeddingOutputError)
+    async def embedding_output_error(_: Request, exc: EmbeddingOutputError) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+    @app.exception_handler(MemoryError)
+    async def memory_error(_: Request, exc: MemoryError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     @app.exception_handler(ValidationError)
@@ -366,5 +417,35 @@ def create_app(
         service: ResearchService = Depends(research_service),
     ) -> dict[str, object]:
         return service.check_citation(book_id, claim_id, payload.identifier).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/memory/status")
+    def memory_status(
+        book_id: str, service: BookMemoryService = Depends(memory_service)
+    ) -> dict[str, object]:
+        return service.status(book_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/memory/sync")
+    def memory_sync(
+        book_id: str, service: BookMemoryService = Depends(memory_service)
+    ) -> dict[str, object]:
+        return service.synchronize(book_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/memory/rebuild")
+    def memory_rebuild(
+        book_id: str,
+        payload: MemoryRebuildRequest,
+        service: BookMemoryService = Depends(memory_service),
+    ) -> dict[str, object]:
+        return service.rebuild(
+            book_id, provider=payload.provider, model=payload.model
+        ).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/memory/search")
+    def memory_search(
+        book_id: str,
+        payload: MemorySearchRequest,
+        service: BookMemoryService = Depends(memory_service),
+    ) -> list[dict[str, object]]:
+        return [item.model_dump(mode="json") for item in service.search(book_id, payload)]
 
     return app
