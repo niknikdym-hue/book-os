@@ -201,9 +201,7 @@ class CitationCheckView(BaseModel):
     reason: str
 
 
-def _default_research_providers() -> list[
-    Literal["openalex", "crossref", "semantic_scholar"]
-]:
+def _default_research_providers() -> list[Literal["openalex", "crossref", "semantic_scholar"]]:
     return ["openalex", "crossref", "semantic_scholar"]
 
 
