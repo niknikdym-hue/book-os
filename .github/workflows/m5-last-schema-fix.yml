@@ -1,0 +1,32 @@
+name: M5 Last Schema Fix
+on: [push]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.ref == 'refs/heads/brain/task-006-book-memory'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-006-book-memory
+      - name: Fix final current-schema expectation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('services/local-core/tests/test_authority.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005",)'
+          new = 'assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006",)'
+          if old not in text:
+              raise SystemExit('final 0005 schema expectation not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Remove helper and commit
+        run: |
+          git config user.name "book-os-ci"
+          git config user.email "book-os-ci@users.noreply.github.com"
+          git rm .github/workflows/m5-last-schema-fix.yml
+          git add services/local-core/tests/test_authority.py
+          git commit -m "test: advance final M5 schema expectation"
+          git push origin HEAD:brain/task-006-book-memory
