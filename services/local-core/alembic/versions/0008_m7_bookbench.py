@@ -113,9 +113,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
         sa.ForeignKeyConstraint(["snapshot_id"], ["evaluation_snapshots.snapshot_id"]),
         sa.CheckConstraint(f"dimension IN ({DIMENSIONS})", name="ck_evaluation_dimension"),
-        sa.CheckConstraint(
-            f"evaluator_class IN ({EVALUATOR_CLASSES})", name="ck_evaluator_class"
-        ),
+        sa.CheckConstraint(f"evaluator_class IN ({EVALUATOR_CLASSES})", name="ck_evaluator_class"),
         sa.CheckConstraint(
             f"independence_state IN ({INDEPENDENCE_STATES})",
             name="ck_evaluation_independence",
@@ -162,9 +160,7 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(f"dimension IN ({DIMENSIONS})", name="ck_eval_finding_dimension"),
         sa.CheckConstraint(f"target_kind IN ({TARGET_KINDS})", name="ck_eval_finding_target_kind"),
-        sa.CheckConstraint(
-            f"severity IN ({FINDING_SEVERITIES})", name="ck_eval_finding_severity"
-        ),
+        sa.CheckConstraint(f"severity IN ({FINDING_SEVERITIES})", name="ck_eval_finding_severity"),
         sa.CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_eval_confidence"),
     )
     op.create_index(
@@ -197,9 +193,7 @@ def upgrade() -> None:
         sa.Column("fingerprint_hash", sa.String(64), nullable=False),
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
-        sa.ForeignKeyConstraint(
-            ["reference_snapshot_id"], ["evaluation_snapshots.snapshot_id"]
-        ),
+        sa.ForeignKeyConstraint(["reference_snapshot_id"], ["evaluation_snapshots.snapshot_id"]),
         sa.UniqueConstraint("book_id", "fingerprint_hash", name="uq_voice_fingerprint_hash"),
     )
 

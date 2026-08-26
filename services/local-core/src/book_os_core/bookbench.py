@@ -500,7 +500,10 @@ class BookBenchService:
                             "source_status) VALUES (:snapshot_id,:ordinal,:target_kind,:target_id,"
                             ":chapter_id,:unit_id,:revision_id,:revision_hash,:content_hash,:source_status)"
                         ),
-                        {"snapshot_id": snapshot_id, **target.model_dump(exclude={"text", "metadata"})},
+                        {
+                            "snapshot_id": snapshot_id,
+                            **target.model_dump(exclude={"text", "metadata"}),
+                        },
                     )
             return self.get_snapshot(book_id, snapshot_id)
         finally:
@@ -569,7 +572,10 @@ class BookBenchService:
                     head = authority.get_head(entity_id)
                 except Exception:
                     return False
-                if head.revision_id != target.revision_id or head.revision_hash != target.revision_hash:
+                if (
+                    head.revision_id != target.revision_id
+                    or head.revision_hash != target.revision_hash
+                ):
                     return False
         return True
 
@@ -689,7 +695,9 @@ class BookBenchService:
         abstraction_hits: list[dict[str, Any]] = []
         for unit in units:
             number_count += len(re.findall(r"\b\d+(?:[.,]\d+)?%?\b", unit.text))
-            capitalized_count += len(re.findall(r"(?<![.!?]\s)\b[A-ZА-ЯЁ][a-zа-яё]{2,}\b", unit.text))
+            capitalized_count += len(
+                re.findall(r"(?<![.!?]\s)\b[A-ZА-ЯЁ][a-zа-яё]{2,}\b", unit.text)
+            )
             lowered = unit.text.casefold()
             for phrase in _EMPTY_ABSTRACTIONS:
                 if phrase in lowered:
@@ -750,8 +758,12 @@ class BookBenchService:
                             "claim_id": claim.target_id,
                             "claim_revision_id": claim.revision_id,
                             "claim_revision_hash": claim.revision_hash,
-                            "current_revision_id": current_unit.revision_id if current_unit else None,
-                            "current_revision_hash": current_unit.revision_hash if current_unit else None,
+                            "current_revision_id": current_unit.revision_id
+                            if current_unit
+                            else None,
+                            "current_revision_hash": current_unit.revision_hash
+                            if current_unit
+                            else None,
                         },
                         severity="BLOCKING" if materiality in {"HIGH", "CRITICAL"} else "ATTENTION",
                         confidence=1.0,
@@ -822,7 +834,9 @@ class BookBenchService:
             required_claims = content.get("required_claims", [])
             if isinstance(required_claims, list):
                 for required_claim in required_claims:
-                    if not isinstance(required_claim, str) or _lexical_trace(required_claim, chapter_text):
+                    if not isinstance(required_claim, str) or _lexical_trace(
+                        required_claim, chapter_text
+                    ):
                         continue
                     lexical_gap_count += 1
                     findings.append(
@@ -973,13 +987,17 @@ class BookBenchService:
             findings=findings,
             metrics={
                 "chapter_count": len(units_by_chapter),
-                "repeated_opening_groups": sum(1 for rows in opening_map.values() if len(rows) >= 2),
+                "repeated_opening_groups": sum(
+                    1 for rows in opening_map.values() if len(rows) >= 2
+                ),
                 "repeated_ending_groups": sum(1 for rows in ending_map.values() if len(rows) >= 2),
             },
             output={"structural_signal_only": True},
         )
 
-    def _execute_deterministic(self, spec: CheckSpec, snapshot: EvaluationSnapshotView) -> _CheckResult:
+    def _execute_deterministic(
+        self, spec: CheckSpec, snapshot: EvaluationSnapshotView
+    ) -> _CheckResult:
         runners = {
             "deterministic.repetition": self._check_repetition,
             "deterministic.statistics": self._check_statistics,
@@ -992,7 +1010,9 @@ class BookBenchService:
         try:
             runner = runners[spec.check_id]
         except KeyError as exc:
-            raise BookBenchGateError(f"check is not a deterministic M7 check: {spec.check_id}") from exc
+            raise BookBenchGateError(
+                f"check is not a deterministic M7 check: {spec.check_id}"
+            ) from exc
         return runner(snapshot)
 
     def _persist_run(

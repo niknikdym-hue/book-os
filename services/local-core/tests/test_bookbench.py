@@ -10,7 +10,12 @@ from book_os_core.authority import AuthorityService
 from book_os_core.bookbench import BookBenchService
 from book_os_core.db import create_database
 from book_os_core.drafting import DraftSectionRequest, DraftingService
-from book_os_core.editorial import DecisionRequest, EditorialService, FindingCreateRequest, ProposalCreateRequest
+from book_os_core.editorial import (
+    DecisionRequest,
+    EditorialService,
+    FindingCreateRequest,
+    ProposalCreateRequest,
+)
 from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway
 from book_os_core.projects import (
     BookArchitecturePayload,
@@ -100,9 +105,13 @@ def ready_book(data_dir: Path) -> dict[str, str]:
     project = projects.approve_architecture(project.book_id)
     first_chapter = project.chapters[0]
     second_chapter = project.chapters[1]
-    projects.save_chapter_contract(project.book_id, first_chapter.chapter_id, chapter_contract("first"))
+    projects.save_chapter_contract(
+        project.book_id, first_chapter.chapter_id, chapter_contract("first")
+    )
     projects.approve_chapter_contract(project.book_id, first_chapter.chapter_id)
-    projects.save_chapter_contract(project.book_id, second_chapter.chapter_id, chapter_contract("second"))
+    projects.save_chapter_contract(
+        project.book_id, second_chapter.chapter_id, chapter_contract("second")
+    )
     projects.approve_chapter_contract(project.book_id, second_chapter.chapter_id)
 
     duplicate_objective = (
@@ -189,17 +198,24 @@ def test_m7_schema_snapshot_exactness_and_currentness(tmp_path: Path) -> None:
 
     engine = create_database(tmp_path / "projects" / state["book_id"] / "project.sqlite")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0008"
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0008"
+        )
         assert connection.execute(
             text("SELECT COUNT(*) FROM evaluation_snapshot_targets WHERE snapshot_id=:snapshot_id"),
             {"snapshot_id": snapshot.snapshot_id},
         ).scalar_one() == len(snapshot.targets)
 
     editorial = EditorialService(tmp_path)
-    entity_id = engine.connect().execute(
-        text("SELECT authority_entity_id FROM manuscript_units WHERE unit_id=:unit_id"),
-        {"unit_id": state["unit_1"]},
-    ).scalar_one()
+    entity_id = (
+        engine.connect()
+        .execute(
+            text("SELECT authority_entity_id FROM manuscript_units WHERE unit_id=:unit_id"),
+            {"unit_id": state["unit_1"]},
+        )
+        .scalar_one()
+    )
     head = AuthorityService(engine).get_head(str(entity_id))
     finding = editorial.create_finding(
         state["book_id"],
@@ -239,7 +255,9 @@ def test_m7_schema_snapshot_exactness_and_currentness(tmp_path: Path) -> None:
     assert old.snapshot_hash == snapshot.snapshot_hash
 
 
-def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(tmp_path: Path) -> None:
+def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(
+    tmp_path: Path,
+) -> None:
     state = ready_book(tmp_path)
     service = BookBenchService(tmp_path)
     snapshot = service.create_snapshot(state["book_id"], scope="BOOK")
@@ -263,9 +281,7 @@ def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(t
     assert "MATERIAL_CLAIM_UNSUPPORTED" in categories
     assert any(finding.severity == "BLOCKING" for finding in evidence.findings)
 
-    pathology = next(
-        run for run in runs if run.check_id == "deterministic.ai_prose_pathology"
-    )
+    pathology = next(run for run in runs if run.check_id == "deterministic.ai_prose_pathology")
     pathology_categories = {finding.category for finding in pathology.findings}
     assert "FALSE_CONTRAST_TEMPLATE" in pathology_categories
     assert "NOT_ABOUT_TEMPLATE" in pathology_categories
@@ -292,7 +308,9 @@ def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(t
     assert report.current is True
 
 
-def test_evaluation_findings_and_runs_are_immutable_and_authority_is_unchanged(tmp_path: Path) -> None:
+def test_evaluation_findings_and_runs_are_immutable_and_authority_is_unchanged(
+    tmp_path: Path,
+) -> None:
     state = ready_book(tmp_path)
     service = BookBenchService(tmp_path)
     snapshot = service.create_snapshot(state["book_id"], scope="BOOK")
