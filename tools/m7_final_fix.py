@@ -1,56 +1,34 @@
-name: M7 Final Acceptance Fix
-on:
-  push:
-    branches: [brain/task-008-bookbench]
-permissions:
-  contents: write
-jobs:
-  fix:
-    if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: brain/task-008-bookbench
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Patch bounded M7 acceptance gaps
-        run: |
-          python - <<'PY'
-          from pathlib import Path
+from pathlib import Path
 
-          bookbench = Path('services/local-core/src/book_os_core/bookbench.py')
-          text = bookbench.read_text(encoding='utf-8')
-          anchor = '''    def compare_voice(\n        self, book_id: str, fingerprint_id: str, target_snapshot_id: str\n    ) -> VoiceComparisonView:\n'''
-          method = '''    def list_voice_fingerprints(self, book_id: str) -> list[VoiceFingerprintView]:\n        engine = self._engine(book_id)\n        try:\n            with engine.connect() as connection:\n                fingerprint_ids = [\n                    cast(str, value)\n                    for value in connection.execute(\n                        text(\n                            "SELECT fingerprint_id FROM voice_fingerprints "\n                            "WHERE book_id=:book_id ORDER BY created_at,fingerprint_id"\n                        ),\n                        {"book_id": book_id},\n                    ).scalars()\n                ]\n        finally:\n            engine.dispose()\n        return [self.get_voice_fingerprint(book_id, item) for item in fingerprint_ids]\n\n'''
-          if method not in text:
-              if anchor not in text:
-                  raise SystemExit('bookbench voice anchor missing')
-              text = text.replace(anchor, method + anchor, 1)
-              bookbench.write_text(text, encoding='utf-8')
+bookbench = Path("services/local-core/src/book_os_core/bookbench.py")
+text = bookbench.read_text(encoding="utf-8")
+anchor = '''    def compare_voice(\n        self, book_id: str, fingerprint_id: str, target_snapshot_id: str\n    ) -> VoiceComparisonView:\n'''
+method = '''    def list_voice_fingerprints(self, book_id: str) -> list[VoiceFingerprintView]:\n        engine = self._engine(book_id)\n        try:\n            with engine.connect() as connection:\n                fingerprint_ids = [\n                    cast(str, value)\n                    for value in connection.execute(\n                        text(\n                            "SELECT fingerprint_id FROM voice_fingerprints "\n                            "WHERE book_id=:book_id ORDER BY created_at,fingerprint_id"\n                        ),\n                        {"book_id": book_id},\n                    ).scalars()\n                ]\n        finally:\n            engine.dispose()\n        return [self.get_voice_fingerprint(book_id, item) for item in fingerprint_ids]\n\n'''
+if method not in text:
+    if anchor not in text:
+        raise SystemExit("bookbench voice anchor missing")
+    bookbench.write_text(text.replace(anchor, method + anchor, 1), encoding="utf-8")
 
-          app = Path('services/local-core/src/book_os_core/app.py')
-          text = app.read_text(encoding='utf-8')
-          anchor = '''    @app.post("/api/projects/{book_id}/bookbench/voice-fingerprints/{fingerprint_id}/compare")\n'''
-          route = '''    @app.get("/api/projects/{book_id}/bookbench/voice-fingerprints")\n    def list_voice_fingerprints(\n        book_id: str, service: BookBenchService = Depends(bookbench_service)\n    ) -> list[dict[str, object]]:\n        return [\n            item.model_dump(mode="json") for item in service.list_voice_fingerprints(book_id)\n        ]\n\n'''
-          if route not in text:
-              if anchor not in text:
-                  raise SystemExit('app voice route anchor missing')
-              text = text.replace(anchor, route + anchor, 1)
-              app.write_text(text, encoding='utf-8')
+app = Path("services/local-core/src/book_os_core/app.py")
+text = app.read_text(encoding="utf-8")
+anchor = '''    @app.post("/api/projects/{book_id}/bookbench/voice-fingerprints/{fingerprint_id}/compare")\n'''
+route = '''    @app.get("/api/projects/{book_id}/bookbench/voice-fingerprints")\n    def list_voice_fingerprints(\n        book_id: str, service: BookBenchService = Depends(bookbench_service)\n    ) -> list[dict[str, object]]:\n        return [\n            item.model_dump(mode="json") for item in service.list_voice_fingerprints(book_id)\n        ]\n\n'''
+if route not in text:
+    if anchor not in text:
+        raise SystemExit("app voice route anchor missing")
+    app.write_text(text.replace(anchor, route + anchor, 1), encoding="utf-8")
 
-          tests = Path('services/local-core/tests/test_bookbench.py')
-          text = tests.read_text(encoding='utf-8')
-          anchor = '''    assert "rhetorical_question_rate" in fingerprint.features\n\n    comparison = service.compare_voice(\n'''
-          replacement = '''    assert "rhetorical_question_rate" in fingerprint.features\n    listed = service.list_voice_fingerprints(state["book_id"])\n    assert [item.fingerprint_id for item in listed] == [fingerprint.fingerprint_id]\n    assert listed[0].reference_revisions == fingerprint.reference_revisions\n\n    comparison = service.compare_voice(\n'''
-          if 'listed = service.list_voice_fingerprints' not in text:
-              if anchor not in text:
-                  raise SystemExit('bookbench test voice anchor missing')
-              tests.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
+backend_tests = Path("services/local-core/tests/test_bookbench.py")
+text = backend_tests.read_text(encoding="utf-8")
+anchor = '''    assert "rhetorical_question_rate" in fingerprint.features\n\n    comparison = service.compare_voice(\n'''
+replacement = '''    assert "rhetorical_question_rate" in fingerprint.features\n    listed = service.list_voice_fingerprints(state["book_id"])\n    assert [item.fingerprint_id for item in listed] == [fingerprint.fingerprint_id]\n    assert listed[0].reference_revisions == fingerprint.reference_revisions\n\n    comparison = service.compare_voice(\n'''
+if "listed = service.list_voice_fingerprints" not in text:
+    if anchor not in text:
+        raise SystemExit("bookbench test voice anchor missing")
+    backend_tests.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
 
-          desktop_test = Path('apps/desktop/src/BookBenchPanel.test.tsx')
-          desktop_test.write_text(r'''import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+desktop_test = Path("apps/desktop/src/BookBenchPanel.test.tsx")
+desktop_test.write_text(r'''import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { BookBenchPanel } from "./BookBenchPanel";
 import { coreApi } from "./api";
@@ -272,13 +250,4 @@ test("chapter target, pairwise, voice fingerprint and independence controls are 
   fireEvent.click(screen.getByText("Compare Voice Fingerprint"));
   expect(await screen.findByLabelText("Voice comparison")).toHaveTextContent("diagnostic only");
 });
-''', encoding='utf-8')
-          PY
-      - name: Remove one-shot helper and publish fix
-        run: |
-          git config user.name "book-os-ci"
-          git config user.email "book-os-ci@users.noreply.github.com"
-          git rm .github/workflows/m7-final-acceptance-fix.yml
-          git add services/local-core/src/book_os_core/bookbench.py services/local-core/src/book_os_core/app.py services/local-core/tests/test_bookbench.py apps/desktop/src/BookBenchPanel.test.tsx
-          git commit -m "fix: close M7 Voice Fingerprint and desktop acceptance gaps"
-          git push origin HEAD:brain/task-008-bookbench
+''', encoding="utf-8")
