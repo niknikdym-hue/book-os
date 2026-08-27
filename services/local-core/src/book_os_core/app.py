@@ -775,9 +775,7 @@ def create_app(
     def list_voice_fingerprints(
         book_id: str, service: BookBenchService = Depends(bookbench_service)
     ) -> list[dict[str, object]]:
-        return [
-            item.model_dump(mode="json") for item in service.list_voice_fingerprints(book_id)
-        ]
+        return [item.model_dump(mode="json") for item in service.list_voice_fingerprints(book_id)]
 
     @app.post("/api/projects/{book_id}/bookbench/voice-fingerprints/{fingerprint_id}/compare")
     def compare_voice_fingerprint(

@@ -46,25 +46,3 @@ jobs:
       - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  m7-format-fix:
-    if: github.ref == 'refs/heads/brain/task-008-bookbench' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: brain/task-008-bookbench
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: pip install ruff==0.12.11
-      - run: cd services/local-core && ruff format src/book_os_core/app.py
-      - name: Publish formatting and restore canonical CI
-        run: |
-          git config user.name "book-os-ci"
-          git config user.email "book-os-ci@users.noreply.github.com"
-          git show 32e44d99da12974747198fe61594c60a8bad0785:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git add services/local-core/src/book_os_core/app.py .github/workflows/ci.yml
-          git commit -m "style: format final M7 API change"
-          git push origin HEAD:brain/task-008-bookbench
