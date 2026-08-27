@@ -1529,6 +1529,24 @@ class BookBenchService:
         finally:
             engine.dispose()
 
+    def list_voice_fingerprints(self, book_id: str) -> list[VoiceFingerprintView]:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                fingerprint_ids = [
+                    cast(str, value)
+                    for value in connection.execute(
+                        text(
+                            "SELECT fingerprint_id FROM voice_fingerprints "
+                            "WHERE book_id=:book_id ORDER BY created_at,fingerprint_id"
+                        ),
+                        {"book_id": book_id},
+                    ).scalars()
+                ]
+        finally:
+            engine.dispose()
+        return [self.get_voice_fingerprint(book_id, item) for item in fingerprint_ids]
+
     def compare_voice(
         self, book_id: str, fingerprint_id: str, target_snapshot_id: str
     ) -> VoiceComparisonView:

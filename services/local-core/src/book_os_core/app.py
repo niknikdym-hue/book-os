@@ -771,6 +771,14 @@ def create_app(
             book_id, payload.snapshot_id, name=payload.name
         ).model_dump(mode="json")
 
+    @app.get("/api/projects/{book_id}/bookbench/voice-fingerprints")
+    def list_voice_fingerprints(
+        book_id: str, service: BookBenchService = Depends(bookbench_service)
+    ) -> list[dict[str, object]]:
+        return [
+            item.model_dump(mode="json") for item in service.list_voice_fingerprints(book_id)
+        ]
+
     @app.post("/api/projects/{book_id}/bookbench/voice-fingerprints/{fingerprint_id}/compare")
     def compare_voice_fingerprint(
         book_id: str,

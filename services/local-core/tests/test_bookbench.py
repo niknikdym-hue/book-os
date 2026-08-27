@@ -266,6 +266,9 @@ def test_voice_fingerprint_uses_exact_references_and_is_diagnostic(tmp_path: Pat
     assert fingerprint.reference_revisions
     assert fingerprint.reference_revisions[0]["revision_hash"]
     assert "rhetorical_question_rate" in fingerprint.features
+    listed = service.list_voice_fingerprints(state["book_id"])
+    assert [item.fingerprint_id for item in listed] == [fingerprint.fingerprint_id]
+    assert listed[0].reference_revisions == fingerprint.reference_revisions
 
     comparison = service.compare_voice(
         state["book_id"], fingerprint.fingerprint_id, reference.snapshot_id
