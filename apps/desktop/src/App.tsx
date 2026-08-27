@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { coreApi } from "./api";
+import { BookBenchPanel } from "./BookBenchPanel";
 import { BookMemoryPanel } from "./BookMemoryPanel";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
@@ -700,6 +701,7 @@ export function App() {
               <ResearchPanel project={project} chapter={selectedChapter} />
               <BookMemoryPanel project={project} chapter={selectedChapter} />
               <EditorialPanel project={project} chapter={selectedChapter} />
+              <BookBenchPanel project={project} />
             </>
           )}
         </section>

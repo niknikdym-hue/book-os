@@ -9,6 +9,13 @@ from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__
 from .authority import HumanApprovalRequired, ProposalStateError, StaleBaselineError
+from .bookbench import (
+    BookBenchError,
+    BookBenchGateError,
+    BookBenchNotFound,
+    BookBenchService,
+    SnapshotScope,
+)
 from .drafting import DraftingError, DraftingGateError, DraftingService, DraftSectionRequest
 from .editorial import (
     DecisionRequest,
@@ -79,6 +86,56 @@ class CitationIdentifierRequest(BaseModel):
     identifier: str = Field(min_length=1, max_length=1000)
 
 
+class BookBenchSnapshotRequest(BaseModel):
+    scope: str = "BOOK"
+    chapter_id: str | None = None
+    unit_id: str | None = None
+
+
+class VoiceFingerprintRequest(BaseModel):
+    snapshot_id: str
+    name: str = Field(min_length=1, max_length=160)
+
+
+class VoiceComparisonRequest(BaseModel):
+    target_snapshot_id: str
+
+
+class SemanticRequest(BaseModel):
+    provider: str
+    model: str
+    expected_config_hash: str | None = None
+
+
+class JudgeRequest(BaseModel):
+    dimension: str
+    provider: str
+    model: str
+    config_id: str
+    writer_identity: dict[str, str] | None = None
+
+
+class PairwiseRequest(BaseModel):
+    dimension: str
+    candidates: dict[str, str]
+    seed: int
+    provider: str
+    model: str
+    config_id: str
+
+
+class DatasetRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
+class ComparisonRequest(BaseModel):
+    configs: list[dict[str, str]] = Field(min_length=2)
+
+
+class HandoffRequest(BaseModel):
+    actor: str = "OWNER"
+
+
 def create_app(
     token: str | None = None,
     data_dir: Path | None = None,
@@ -127,6 +184,11 @@ def create_app(
     editorial_diagnostics = (
         EditorialDiagnostics(configured_data_dir, editorial)
         if configured_data_dir is not None and editorial is not None
+        else None
+    )
+    bookbench = (
+        BookBenchService(configured_data_dir, configured_embedding_gateway, configured_gateway)
+        if configured_data_dir is not None
         else None
     )
 
@@ -187,6 +249,25 @@ def create_app(
                 detail="BOOK_OS_DATA_DIR is required for editorial diagnostics",
             )
         return editorial_diagnostics
+
+    def bookbench_service(_: None = Depends(require_token)) -> BookBenchService:
+        if bookbench is None:
+            raise HTTPException(
+                status_code=503, detail="BOOK_OS_DATA_DIR is required for BookBench"
+            )
+        return bookbench
+
+    @app.exception_handler(BookBenchNotFound)
+    async def bookbench_not_found(_: Request, exc: BookBenchNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(BookBenchGateError)
+    async def bookbench_gate_error(_: Request, exc: BookBenchGateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(BookBenchError)
+    async def bookbench_error(_: Request, exc: BookBenchError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     @app.exception_handler(ProjectNotFound)
     async def project_not_found(_: Request, exc: ProjectNotFound) -> JSONResponse:
@@ -643,5 +724,153 @@ def create_app(
         service: EditorialService = Depends(editorial_service),
     ) -> dict[str, object]:
         return cast(dict[str, object], service.decision_corpus(book_id, finding_id))
+
+    @app.post("/api/projects/{book_id}/bookbench/snapshots")
+    def create_bookbench_snapshot(
+        book_id: str,
+        payload: BookBenchSnapshotRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        if payload.scope not in {"BOOK", "CHAPTER", "MANUSCRIPT_UNIT"}:
+            raise BookBenchGateError("invalid snapshot scope")
+        return service.create_snapshot(
+            book_id,
+            scope=cast(SnapshotScope, payload.scope),
+            chapter_id=payload.chapter_id,
+            unit_id=payload.unit_id,
+        ).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/bookbench/snapshots/{snapshot_id}")
+    def get_bookbench_snapshot(
+        book_id: str, snapshot_id: str, service: BookBenchService = Depends(bookbench_service)
+    ) -> dict[str, object]:
+        return service.get_snapshot(book_id, snapshot_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/bookbench/snapshots/{snapshot_id}/deterministic")
+    def run_bookbench_deterministic(
+        book_id: str, snapshot_id: str, service: BookBenchService = Depends(bookbench_service)
+    ) -> list[dict[str, object]]:
+        return [
+            item.model_dump(mode="json")
+            for item in service.run_deterministic_suite(book_id, snapshot_id)
+        ]
+
+    @app.get("/api/projects/{book_id}/bookbench/snapshots/{snapshot_id}/report")
+    def get_bookbench_report(
+        book_id: str, snapshot_id: str, service: BookBenchService = Depends(bookbench_service)
+    ) -> dict[str, object]:
+        return service.report(book_id, snapshot_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/bookbench/voice-fingerprints")
+    def create_voice_fingerprint(
+        book_id: str,
+        payload: VoiceFingerprintRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        return service.create_voice_fingerprint(
+            book_id, payload.snapshot_id, name=payload.name
+        ).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/bookbench/voice-fingerprints")
+    def list_voice_fingerprints(
+        book_id: str, service: BookBenchService = Depends(bookbench_service)
+    ) -> list[dict[str, object]]:
+        return [item.model_dump(mode="json") for item in service.list_voice_fingerprints(book_id)]
+
+    @app.post("/api/projects/{book_id}/bookbench/voice-fingerprints/{fingerprint_id}/compare")
+    def compare_voice_fingerprint(
+        book_id: str,
+        fingerprint_id: str,
+        payload: VoiceComparisonRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        return service.compare_voice(
+            book_id, fingerprint_id, payload.target_snapshot_id
+        ).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/bookbench/snapshots/{snapshot_id}/semantic")
+    def run_bookbench_semantic(
+        book_id: str,
+        snapshot_id: str,
+        payload: SemanticRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        return service.run_semantic(
+            book_id,
+            snapshot_id,
+            provider=payload.provider,
+            model=payload.model,
+            expected_config_hash=payload.expected_config_hash,
+        ).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/bookbench/snapshots/{snapshot_id}/judge")
+    def run_bookbench_judge(
+        book_id: str,
+        snapshot_id: str,
+        payload: JudgeRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        return service.run_judge(
+            book_id,
+            snapshot_id,
+            dimension=payload.dimension,
+            provider=payload.provider,
+            model=payload.model,
+            config_id=payload.config_id,
+            writer=payload.writer_identity,
+        ).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/bookbench/snapshots/{snapshot_id}/pairwise")
+    def run_bookbench_pairwise(
+        book_id: str,
+        snapshot_id: str,
+        payload: PairwiseRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        return service.run_pairwise(
+            book_id,
+            snapshot_id,
+            dimension=payload.dimension,
+            candidates=payload.candidates,
+            seed=payload.seed,
+            provider=payload.provider,
+            model=payload.model,
+            config_id=payload.config_id,
+        ).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/bookbench/datasets")
+    def create_bookbench_dataset(
+        book_id: str,
+        payload: DatasetRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        return service.create_dataset(book_id, name=payload.name).model_dump(mode="json")
+
+    @app.get("/api/projects/{book_id}/bookbench/datasets/{dataset_id}")
+    def get_bookbench_dataset(
+        book_id: str, dataset_id: str, service: BookBenchService = Depends(bookbench_service)
+    ) -> dict[str, object]:
+        return service.get_dataset(book_id, dataset_id).model_dump(mode="json")
+
+    @app.post("/api/projects/{book_id}/bookbench/datasets/{dataset_id}/compare")
+    def compare_bookbench_configs(
+        book_id: str,
+        dataset_id: str,
+        payload: ComparisonRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> list[dict[str, object]]:
+        return [
+            x.model_dump(mode="json")
+            for x in service.compare_configs(book_id, dataset_id, configs=payload.configs)
+        ]
+
+    @app.post("/api/projects/{book_id}/bookbench/findings/{finding_id}/handoff")
+    def handoff_bookbench_finding(
+        book_id: str,
+        finding_id: str,
+        payload: HandoffRequest,
+        service: BookBenchService = Depends(bookbench_service),
+    ) -> dict[str, object]:
+        return service.handoff(book_id, finding_id, actor=payload.actor).model_dump(mode="json")
 
     return app

@@ -34,10 +34,31 @@ class SectionDraftOutput(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class JudgeFindingOutput(BaseModel):
+    location: str = Field(min_length=1)
+    evidence: str = Field(min_length=1)
+    recommended_action: str = Field(min_length=1)
+
+
+class BookBenchJudgeOutput(BaseModel):
+    verdict: Literal["PASS", "ATTENTION", "BLOCKING"]
+    findings: list[JudgeFindingOutput] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = Field(min_length=1)
+
+
+class BookBenchPairwiseOutput(BaseModel):
+    preference: Literal["A", "B", "TIE"]
+    dimension: str = Field(min_length=1)
+    evidence: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = Field(min_length=1)
+
+
 class ModelTaskRequest(BaseModel):
     task_id: str
-    task_type: Literal["SECTION_DRAFT"]
-    role: Literal["WRITER"]
+    task_type: Literal["SECTION_DRAFT", "BOOKBENCH_JUDGE", "BOOKBENCH_PAIRWISE"]
+    role: Literal["WRITER", "EVALUATOR"]
     provider: str
     model: str
     prompt_id: str
@@ -47,6 +68,7 @@ class ModelTaskRequest(BaseModel):
     authority_inputs: list[AuthorityInputRef] = Field(min_length=1)
     authoritative_context: dict[str, Any]
     untrusted_context: list[str] = Field(default_factory=list)
+    task_payload: dict[str, Any] = Field(default_factory=dict)
     max_output_tokens: int = Field(default=3500, ge=100, le=12000)
     max_cost_usd: float | None = Field(default=None, ge=0)
 
@@ -99,6 +121,35 @@ class DeterministicFakeAdapter:
                 output={"notes": ["missing required text"]},
                 usage={"input_tokens": 10, "output_tokens": 2},
             )
+        if request.task_type == "BOOKBENCH_JUDGE":
+            return ModelAdapterResult(
+                provider_run_id="fake-judge-success",
+                output={
+                    "verdict": "ATTENTION",
+                    "findings": [
+                        {
+                            "location": "candidate:1",
+                            "evidence": "bounded synthetic signal",
+                            "recommended_action": "Human review.",
+                        }
+                    ],
+                    "confidence": 0.75,
+                    "rationale": "Deterministic fake judge fixture.",
+                },
+                usage={"input_tokens": 40, "output_tokens": 20},
+            )
+        if request.task_type == "BOOKBENCH_PAIRWISE":
+            return ModelAdapterResult(
+                provider_run_id="fake-pairwise-success",
+                output={
+                    "preference": "A",
+                    "dimension": str(request.task_payload.get("dimension", "IDEA_REPETITION")),
+                    "evidence": ["bounded synthetic comparison"],
+                    "confidence": 0.8,
+                    "rationale": "Deterministic fake pairwise fixture.",
+                },
+                usage={"input_tokens": 50, "output_tokens": 20},
+            )
         return ModelAdapterResult(
             provider_run_id="fake-success",
             output={
@@ -126,7 +177,11 @@ class OpenAIResponsesAdapter:
         self._timeout_seconds = timeout_seconds
 
     @staticmethod
-    def output_schema() -> dict[str, Any]:
+    def output_schema(task_type: str = "SECTION_DRAFT") -> dict[str, Any]:
+        if task_type == "BOOKBENCH_JUDGE":
+            return BookBenchJudgeOutput.model_json_schema()
+        if task_type == "BOOKBENCH_PAIRWISE":
+            return BookBenchPairwiseOutput.model_json_schema()
         return {
             "type": "object",
             "properties": {
@@ -144,6 +199,7 @@ class OpenAIResponsesAdapter:
             "authority_inputs": [item.model_dump(mode="json") for item in request.authority_inputs],
             "authoritative_context": request.authoritative_context,
             "untrusted_context": request.untrusted_context,
+            "task_payload": request.task_payload,
         }
         return {
             "model": request.model,
@@ -166,9 +222,9 @@ class OpenAIResponsesAdapter:
             "text": {
                 "format": {
                     "type": "json_schema",
-                    "name": "section_draft",
+                    "name": request.task_type.casefold(),
                     "strict": True,
-                    "schema": self.output_schema(),
+                    "schema": self.output_schema(request.task_type),
                 }
             },
             "max_output_tokens": request.max_output_tokens,
@@ -210,7 +266,12 @@ class OpenAIResponsesAdapter:
         if not isinstance(parsed, dict):
             raise ModelOutputError("OpenAI structured output must be an object")
         try:
-            validated = SectionDraftOutput.model_validate(parsed)
+            output_type: type[BaseModel] = SectionDraftOutput
+            if request.task_type == "BOOKBENCH_JUDGE":
+                output_type = BookBenchJudgeOutput
+            elif request.task_type == "BOOKBENCH_PAIRWISE":
+                output_type = BookBenchPairwiseOutput
+            validated = output_type.model_validate(parsed)
         except ValidationError as exc:
             raise ModelOutputError("OpenAI structured output failed schema validation") from exc
         usage = payload.get("usage")

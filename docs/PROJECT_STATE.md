@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** BLOCKED — OWNER ACTION REQUIRED / CODEX ENVIRONMENT UNSTABLE  
-**Version:** 1.4.7  
+**Status:** M7 FINAL ACCEPTANCE SYNC — PENDING EXACT-HEAD CI  
+**Version:** 1.5.0  
 **Date:** 2026-08-27  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -13,15 +13,24 @@ Active contract: `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`
 Implementation branch: `brain/task-008-bookbench`  
 Active pull request: `PR #11 — Task 008 — BookBench v0.1`
 
-Canonical `main` before this correction:
+Canonical `main` synchronized into this acceptance line:
 
-`7f82d585f7bb554502a41e1a01e9dc7426a72d39`
+`12e994dab4119eb94f861485ea5674bb003c4d23`
 
-Current published PR #11 HEAD:
+Last fully validated M7 source tree before main synchronization:
 
-`709880e35d93ea87dead4e8f1d5aabe36a669e99`
+`279cb2e3460ed787a997919cc5bf1ea11f07113c`
 
-PR status: DRAFT, mergeable, **not acceptance-complete**.
+Authoritative functional CI:
+
+`33100945557` — SUCCESS
+
+- local-core: Ruff format/check PASS; mypy PASS; **74/74 pytest PASS**;
+- desktop: lint PASS; typecheck PASS; **9/9 Vitest PASS**; build PASS; production dependency audit PASS;
+- tauri-smoke: `cargo test --locked` PASS; `cargo check --locked` PASS;
+- secret-scan: PASS.
+
+Normal CI external/model/judge live calls = `0`; paid calls = `0`.
 
 ## Accepted milestones
 
@@ -35,137 +44,61 @@ PR status: DRAFT, mergeable, **not acceptance-complete**.
 
 Do not return to M0–M6 without a new concrete defect.
 
-## M7 published evidence
+## M7 acceptance evidence
 
-The current published PR slice includes migration `0008`, exact evaluation snapshots/currentness, immutable EvaluationRun/EvaluationFinding persistence, deterministic BookBench registry/reporting, initial AI-prose pathology signals, Author Voice Fingerprint foundations, typed BookBench judge/pairwise Model Gateway foundations, deterministic fake judge/pairwise outputs, mocked OpenAI structured-output regression preserving `store=false`, and authenticated BookBench API foundations.
+Task 008 implementation now covers the required BookBench v0.1 scope:
 
-Authoritative GitHub CI run `33086202850` on published HEAD `709880e35d93ea87dead4e8f1d5aabe36a669e99` is fully green.
+- schema migration `0008`, exact reproducible snapshots and immutable EvaluationRun/EvaluationFinding history;
+- versioned deterministic/statistical/evidence checks and grouped per-dimension `PASS | ATTENTION | BLOCKING` report with **no overall magic score**;
+- deterministic AI-prose pathology signals with concrete examples/locations and no authorship-probability claim;
+- versioned Author Voice Fingerprints from explicit exact revisions, persistent list/select operations and diagnostic target comparison;
+- M5 EmbeddingGateway semantic duplication/novelty/contract-coverage signals with exact embedding identity and stale/incompatible-config gates;
+- typed BookBench judge and blind pairwise execution through the accepted Model Gateway, mocked OpenAI structured path with `store=false`, deterministic fake CI path, stored pairwise seed and candidate remapping;
+- judge independence `INDEPENDENT | SAME_CONFIG | UNKNOWN`, with same/unknown configuration prevented from masquerading as release-grade independent evidence;
+- immutable M6 decision-dataset snapshots/version/hash and deterministic two-configuration per-role/per-dimension scorecards without a universal score;
+- explicit current-safe BookBench → M6 EditorialFinding handoff with provenance and no automatic ChangeProposal, acceptance or waiver;
+- authenticated BookBench API;
+- native BookBench desktop workspace with BOOK/CHAPTER/MANUSCRIPT_UNIT target selection, deterministic/semantic/judge/pairwise controls, exact finding evidence, currentness, independence, Voice Fingerprint create/list/select/compare, AI-prose examples, dataset/config scorecards and explicit Editorial Inbox handoff;
+- backup/restore compatibility through `0008` and M0–M6 regression coverage.
 
-Normal CI external/model/judge live calls = `0`; paid calls = `0` remains mandatory.
+Task 008 REQUIRED ACCEPTANCE items 1–28 are objectively evidenced by implementation/tests and CI `33100945557`. Final M7 acceptance is withheld only until the post-`main` synchronization exact-head CI is green.
 
-## M7 local completion evidence
+## Codex environment
 
-PR #11 comment `5441395177` proves that the existing Codex environment was usable at 2026-08-27 15:28 UTC and that Codex executed the remaining M7 work.
+The existing Codex environment `niknikdym-hue/book-os` is present and was used for M7. Earlier intermittent environment-resolution messages are **not an active Owner blocker** and are superseded by the successfully published GitHub implementation.
 
-Codex reported local commit:
-
-`e4d832add38002e08664e2b0dde480e6d65318ab`
-
-Reported local evidence:
-
-- semantic duplication/novelty/contract-coverage checks through the existing EmbeddingGateway with exact config/currentness gates;
-- persisted judge execution with `INDEPENDENT | SAME_CONFIG | UNKNOWN` release gating;
-- deterministic blind pairwise mapping;
-- immutable versioned M6 decision datasets;
-- two-configuration per-dimension scorecards with no universal score;
-- explicit current-safe BookBench → M6 handoff with no automatic proposal/decision;
-- remaining authenticated BookBench operations;
-- native BookBench desktop workspace and tests;
-- **74 pytest PASS**;
-- desktop lint/typecheck/Vitest/build PASS.
-
-This local commit is **not present in GitHub**. PR #11 still points to `709880e35...`. Therefore it is evidence only, not accepted implementation.
-
-## Current blocker — intermittent Codex environment binding
-
-Central Brain issued exact transport recovery in PR #11 comment `5441840609`.
-
-At 2026-08-27 16:05 UTC the Codex connector immediately replied in comment `5441843623`:
-
-`To use Codex here, create an environment for this repo`
-
-This happened after a successful Codex run less than one hour earlier, so the problem is not “environment never existed.” It is an **intermittent environment binding/visibility failure**.
-
-Classification:
-
-`CODEX_ENVIRONMENT_UNSTABLE / BINDING_VISIBILITY_FAILURE`
-
-Because the local commit is inaccessible to GitHub and the transport recovery cannot run while Codex cannot resolve the environment, M7 is fully blocked at publication.
-
-## Required Owner action
-
-Do **not** create a duplicate blindly.
-
-Open Codex environment settings and inspect the existing environment bound to:
-
-`niknikdym-hue/book-os`
-
-Required result:
-
-- the existing environment entry is present;
-- it is enabled;
-- repository binding is exactly `niknikdym-hue/book-os`;
-- re-select/re-save/update the binding if the UI offers that action.
-
-If the existing entry is actually absent, recreate it only then.
-
-After the environment is stably visible, re-trigger PR #11 recovery contract `5441840609`.
-
-## Remaining acceptance sequence
-
-Before M7 ACCEPT/MERGE:
-
-1. Recover and publish the exact remaining-M7 bytes to `brain/task-008-bookbench`.
-2. Verify PR #11 HEAD advances from `709880e35...`.
-3. Run full authoritative GitHub CI: local-core, desktop, Tauri/Rust, audit and secret scan.
-4. Review every numbered REQUIRED ACCEPTANCE item in `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
-5. Verify human authority, privacy, no-universal-score, independence and zero-normal-CI-live/paid-call invariants.
-6. Synchronize final project state/hash.
-7. Only then ACCEPT + merge M7.
-8. Immediately advance to M8 Russia/no-VPN provider lane.
+Codex task/report text is never implementation authority. A task is considered delivered only when its code is present in GitHub and validated by the required CI gates.
 
 ## Repository hygiene
 
-Only PR #11 is open/draft. PRs #1–#10 are closed/merged.
+Only PR #11 is the active M7 implementation PR. PRs #1–#10 are closed/merged.
 
-Historical milestone branches are retired and are not project authority. Only these refs are active for implementation:
+Historical milestone branches and Codex task history are not project authority. No temporary M7 recovery/transport workflow or helper file remains in the final M7 source tree.
 
-- `main`
-- `brain/task-008-bookbench`
-- PR `#11`
+## Scope guard
 
-The stale temporary `.github/workflows/m7-control-sync.yml` has been removed.
+M7 contains no M8 Russia-provider implementation, provider production promotion, Literary Master/export/audio implementation, cloud/accounts/billing/sync or private manuscript/evaluation corpus.
+
+Human authority, no-silent-mutation, no-universal-score and zero-normal-CI-live/paid-call invariants remain mandatory.
 
 ## Fixed critical path to launch
 
 `M7 BookBench → M8 Russia/no-VPN provider lane → M9 Literary Master + exports → M10 real Business Nonfiction pilot → GO/NO-GO`
 
-No MVP/Russia-ready claim is permitted before the applicable M7–M10 acceptance gates pass.
+## Next permitted action
 
-## Scope guard
-
-Do not implement inside M7:
-
-- M8 Russia/no-VPN provider promotion;
-- Yandex/GigaChat production routing;
-- M9 Literary Master/release/export;
-- Audio Studio production handoff implementation;
-- M10 real-book pilot;
-- cloud/accounts/billing/sync;
-- any weakening of human authority, privacy, model-quality floors or zero-live/paid-call normal CI.
-
-## Recovery rule
-
-If chat context disappears:
-
-1. Open repository `main`.
-2. Read README recovery order + `DESIGN_INDEX.md`.
-3. Read this file and `TASK_EXECUTION_PROTOCOL_v0.1.md`.
-4. Read `BOOKBENCH_v0.1.md` and `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
-5. Inspect PR #11 / `brain/task-008-bookbench`.
-6. Treat published PR HEAD `709880e35...` or its verified descendant as GitHub implementation authority.
-7. Treat local-only Codex commit `e4d832add...` as evidence only until exact bytes are published and CI passes.
-8. Resolve Codex environment binding, then execute transport recovery comment `5441840609`.
-9. Do not merge M7 until every Task 008 acceptance gate passes.
-10. Then follow M8 → M9 → M10 → GO/NO-GO.
+1. Run full CI on the exact post-`main` synchronized PR #11 HEAD.
+2. If all four canonical jobs pass, Central Brain issues `ACCEPT Task 008 / M7`.
+3. Merge PR #11 to `main`.
+4. Verify canonical merged `main`.
+5. Immediately synchronize project state to M8 and issue the bounded M8 Russia/no-VPN provider-lane contract.
+6. Do not start M9 until M8 is accepted/merged.
 
 ## Change log
 
-### 1.4.7 — 2026-08-27
-- Recorded successful Codex M7 execution followed by immediate recurrence of the environment-resolution failure.
-- Reclassified the blocker as intermittent Codex environment binding/visibility failure.
-- Restored Owner-action requirement because exact local M7 bytes cannot be recovered/published while Codex cannot resolve the environment.
-- Preserved local commit/test evidence without treating it as GitHub authority or M7 acceptance.
-
-### 1.4.6 — 2026-08-27
-- Recorded local M7 completion report and delivery blocker before the environment failure recurred.
+### 1.5.0 — 2026-08-27
+- Replaced stale Codex-environment blocker state with actual published M7 evidence.
+- Recorded final functional CI `33100945557`: 74/74 Python, 9/9 desktop, Rust test/check and scans PASS.
+- Recorded completion of the previously missing desktop target/pairwise/Voice Fingerprint/independence gates and Voice Fingerprint list API.
+- Established GitHub publication + CI, not Codex task text, as the delivery rule.
+- Entered final M7 main-sync acceptance gate; M8 remains locked until M7 merge.
