@@ -1,104 +1,102 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** M7 FINAL ACCEPTANCE SYNC — PENDING EXACT-HEAD CI  
-**Version:** 1.5.0  
-**Date:** 2026-08-27  
+**Status:** M8 ACTIVE — TASK 009 READY
+**Version:** 1.5.1
+**Date:** 2026-08-27
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 7 — TASK 008 / BOOKBENCH v0.1**
+**IMPLEMENTATION MILESTONE 8 — RUSSIA / NO-VPN PROVIDER LANE**
 
-Active contract: `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`  
-Implementation branch: `brain/task-008-bookbench`  
-Active pull request: `PR #11 — Task 008 — BookBench v0.1`
+Canonical accepted `main` at M8 activation:
 
-Canonical `main` synchronized into this acceptance line:
+`5115a20512437a68da7ee7eed44e55b8ebbf0d90`
 
-`12e994dab4119eb94f861485ea5674bb003c4d23`
+Active contract:
 
-Last fully validated M7 source tree before main synchronization:
+`docs/tasks/CODEX_TASK_009_RUSSIA_PROVIDER_LANE.md`
 
-`279cb2e3460ed787a997919cc5bf1ea11f07113c`
+Planned branch:
 
-Authoritative functional CI:
-
-`33100945557` — SUCCESS
-
-- local-core: Ruff format/check PASS; mypy PASS; **74/74 pytest PASS**;
-- desktop: lint PASS; typecheck PASS; **9/9 Vitest PASS**; build PASS; production dependency audit PASS;
-- tauri-smoke: `cargo test --locked` PASS; `cargo check --locked` PASS;
-- secret-scan: PASS.
-
-Normal CI external/model/judge live calls = `0`; paid calls = `0`.
+`brain/task-009-russia-provider-lane`
 
 ## Accepted milestones
 
-- **M0 / Task 001 — ACCEPTED AND MERGED**
-- **M1 / Task 002 — ACCEPTED AND MERGED**
-- **M2 / Task 003 — ACCEPTED AND MERGED**
-- **M3 / Task 004 — ACCEPTED AND MERGED**
-- **M4 / Task 005 — ACCEPTED AND MERGED**
-- **M5 / Task 006 — ACCEPTED AND MERGED**
-- **M6 / Task 007 — ACCEPTED AND MERGED:** PR `#10`, accepted implementation HEAD `8fcdd725b5c6ece2d7b9500ae87c55478e008bd4`, canonical merge `9cfa9b9e8966715c243410e44dbe011e363974c1`, final CI `32961531865` SUCCESS.
+- M0 / Task 001 — ACCEPTED AND MERGED.
+- M1 / Task 002 — ACCEPTED AND MERGED.
+- M2 / Task 003 — ACCEPTED AND MERGED.
+- M3 / Task 004 — ACCEPTED AND MERGED.
+- M4 / Task 005 — ACCEPTED AND MERGED.
+- M5 / Task 006 — ACCEPTED AND MERGED.
+- M6 / Task 007 — ACCEPTED AND MERGED.
+- **M7 / Task 008 — ACCEPTED AND MERGED:** PR #11; accepted HEAD `8052ed9e1fe9f7902526a19ea8f6c9727946e4e4`; merge commit `5115a20512437a68da7ee7eed44e55b8ebbf0d90`; final exact-head CI `33101458190` SUCCESS with 74/74 pytest, 9/9 desktop tests, Rust test/check, dependency and secret scans.
 
-Do not return to M0–M6 without a new concrete defect.
+Do not return to M0–M7 without a concrete regression.
 
-## M7 acceptance evidence
+## M8 objective
 
-Task 008 implementation now covers the required BookBench v0.1 scope:
+Prove a provider-neutral runtime lane for a user in Russia that:
+- requires no VPN;
+- requires no personal foreign AI subscription/key;
+- does not circumvent provider geography/contracts;
+- retains provider/model/config provenance and data-minimization rules;
+- routes only through positively eligible provider/model/configs;
+- does not lower BOOK OS role-quality gates;
+- has structured unavailable/fallback behavior.
 
-- schema migration `0008`, exact reproducible snapshots and immutable EvaluationRun/EvaluationFinding history;
-- versioned deterministic/statistical/evidence checks and grouped per-dimension `PASS | ATTENTION | BLOCKING` report with **no overall magic score**;
-- deterministic AI-prose pathology signals with concrete examples/locations and no authorship-probability claim;
-- versioned Author Voice Fingerprints from explicit exact revisions, persistent list/select operations and diagnostic target comparison;
-- M5 EmbeddingGateway semantic duplication/novelty/contract-coverage signals with exact embedding identity and stale/incompatible-config gates;
-- typed BookBench judge and blind pairwise execution through the accepted Model Gateway, mocked OpenAI structured path with `store=false`, deterministic fake CI path, stored pairwise seed and candidate remapping;
-- judge independence `INDEPENDENT | SAME_CONFIG | UNKNOWN`, with same/unknown configuration prevented from masquerading as release-grade independent evidence;
-- immutable M6 decision-dataset snapshots/version/hash and deterministic two-configuration per-role/per-dimension scorecards without a universal score;
-- explicit current-safe BookBench → M6 EditorialFinding handoff with provenance and no automatic ChangeProposal, acceptance or waiver;
-- authenticated BookBench API;
-- native BookBench desktop workspace with BOOK/CHAPTER/MANUSCRIPT_UNIT target selection, deterministic/semantic/judge/pairwise controls, exact finding evidence, currentness, independence, Voice Fingerprint create/list/select/compare, AI-prose examples, dataset/config scorecards and explicit Editorial Inbox handoff;
-- backup/restore compatibility through `0008` and M0–M6 regression coverage.
+M8 uses two-stage acceptance:
+1. implementation + mocked CI;
+2. explicit live provider promotion evidence.
 
-Task 008 REQUIRED ACCEPTANCE items 1–28 are objectively evidenced by implementation/tests and CI `33100945557`. Final M7 acceptance is withheld only until the post-`main` synchronization exact-head CI is green.
+Passing Stage A alone is not Russia-ready acceptance.
 
-## Codex environment
+## Current official facts verified 2026-08-27
 
-The existing Codex environment `niknikdym-hue/book-os` is present and was used for M7. Earlier intermittent environment-resolution messages are **not an active Owner blocker** and are superseded by the successfully published GitHub implementation.
+- Yandex Cloud exposes a Russia region and AI Studio text/embeddings APIs; structured JSON/JSON-Schema output and scoped API-key/IAM authorization are documented.
+- GigaChat uses `https://api.giga.chat`; access-token authorization, B2B/CORP scopes and strict JSON-Schema output are documented.
+- GigaChat commercial use requires an appropriate paid/commercial path; `GigaChat-3-Ultra` is currently physical-person freemium only and is not a BOOK OS commercial-production candidate.
+- Russia remains absent from OpenAI's official API-supported-country list, so OpenAI cannot be the mandatory Russian runtime route.
 
-Codex task/report text is never implementation authority. A task is considered delivered only when its code is present in GitHub and validated by the required CI gates.
+Canonical dated sources are embedded in Task 009.
 
-## Repository hygiene
+## Non-negotiable M8 rules
 
-Only PR #11 is the active M7 implementation PR. PRs #1–#10 are closed/merged.
+- normal CI external/provider/model calls = 0; paid calls = 0;
+- secrets remain behind SecretStore and never reach React/Git/logs;
+- no `verify=False` production TLS path;
+- live promotion is explicit-flag gated and never triggered by ordinary UI/tests;
+- provider health does not imply provider quality;
+- a route is production-eligible only after BookBench role promotion;
+- no fallback below quality floor;
+- no M9/M10 implementation inside M8.
 
-Historical milestone branches and Codex task history are not project authority. No temporary M7 recovery/transport workflow or helper file remains in the final M7 source tree.
+## Execution state
 
-## Scope guard
+Task 009 is READY. Create the M8 branch from the exact canonical `main` after this control-state commit, open one draft PR, and implement only Task 009.
 
-M7 contains no M8 Russia-provider implementation, provider production promotion, Literary Master/export/audio implementation, cloud/accounts/billing/sync or private manuscript/evaluation corpus.
+Codex report text is not delivery authority. Required delivery evidence is:
+`published GitHub HEAD + inspectable PR diff + authoritative GitHub CI`.
 
-Human authority, no-silent-mutation, no-universal-score and zero-normal-CI-live/paid-call invariants remain mandatory.
+## Fixed critical path
 
-## Fixed critical path to launch
+`M8 Russia/no-VPN provider lane → M9 Literary Master + exports → M10 real Business Nonfiction pilot → GO/NO-GO`
 
-`M7 BookBench → M8 Russia/no-VPN provider lane → M9 Literary Master + exports → M10 real Business Nonfiction pilot → GO/NO-GO`
+## Next action
 
-## Next permitted action
-
-1. Run full CI on the exact post-`main` synchronized PR #11 HEAD.
-2. If all four canonical jobs pass, Central Brain issues `ACCEPT Task 008 / M7`.
-3. Merge PR #11 to `main`.
-4. Verify canonical merged `main`.
-5. Immediately synchronize project state to M8 and issue the bounded M8 Russia/no-VPN provider-lane contract.
-6. Do not start M9 until M8 is accepted/merged.
+1. Commit Task 009 + this state/hash synchronization to canonical `main`.
+2. Create `brain/task-009-russia-provider-lane`.
+3. Open one draft M8 PR.
+4. Execute Stage A implementation against exact baseline.
+5. Central Brain reviews actual GitHub HEAD/diff/CI.
+6. If Stage A passes but credentials/commercial access/live-eval budget are absent, record `BLOCKED_LIVE_PROMOTION`; do not lower quality.
+7. After Stage B live promotion and final CI, ACCEPT + merge M8.
+8. Only then start M9.
 
 ## Change log
 
-### 1.5.0 — 2026-08-27
-- Replaced stale Codex-environment blocker state with actual published M7 evidence.
-- Recorded final functional CI `33100945557`: 74/74 Python, 9/9 desktop, Rust test/check and scans PASS.
-- Recorded completion of the previously missing desktop target/pairwise/Voice Fingerprint/independence gates and Voice Fingerprint list API.
-- Established GitHub publication + CI, not Codex task text, as the delivery rule.
-- Entered final M7 main-sync acceptance gate; M8 remains locked until M7 merge.
+### 1.5.1 — 2026-08-27
+- Recorded M7 ACCEPT + merge and final exact-head CI.
+- Activated M8 / Task 009.
+- Added current provider-policy facts verified from official Yandex/GigaChat/OpenAI sources.
+- Added two-stage M8 acceptance and the hard GitHub-delivery rule.
