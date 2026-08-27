@@ -1,16 +1,16 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** BLOCKED — CODEX ENVIRONMENT RESOLUTION  
-**Version:** 1.4.5  
-**Date:** 2026-08-27  
+**Status:** M7 IMPLEMENTED — CENTRAL BRAIN REVIEW REQUIRED
+**Version:** 1.5.0
+**Date:** 2026-08-27
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
 **IMPLEMENTATION MILESTONE 7 — TASK 008 / BOOKBENCH v0.1**
 
-Active contract: `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`  
-Implementation branch: `brain/task-008-bookbench`  
+Active contract: `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`
+Implementation branch: `brain/task-008-bookbench`
 Active pull request: `PR #11 — Task 008 — BookBench v0.1`
 
 Verified canonical `main` before this control correction:
@@ -61,21 +61,16 @@ Normal CI external/model/judge live calls = `0`; paid calls = `0` remains mandat
 
 ## Remaining M7 acceptance gates
 
-M7 is **not accepted** until all remaining Task 008 gates are implemented and evidenced on this same PR:
+The remaining Task 008 implementation is now present locally for Central Brain review:
 
-1. M5-based semantic checks with exact embedding-config identity and stale/incompatible-config gates.
-2. Full judge/pairwise persistence/execution and required dimension/rubric evidence.
-3. Judge independence `INDEPENDENT | SAME_CONFIG | UNKNOWN` and release-grade gate.
-4. Immutable M6 decision-dataset snapshots/version/hash.
-5. Two-configuration role/dimension scorecards without a universal score.
-6. Explicit BookBench → M6 EditorialFinding handoff with exact-current validation and stale block.
-7. Complete authenticated BookBench API operations required by Task 008.
-8. Native desktop BookBench workspace and tests.
-9. Backup/restore migration regressions through `0008`.
-10. Full M0–M6 regression suite and every numbered REQUIRED ACCEPTANCE item in `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
-11. Final authoritative PR CI PASS and final project-state/hash synchronization.
+- M5 EmbeddingGateway semantic candidates retain exact revision and embedding-config identity and reject stale/incompatible inputs;
+- bounded judge and blind pairwise execution persist versioned evidence with explicit independence/release-grade state;
+- immutable M6 decision datasets and two deterministic fake-configuration per-dimension scorecards preserve zero-live/paid normal CI;
+- explicit current-safe BookBench-to-M6 handoff preserves provenance and creates no proposal or decision;
+- authenticated API and native desktop BookBench workspace expose all M7 operations without an overall score;
+- synthetic acceptance regressions cover semantic config gates, judge independence, pairwise mapping, datasets, scorecards, and handoff.
 
-Do not merge PR #11 and do not start M8 before these gates pass.
+M7 is **not self-accepted**. Central Brain must review the exact implementation, verify authoritative CI, and decide ACCEPT/MERGE. M8 remains forbidden until that decision.
 
 ## Codex environment — corrected diagnosis
 

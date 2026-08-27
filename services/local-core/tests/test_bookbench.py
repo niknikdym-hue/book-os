@@ -365,3 +365,113 @@ def test_evaluation_findings_and_runs_are_immutable_and_authority_is_unchanged(
                 {"id": run.evaluation_id},
             )
     assert AuthorityService(engine).get_head(str(entity_id)) == before
+
+
+def test_semantic_candidates_config_gate_and_fake_only(tmp_path: Path) -> None:
+    from book_os_core.memory_embeddings import DeterministicFakeEmbeddingAdapter, EmbeddingGateway
+
+    state = ready_book(tmp_path)
+    fake = DeterministicFakeEmbeddingAdapter(dimension=4)
+    service = BookBenchService(tmp_path, EmbeddingGateway({"fake": fake}))
+    snapshot = service.create_snapshot(state["book_id"], scope="BOOK")
+    result = service.run_semantic(
+        state["book_id"], snapshot.snapshot_id, provider="fake", model="fake-v1"
+    )
+    assert result.candidates_only and result.embedding_config["provider"] == "fake"
+    assert result.evaluation_ids and fake.calls
+    with pytest.raises(Exception, match="incompatible embedding config"):
+        service.run_semantic(
+            state["book_id"],
+            snapshot.snapshot_id,
+            provider="fake",
+            model="fake-v1",
+            expected_config_hash="0" * 64,
+        )
+
+
+def test_judge_independence_blind_pairwise_and_persistence(tmp_path: Path) -> None:
+    state = ready_book(tmp_path)
+    gateway = ModelGateway({"fake": DeterministicFakeAdapter()})
+    service = BookBenchService(tmp_path, model_gateway=gateway)
+    snapshot = service.create_snapshot(state["book_id"], scope="BOOK")
+    run = service.run_judge(
+        state["book_id"],
+        snapshot.snapshot_id,
+        dimension="AUTHOR_VOICE",
+        provider="fake",
+        model="same",
+        config_id="same",
+        writer={"provider": "fake", "model": "same", "config_id": "same"},
+    )
+    assert run.independence_state == "SAME_CONFIG" and run.output["release_grade"] is False
+    first = service.run_pairwise(
+        state["book_id"],
+        snapshot.snapshot_id,
+        dimension="AUTHOR_VOICE",
+        candidates={"candidate-one": "one", "candidate-two": "two"},
+        seed=42,
+        provider="fake",
+        model="judge",
+        config_id="judge",
+    )
+    second = service.run_pairwise(
+        state["book_id"],
+        snapshot.snapshot_id,
+        dimension="AUTHOR_VOICE",
+        candidates={"candidate-one": "one", "candidate-two": "two"},
+        seed=42,
+        provider="fake",
+        model="judge",
+        config_id="judge",
+    )
+    assert first.labels == second.labels and first.winner_candidate_id == first.labels["A"]
+
+
+def test_dataset_scorecards_and_current_safe_handoff(tmp_path: Path) -> None:
+    state = ready_book(tmp_path)
+    editorial = EditorialService(tmp_path)
+    finding = editorial.create_finding(
+        state["book_id"],
+        FindingCreateRequest(
+            role="LITERARY_EDITOR",
+            category="SYNTHETIC_CASE",
+            target_kind="MANUSCRIPT_UNIT",
+            target_id=state["unit_1"],
+            base_revision_id=state["revision_1"],
+            base_revision_hash=state["revision_hash_1"],
+            diagnosis="Synthetic diagnostic",
+            why="Synthetic acceptance fixture",
+            actor="OWNER",
+            actor_kind="HUMAN",
+        ),
+    )
+    proposal = editorial.create_manuscript_proposal(
+        state["book_id"],
+        finding.finding_id,
+        ProposalCreateRequest(proposed_text="Synthetic improved revision.", rationale="fixture"),
+    )
+    editorial.reject(
+        state["book_id"],
+        finding.finding_id,
+        proposal.proposal_id,
+        DecisionRequest(actor="OWNER", actor_kind="HUMAN", reason="labelled synthetic rejection"),
+    )
+    service = BookBenchService(tmp_path)
+    dataset = service.create_dataset(state["book_id"], name="synthetic")
+    assert dataset.version == 1 and dataset.case_count == 1 and dataset.dataset_hash
+    again = service.create_dataset(state["book_id"], name="synthetic")
+    assert again.dataset_snapshot_id == dataset.dataset_snapshot_id
+    cards = service.compare_configs(
+        state["book_id"],
+        dataset.dataset_snapshot_id,
+        configs=[{"config_id": "fake-a"}, {"config_id": "fake-b"}],
+    )
+    assert len(cards) == 2 and all(c.dimensions and c.cost_usd == 0 for c in cards)
+    snapshot = service.create_snapshot(state["book_id"], scope="BOOK")
+    runs = service.run_deterministic_suite(state["book_id"], snapshot.snapshot_id)
+    eval_finding = next(f for r in runs for f in r.findings if f.target_kind == "MANUSCRIPT_UNIT")
+    handed = service.handoff(state["book_id"], eval_finding.finding_id)
+    assert (
+        handed.evidence["bookbench_provenance"]["evaluation_finding_id"] == eval_finding.finding_id
+    )
+    assert editorial.list_proposals(state["book_id"], handed.finding_id) == []

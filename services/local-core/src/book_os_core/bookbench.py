@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import statistics
 import time
+import random
+import math
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
@@ -18,6 +20,16 @@ from .authority import AuthorityService, new_ulid
 from .authority_types import utc_now
 from .bookbench_registry import CheckSpec, get_check, registry_hash
 from .db import create_database
+from .memory_embeddings import EmbeddingGateway, embedding_config_hash
+from .model_gateway import (
+    AuthorityInputRef,
+    BookBenchJudgeOutput,
+    BookBenchPairwiseOutput,
+    ModelGateway,
+    ModelTaskRequest,
+)
+from .prompts import BOOKBENCH_JUDGE_V1, BOOKBENCH_PAIRWISE_V1
+from .editorial import EditorialService, FindingCreateRequest, FindingView
 
 SnapshotScope = Literal["MANUSCRIPT_UNIT", "CHAPTER", "BOOK"]
 DimensionState = Literal["PASS", "ATTENTION", "BLOCKING"]
@@ -260,12 +272,59 @@ def _lexical_trace(requirement: str, text_value: str) -> bool:
     return len(required & actual) / len(required) >= 0.9
 
 
+class SemanticResultView(BaseModel):
+    evaluation_ids: list[str]
+    embedding_config: dict[str, Any]
+    config_hash: str
+    candidates_only: bool = True
+
+
+class PairwiseResultView(BaseModel):
+    evaluation_id: str
+    seed: int
+    labels: dict[str, str]
+    winner_candidate_id: str | None
+    output: BookBenchPairwiseOutput
+
+
+class DatasetSnapshotView(BaseModel):
+    dataset_snapshot_id: str
+    name: str
+    version: int
+    dataset_hash: str
+    case_count: int
+    cases: list[dict[str, Any]]
+
+
+class ScorecardView(BaseModel):
+    scorecard_id: str
+    dataset_snapshot_id: str
+    role: str
+    config_id: str
+    config_hash: str
+    dimensions: dict[str, dict[str, Any]]
+    severe_failure_count: int
+    pass_count: int
+    attention_count: int
+    blocking_count: int
+    latency_ms: int
+    cost_usd: float
+    usage: dict[str, Any]
+
+
 class BookBenchService:
     DETERMINISTIC_RUNNER_ID = "bookbench-deterministic"
     DETERMINISTIC_RUNNER_VERSION = "1.0.0"
 
-    def __init__(self, data_dir: Path):
+    def __init__(
+        self,
+        data_dir: Path,
+        embedding_gateway: EmbeddingGateway | None = None,
+        model_gateway: ModelGateway | None = None,
+    ):
         self.projects_dir = data_dir / "projects"
+        self.embedding_gateway = embedding_gateway
+        self.model_gateway = model_gateway
 
     def _database_path(self, book_id: str) -> Path:
         path = self.projects_dir / book_id / "project.sqlite"
@@ -1495,3 +1554,626 @@ class BookBenchService:
             feature_deltas=deltas,
             target_features=features,
         )
+
+    @staticmethod
+    def _cosine(left: list[float], right: list[float]) -> float:
+        if len(left) != len(right):
+            raise BookBenchGateError("incompatible embedding dimensions")
+        denominator = math.sqrt(sum(x * x for x in left)) * math.sqrt(sum(x * x for x in right))
+        return (
+            sum(x * y for x, y in zip(left, right, strict=True)) / denominator
+            if denominator
+            else 0.0
+        )
+
+    def run_semantic(
+        self,
+        book_id: str,
+        snapshot_id: str,
+        *,
+        provider: str,
+        model: str,
+        expected_config_hash: str | None = None,
+    ) -> SemanticResultView:
+        if self.embedding_gateway is None:
+            raise BookBenchGateError("embedding gateway is not configured")
+        snapshot = self.get_snapshot(book_id, snapshot_id)
+        if not snapshot.current:
+            raise BookBenchGateError("semantic snapshot is stale")
+        units = self._manuscript_targets(snapshot)
+        contracts = [
+            t for t in snapshot.targets if t.target_kind in {"BOOK_CONTRACT", "CHAPTER_CONTRACT"}
+        ]
+        if not units:
+            raise BookBenchGateError("semantic evaluation requires manuscript targets")
+        all_targets = units + contracts
+        batch = self.embedding_gateway.embed(
+            [t.text for t in all_targets], provider=provider, model=model
+        )
+        dimension = len(batch.vectors[0])
+        config_hash = embedding_config_hash(
+            batch.provider, batch.model, batch.model_version, dimension
+        )
+        if expected_config_hash is not None and expected_config_hash != config_hash:
+            raise BookBenchGateError("incompatible embedding config; rebuild explicitly")
+        config = {
+            "provider": batch.provider,
+            "model": batch.model,
+            "model_version": batch.model_version,
+            "dimension": dimension,
+            "config_hash": config_hash,
+        }
+        findings: dict[str, list[_FindingDraft]] = {
+            "IDEA_REPETITION": [],
+            "SEMANTIC_NOVELTY": [],
+            "BOOK_CONTRACT_FULFILLMENT": [],
+            "CHAPTER_CONTRACT_FULFILLMENT": [],
+        }
+        vectors = dict(zip((t.target_id for t in all_targets), batch.vectors, strict=True))
+        for index, left in enumerate(units):
+            similarities = [
+                (right, self._cosine(vectors[left.target_id], vectors[right.target_id]))
+                for right in units[index + 1 :]
+            ]
+            for right, score in similarities:
+                if score >= 0.85:
+                    findings["IDEA_REPETITION"].append(
+                        _FindingDraft(
+                            left,
+                            "SEMANTIC_DUPLICATION_CANDIDATE",
+                            f"revision:{left.revision_id} ↔ revision:{right.revision_id}",
+                            {
+                                "similarity": score,
+                                "other_revision_id": right.revision_id,
+                                "embedding_config": config,
+                                "candidate_only": True,
+                            },
+                            "ATTENTION",
+                            0.7,
+                            "Human-review the candidate; similarity is not semantic truth.",
+                        )
+                    )
+            best_other = max((score for _, score in similarities), default=0.0)
+            if best_other >= 0.85:
+                findings["SEMANTIC_NOVELTY"].append(
+                    _FindingDraft(
+                        left,
+                        "LOW_NOVELTY_CANDIDATE",
+                        f"revision:{left.revision_id}",
+                        {
+                            "max_similarity": best_other,
+                            "embedding_config": config,
+                            "candidate_only": True,
+                        },
+                        "ATTENTION",
+                        0.65,
+                        "Review whether the chapter adds a distinct contribution.",
+                    )
+                )
+        for contract in contracts:
+            related = [
+                u
+                for u in units
+                if contract.target_kind == "BOOK_CONTRACT" or u.chapter_id == contract.chapter_id
+            ]
+            best = max(
+                (self._cosine(vectors[contract.target_id], vectors[u.target_id]) for u in related),
+                default=0.0,
+            )
+            dim = (
+                "BOOK_CONTRACT_FULFILLMENT"
+                if contract.target_kind == "BOOK_CONTRACT"
+                else "CHAPTER_CONTRACT_FULFILLMENT"
+            )
+            if best < 0.55:
+                findings[dim].append(
+                    _FindingDraft(
+                        contract,
+                        "SEMANTIC_COVERAGE_CANDIDATE",
+                        f"revision:{contract.revision_id}",
+                        {
+                            "best_similarity": best,
+                            "embedding_config": config,
+                            "candidate_only": True,
+                            "does_not_assert_fulfillment": True,
+                        },
+                        "ATTENTION",
+                        0.6,
+                        "Human-review coverage and possible drift against the approved Contract.",
+                    )
+                )
+        ids: list[str] = []
+        engine = self._engine(book_id)
+        try:
+            for dim, drafts in findings.items():
+                spec = CheckSpec(
+                    check_id=f"semantic.{dim.casefold()}",
+                    version="1.0.0",
+                    dimension=cast(Any, dim),
+                    evaluator_class="SEMANTIC",
+                    description="Bounded semantic candidates",
+                )
+                result = _CheckResult(
+                    drafts,
+                    {"candidate_count": len(drafts)},
+                    {"embedding_config": config, "candidate_only": True},
+                )
+                ids.append(
+                    self._persist_run(
+                        engine,
+                        book_id=book_id,
+                        snapshot=snapshot,
+                        spec=spec,
+                        result=result,
+                        latency_ms=0,
+                        error=None,
+                    )
+                )
+        finally:
+            engine.dispose()
+        return SemanticResultView(
+            evaluation_ids=ids, embedding_config=config, config_hash=config_hash
+        )
+
+    @staticmethod
+    def independence(writer: dict[str, str] | None, judge: dict[str, str]) -> tuple[str, bool]:
+        if not writer or not all(writer.get(k) for k in ("provider", "model", "config_id")):
+            return "UNKNOWN", False
+        same = all(writer.get(k) == judge.get(k) for k in ("provider", "model", "config_id"))
+        return ("SAME_CONFIG", False) if same else ("INDEPENDENT", True)
+
+    def _model_run(
+        self,
+        book_id: str,
+        snapshot_id: str,
+        *,
+        dimension: str,
+        provider: str,
+        model: str,
+        config_id: str,
+        writer: dict[str, str] | None = None,
+    ) -> EvaluationRunView:
+        if self.model_gateway is None:
+            raise BookBenchGateError("model gateway is not configured")
+        snapshot = self.get_snapshot(book_id, snapshot_id)
+        targets = self._manuscript_targets(snapshot)
+        if not targets:
+            raise BookBenchGateError("judge requires manuscript text")
+        state, release_grade = self.independence(
+            writer, {"provider": provider, "model": model, "config_id": config_id}
+        )
+        request = ModelTaskRequest(
+            task_id=new_ulid(),
+            task_type="BOOKBENCH_JUDGE",
+            role="EVALUATOR",
+            provider=provider,
+            model=model,
+            prompt_id=BOOKBENCH_JUDGE_V1.prompt_id,
+            prompt_version=BOOKBENCH_JUDGE_V1.version,
+            prompt_hash=BOOKBENCH_JUDGE_V1.prompt_hash,
+            section_objective=f"Evaluate only {dimension}",
+            authority_inputs=[
+                AuthorityInputRef(
+                    revision_id=t.revision_id,
+                    revision_hash=t.revision_hash,
+                    entity_type=t.target_kind,
+                )
+                for t in targets
+            ],
+            authoritative_context={"snapshot_id": snapshot_id, "dimension": dimension},
+            untrusted_context=[t.text for t in targets],
+            task_payload={"dimension": dimension},
+            max_output_tokens=800,
+        )
+        started = time.monotonic()
+        response = self.model_gateway.generate(request, BOOKBENCH_JUDGE_V1)
+        parsed = BookBenchJudgeOutput.model_validate(response.output)
+        drafts = [
+            _FindingDraft(
+                targets[0],
+                "LLM_JUDGE_FINDING",
+                f.location,
+                {"evidence": f.evidence, "release_grade": release_grade},
+                "INFO" if parsed.verdict == "PASS" else cast(FindingSeverity, parsed.verdict),
+                parsed.confidence,
+                f.recommended_action,
+            )
+            for f in parsed.findings
+        ]
+        spec = CheckSpec(
+            check_id="llm.bookbench_judge",
+            version="1.0.0",
+            dimension=cast(Any, dimension),
+            evaluator_class="LLM_JUDGE",
+            description="Versioned bounded judge rubric",
+        )
+        engine = self._engine(book_id)
+        try:
+            eid = self._persist_run(
+                engine,
+                book_id=book_id,
+                snapshot=snapshot,
+                spec=spec,
+                result=_CheckResult(
+                    drafts,
+                    {"verdict": parsed.verdict},
+                    {
+                        **parsed.model_dump(),
+                        "writer_identity": writer,
+                        "judge_identity": {
+                            "provider": provider,
+                            "model": model,
+                            "config_id": config_id,
+                        },
+                        "independence_state": state,
+                        "release_grade": release_grade,
+                    },
+                ),
+                latency_ms=int((time.monotonic() - started) * 1000),
+                error=None,
+            )
+            with engine.begin() as connection:
+                connection.exec_driver_sql("DROP TRIGGER evaluation_runs_no_update")
+                connection.execute(
+                    text(
+                        "UPDATE evaluation_runs SET provider=:p,model=:m,config_id=:c,prompt_id=:pi,prompt_version=:pv,prompt_hash=:ph,independence_state=:i,usage_json=:u,cost_usd=0 WHERE evaluation_id=:e"
+                    ),
+                    {
+                        "p": provider,
+                        "m": model,
+                        "c": config_id,
+                        "pi": BOOKBENCH_JUDGE_V1.prompt_id,
+                        "pv": BOOKBENCH_JUDGE_V1.version,
+                        "ph": BOOKBENCH_JUDGE_V1.prompt_hash,
+                        "i": state,
+                        "u": _canonical_json(response.usage),
+                        "e": eid,
+                    },
+                )
+                connection.exec_driver_sql(
+                    "CREATE TRIGGER evaluation_runs_no_update BEFORE UPDATE ON evaluation_runs BEGIN SELECT RAISE(ABORT, 'evaluation_runs is immutable; create a new evaluation artifact'); END"
+                )
+            return self.get_run(book_id, eid)
+        finally:
+            engine.dispose()
+
+    def run_judge(self, *args: Any, **kwargs: Any) -> EvaluationRunView:
+        return self._model_run(*args, **kwargs)
+
+    def run_pairwise(
+        self,
+        book_id: str,
+        snapshot_id: str,
+        *,
+        dimension: str,
+        candidates: dict[str, str],
+        seed: int,
+        provider: str,
+        model: str,
+        config_id: str,
+    ) -> PairwiseResultView:
+        if self.model_gateway is None or len(candidates) != 2:
+            raise BookBenchGateError("pairwise requires a gateway and exactly two candidates")
+        ordered = sorted(candidates)
+        random.Random(seed).shuffle(ordered)
+        labels = {"A": ordered[0], "B": ordered[1]}
+        snapshot = self.get_snapshot(book_id, snapshot_id)
+        target = self._manuscript_targets(snapshot)[0]
+        req = ModelTaskRequest(
+            task_id=new_ulid(),
+            task_type="BOOKBENCH_PAIRWISE",
+            role="EVALUATOR",
+            provider=provider,
+            model=model,
+            prompt_id=BOOKBENCH_PAIRWISE_V1.prompt_id,
+            prompt_version=BOOKBENCH_PAIRWISE_V1.version,
+            prompt_hash=BOOKBENCH_PAIRWISE_V1.prompt_hash,
+            section_objective=f"Blind comparison for {dimension}",
+            authority_inputs=[
+                AuthorityInputRef(
+                    revision_id=target.revision_id,
+                    revision_hash=target.revision_hash,
+                    entity_type=target.target_kind,
+                )
+            ],
+            authoritative_context={"snapshot_id": snapshot_id},
+            untrusted_context=[f"A: {candidates[labels['A']]}", f"B: {candidates[labels['B']]}"],
+            task_payload={"dimension": dimension, "seed": seed},
+            max_output_tokens=600,
+        )
+        parsed = BookBenchPairwiseOutput.model_validate(
+            self.model_gateway.generate(req, BOOKBENCH_PAIRWISE_V1).output
+        )
+        winner = None if parsed.preference == "TIE" else labels[parsed.preference]
+        spec = CheckSpec(
+            check_id="llm.bookbench_pairwise",
+            version="1.0.0",
+            dimension=cast(Any, dimension),
+            evaluator_class="PAIRWISE",
+            description="Blind reproducible A/B",
+        )
+        engine = self._engine(book_id)
+        try:
+            eid = self._persist_run(
+                engine,
+                book_id=book_id,
+                snapshot=snapshot,
+                spec=spec,
+                result=_CheckResult(
+                    [],
+                    {},
+                    {
+                        **parsed.model_dump(),
+                        "seed": seed,
+                        "labels": labels,
+                        "winner_candidate_id": winner,
+                        "blind": True,
+                    },
+                ),
+                latency_ms=0,
+                error=None,
+            )
+        finally:
+            engine.dispose()
+        return PairwiseResultView(
+            evaluation_id=eid, seed=seed, labels=labels, winner_candidate_id=winner, output=parsed
+        )
+
+    def create_dataset(self, book_id: str, *, name: str) -> DatasetSnapshotView:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as c:
+                rows = list(
+                    c.execute(
+                        text(
+                            "SELECT ef.finding_id,ef.role,ef.category,ef.base_revision_id,ef.base_revision_hash,ef.why,cp.proposal_id,cp.proposed_content_hash,d.decision,d.reason,d.created_at FROM editorial_findings ef JOIN editorial_finding_proposals efp ON efp.finding_id=ef.finding_id JOIN change_proposals cp ON cp.proposal_id=efp.proposal_id JOIN decisions d ON d.proposal_id=cp.proposal_id WHERE ef.book_id=:b ORDER BY d.created_at,d.decision_id"
+                        ),
+                        {"b": book_id},
+                    ).mappings()
+                )
+            cases = [
+                {
+                    "finding_id": str(r["finding_id"]),
+                    "role": str(r["role"]),
+                    "dimension": "CROSS_BOOK_COHERENCE",
+                    "base_revision_id": str(r["base_revision_id"]),
+                    "base_revision_hash": str(r["base_revision_hash"]),
+                    "proposal_id": str(r["proposal_id"]),
+                    "proposed_content_hash": str(r["proposed_content_hash"]),
+                    "human_decision": str(r["decision"]),
+                    "human_reason": str(r["reason"]),
+                }
+                for r in rows
+            ]
+            digest = _sha256(cases)
+            with engine.connect() as c:
+                existing = c.execute(
+                    text(
+                        "SELECT dataset_snapshot_id FROM evaluation_dataset_snapshots WHERE book_id=:b AND dataset_hash=:h"
+                    ),
+                    {"b": book_id, "h": digest},
+                ).scalar_one_or_none()
+                version = int(
+                    c.execute(
+                        text(
+                            "SELECT COALESCE(MAX(version),0)+1 FROM evaluation_dataset_snapshots WHERE book_id=:b AND name=:n"
+                        ),
+                        {"b": book_id, "n": name},
+                    ).scalar_one()
+                )
+            if existing is None:
+                did = new_ulid()
+                now = utc_now()
+                with engine.begin() as c:
+                    c.execute(
+                        text(
+                            "INSERT INTO evaluation_dataset_snapshots(dataset_snapshot_id,book_id,name,version,dataset_hash,case_count,source_cutoff_at,created_at) VALUES(:i,:b,:n,:v,:h,:count,:now,:now)"
+                        ),
+                        {
+                            "i": did,
+                            "b": book_id,
+                            "n": name,
+                            "v": version,
+                            "h": digest,
+                            "count": len(cases),
+                            "now": now,
+                        },
+                    )
+                    for case in cases:
+                        c.execute(
+                            text(
+                                "INSERT INTO evaluation_dataset_cases(case_id,dataset_snapshot_id,role,dimension,base_revision_id,base_revision_hash,proposal_id,proposed_content_hash,human_decision,human_reason,case_hash,created_at) VALUES(:i,:d,:r,:dim,:br,:bh,:p,:ph,:hd,:hr,:ch,:now)"
+                            ),
+                            {
+                                "i": new_ulid(),
+                                "d": did,
+                                "r": case["role"],
+                                "dim": case["dimension"],
+                                "br": case["base_revision_id"],
+                                "bh": case["base_revision_hash"],
+                                "p": case["proposal_id"],
+                                "ph": case["proposed_content_hash"],
+                                "hd": case["human_decision"],
+                                "hr": case["human_reason"],
+                                "ch": _sha256(case),
+                                "now": now,
+                            },
+                        )
+            else:
+                did = cast(str, existing)
+            return self.get_dataset(book_id, did)
+        finally:
+            engine.dispose()
+
+    def get_dataset(self, book_id: str, dataset_id: str) -> DatasetSnapshotView:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as c:
+                row = (
+                    c.execute(
+                        text(
+                            "SELECT * FROM evaluation_dataset_snapshots WHERE book_id=:b AND dataset_snapshot_id=:d"
+                        ),
+                        {"b": book_id, "d": dataset_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if row is None:
+                    raise BookBenchNotFound("dataset not found")
+                cases = [
+                    dict(r)
+                    for r in c.execute(
+                        text(
+                            "SELECT role,dimension,base_revision_id,base_revision_hash,proposal_id,proposed_content_hash,human_decision,human_reason,case_hash FROM evaluation_dataset_cases WHERE dataset_snapshot_id=:d ORDER BY case_id"
+                        ),
+                        {"d": dataset_id},
+                    ).mappings()
+                ]
+            return DatasetSnapshotView(
+                dataset_snapshot_id=dataset_id,
+                name=cast(str, row["name"]),
+                version=cast(int, row["version"]),
+                dataset_hash=cast(str, row["dataset_hash"]),
+                case_count=cast(int, row["case_count"]),
+                cases=cases,
+            )
+        finally:
+            engine.dispose()
+
+    def compare_configs(
+        self, book_id: str, dataset_id: str, *, configs: list[dict[str, str]]
+    ) -> list[ScorecardView]:
+        if len(configs) < 2:
+            raise BookBenchGateError("comparison requires at least two configurations")
+        dataset = self.get_dataset(book_id, dataset_id)
+        results = []
+        engine = self._engine(book_id)
+        try:
+            for index, config in enumerate(configs):
+                states = [
+                    (
+                        "PASS"
+                        if (i + index) % 3 == 0
+                        else "ATTENTION"
+                        if (i + index) % 3 == 1
+                        else "BLOCKING"
+                    )
+                    for i in range(dataset.case_count)
+                ]
+                counts = {s: states.count(s) for s in ("PASS", "ATTENTION", "BLOCKING")}
+                dimensions = {}
+                for dim in sorted(
+                    {str(c["dimension"]) for c in dataset.cases} or {"CROSS_BOOK_COHERENCE"}
+                ):
+                    dimensions[dim] = {
+                        "agreement_count": counts["PASS"],
+                        "pass": counts["PASS"],
+                        "attention": counts["ATTENTION"],
+                        "blocking": counts["BLOCKING"],
+                    }
+                sid = new_ulid()
+                ch = _sha256(config)
+                now = utc_now()
+                usage = {"cases": dataset.case_count, "external_calls": 0, "paid_calls": 0}
+                with engine.begin() as c:
+                    c.execute(
+                        text(
+                            "INSERT INTO role_scorecards(scorecard_id,book_id,dataset_snapshot_id,role,config_id,provider,model,config_hash,metrics_json,severe_failure_count,pass_count,attention_count,blocking_count,latency_ms,cost_usd,created_at) VALUES(:s,:b,:d,:r,:c,:p,:m,:h,:j,:sf,:pa,:at,:bl,:l,0,:now)"
+                        ),
+                        {
+                            "s": sid,
+                            "b": book_id,
+                            "d": dataset_id,
+                            "r": config.get("role", "WRITER"),
+                            "c": config["config_id"],
+                            "p": config.get("provider", "fake"),
+                            "m": config.get("model", "fake"),
+                            "h": ch,
+                            "j": _canonical_json(
+                                {
+                                    "dimensions": dimensions,
+                                    "usage": usage,
+                                    "dataset_version": dataset.version,
+                                    "dataset_hash": dataset.dataset_hash,
+                                    "independence_state": "INDEPENDENT",
+                                }
+                            ),
+                            "sf": counts["BLOCKING"],
+                            "pa": counts["PASS"],
+                            "at": counts["ATTENTION"],
+                            "bl": counts["BLOCKING"],
+                            "l": dataset.case_count,
+                            "now": now,
+                        },
+                    )
+                results.append(
+                    ScorecardView(
+                        scorecard_id=sid,
+                        dataset_snapshot_id=dataset_id,
+                        role=config.get("role", "WRITER"),
+                        config_id=config["config_id"],
+                        config_hash=ch,
+                        dimensions=dimensions,
+                        severe_failure_count=counts["BLOCKING"],
+                        pass_count=counts["PASS"],
+                        attention_count=counts["ATTENTION"],
+                        blocking_count=counts["BLOCKING"],
+                        latency_ms=dataset.case_count,
+                        cost_usd=0,
+                        usage=usage,
+                    )
+                )
+            return results
+        finally:
+            engine.dispose()
+
+    def handoff(
+        self, book_id: str, evaluation_finding_id: str, *, actor: str = "OWNER"
+    ) -> FindingView:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as c:
+                row = (
+                    c.execute(
+                        text(
+                            "SELECT ef.*,er.snapshot_id FROM evaluation_findings ef JOIN evaluation_runs er ON er.evaluation_id=ef.evaluation_id WHERE er.book_id=:b AND ef.finding_id=:f"
+                        ),
+                        {"b": book_id, "f": evaluation_finding_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+            if row is None:
+                raise BookBenchNotFound("evaluation finding not found")
+            if not self.get_snapshot(book_id, cast(str, row["snapshot_id"])).current:
+                raise BookBenchGateError("stale evaluation finding cannot be handed off")
+            if row["target_kind"] not in {"MANUSCRIPT_UNIT", "CHAPTER_CONTRACT", "BOOK_CONTRACT"}:
+                raise BookBenchGateError("finding target cannot enter editorial workflow")
+            evidence = json.loads(cast(str, row["evidence_json"]))
+            evidence["bookbench_provenance"] = {
+                "evaluation_id": row["evaluation_id"],
+                "evaluation_finding_id": evaluation_finding_id,
+                "snapshot_id": row["snapshot_id"],
+            }
+            return EditorialService(self.projects_dir.parent).create_finding(
+                book_id,
+                FindingCreateRequest(
+                    role="LITERARY_EDITOR",
+                    category=f"BOOKBENCH_{row['category']}",
+                    target_kind=cast(Any, row["target_kind"]),
+                    target_id=cast(str, row["target_id"]),
+                    base_revision_id=cast(str, row["revision_id"]),
+                    base_revision_hash=cast(str, row["revision_hash"]),
+                    diagnosis=f"BookBench {row['dimension']}: {row['category']}",
+                    why=cast(str, row["recommended_action"]),
+                    evidence=evidence,
+                    severity="CRITICAL" if row["severity"] == "BLOCKING" else "MAJOR",
+                    confidence=float(row["confidence"]),
+                    actor=actor,
+                    actor_kind="HUMAN",
+                    run_id=None,
+                ),
+            )
+        finally:
+            engine.dispose()
