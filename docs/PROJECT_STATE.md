@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** ACTIVE — M7 DELIVERY RECOVERY  
-**Version:** 1.4.6  
+**Status:** BLOCKED — OWNER ACTION REQUIRED / CODEX ENVIRONMENT UNSTABLE  
+**Version:** 1.4.7  
 **Date:** 2026-08-27  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -13,9 +13,9 @@ Active contract: `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`
 Implementation branch: `brain/task-008-bookbench`  
 Active pull request: `PR #11 — Task 008 — BookBench v0.1`
 
-Canonical `main` at this checkpoint:
+Canonical `main` before this correction:
 
-`02eebbacf98462889d43ff2fafda1860420bb29a`
+`7f82d585f7bb554502a41e1a01e9dc7426a72d39`
 
 Current published PR #11 HEAD:
 
@@ -43,17 +43,15 @@ Authoritative GitHub CI run `33086202850` on published HEAD `709880e35d93ea87dea
 
 Normal CI external/model/judge live calls = `0`; paid calls = `0` remains mandatory.
 
-## M7 continuation — environment recovered
+## M7 local completion evidence
 
-The previously existing Codex cloud environment is usable again.
+PR #11 comment `5441395177` proves that the existing Codex environment was usable at 2026-08-27 15:28 UTC and that Codex executed the remaining M7 work.
 
-PR #11 comment `5441395177` records a successful Codex continuation from published HEAD `709880e35d93ea87dead4e8f1d5aabe36a669e99`.
-
-Codex reports the remaining M7 implementation completed locally as commit:
+Codex reported local commit:
 
 `e4d832add38002e08664e2b0dde480e6d65318ab`
 
-Reported local evidence includes:
+Reported local evidence:
 
 - semantic duplication/novelty/contract-coverage checks through the existing EmbeddingGateway with exact config/currentness gates;
 - persisted judge execution with `INDEPENDENT | SAME_CONFIG | UNKNOWN` release gating;
@@ -61,43 +59,60 @@ Reported local evidence includes:
 - immutable versioned M6 decision datasets;
 - two-configuration per-dimension scorecards with no universal score;
 - explicit current-safe BookBench → M6 handoff with no automatic proposal/decision;
-- complete authenticated BookBench operations for the remaining flows;
+- remaining authenticated BookBench operations;
 - native BookBench desktop workspace and tests;
 - **74 pytest PASS**;
 - desktop lint/typecheck/Vitest/build PASS.
 
-The Codex local commit is **not present in GitHub**; querying GitHub for `e4d832add...` returns no commit and PR #11 still points to `709880e35...`.
+This local commit is **not present in GitHub**. PR #11 still points to `709880e35...`. Therefore it is evidence only, not accepted implementation.
 
-Therefore M7 is not accepted yet.
+## Current blocker — intermittent Codex environment binding
 
-## Active blocker — delivery publication, not Owner action
+Central Brain issued exact transport recovery in PR #11 comment `5441840609`.
 
-Current blocker:
+At 2026-08-27 16:05 UTC the Codex connector immediately replied in comment `5441843623`:
 
-`CODEX_LOCAL_COMMIT_NOT_PUBLISHED`
+`To use Codex here, create an environment for this repo`
 
-This is an execution-delivery issue, not a product/Owner decision and not an environment-creation issue.
+This happened after a successful Codex run less than one hour earlier, so the problem is not “environment never existed.” It is an **intermittent environment binding/visibility failure**.
 
-Central Brain recovery contract is PR #11 comment `5441840609`:
+Classification:
 
-- recover exact remaining-M7 diff against published parent `709880e35...`;
-- produce byte-exact unified patch + gzip + SHA256 + complete base64 transport payload;
-- do not recompute scope, do not create another PR, do not start M8;
-- after publication, run authoritative GitHub CI and independently review all Task 008 gates.
+`CODEX_ENVIRONMENT_UNSTABLE / BINDING_VISIBILITY_FAILURE`
 
-No Owner action is currently required.
+Because the local commit is inaccessible to GitHub and the transport recovery cannot run while Codex cannot resolve the environment, M7 is fully blocked at publication.
+
+## Required Owner action
+
+Do **not** create a duplicate blindly.
+
+Open Codex environment settings and inspect the existing environment bound to:
+
+`niknikdym-hue/book-os`
+
+Required result:
+
+- the existing environment entry is present;
+- it is enabled;
+- repository binding is exactly `niknikdym-hue/book-os`;
+- re-select/re-save/update the binding if the UI offers that action.
+
+If the existing entry is actually absent, recreate it only then.
+
+After the environment is stably visible, re-trigger PR #11 recovery contract `5441840609`.
 
 ## Remaining acceptance sequence
 
 Before M7 ACCEPT/MERGE:
 
-1. Publish the exact completed remaining-M7 bytes to `brain/task-008-bookbench`.
-2. Verify PR #11 HEAD changed from `709880e35...` to the published implementation descendant.
+1. Recover and publish the exact remaining-M7 bytes to `brain/task-008-bookbench`.
+2. Verify PR #11 HEAD advances from `709880e35...`.
 3. Run full authoritative GitHub CI: local-core, desktop, Tauri/Rust, audit and secret scan.
 4. Review every numbered REQUIRED ACCEPTANCE item in `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
 5. Verify human authority, privacy, no-universal-score, independence and zero-normal-CI-live/paid-call invariants.
 6. Synchronize final project state/hash.
 7. Only then ACCEPT + merge M7.
+8. Immediately advance to M8 Russia/no-VPN provider lane.
 
 ## Repository hygiene
 
@@ -129,19 +144,6 @@ Do not implement inside M7:
 - cloud/accounts/billing/sync;
 - any weakening of human authority, privacy, model-quality floors or zero-live/paid-call normal CI.
 
-## Next permitted action
-
-1. Complete the exact transport recovery from Codex local commit/worktree.
-2. Publish the recovered bytes to PR #11 branch.
-3. Run and review authoritative full CI.
-4. Central Brain ACCEPT + merge M7 only if every Task 008 gate passes.
-5. Synchronize canonical state/hashes.
-6. Immediately create and execute bounded M8.
-
-## Operational rule
-
-`main` is accepted project-development authority. Implementation code uses bounded branches/PRs. Central Brain may make small project-control updates directly to `main` when a separate PR adds no review value.
-
 ## Recovery rule
 
 If chat context disappears:
@@ -152,20 +154,18 @@ If chat context disappears:
 4. Read `BOOKBENCH_v0.1.md` and `docs/tasks/CODEX_TASK_008_BOOKBENCH.md`.
 5. Inspect PR #11 / `brain/task-008-bookbench`.
 6. Treat published PR HEAD `709880e35...` or its verified descendant as GitHub implementation authority.
-7. Treat local-only Codex commit reports as evidence only until their bytes are published and CI passes.
-8. Do not merge M7 until every Task 008 acceptance gate passes.
-9. Then follow M8 → M9 → M10 → GO/NO-GO.
+7. Treat local-only Codex commit `e4d832add...` as evidence only until exact bytes are published and CI passes.
+8. Resolve Codex environment binding, then execute transport recovery comment `5441840609`.
+9. Do not merge M7 until every Task 008 acceptance gate passes.
+10. Then follow M8 → M9 → M10 → GO/NO-GO.
 
 ## Change log
 
-### 1.4.6 — 2026-08-27
-- Confirmed the existing Codex environment is usable again through successful M7 execution.
-- Recorded local completion report `e4d832add...` and 74-test evidence.
-- Corrected the active blocker from environment resolution to local-commit delivery/publication.
-- Recorded exact transport-recovery contract and made clear that no Owner action is required.
+### 1.4.7 — 2026-08-27
+- Recorded successful Codex M7 execution followed by immediate recurrence of the environment-resolution failure.
+- Reclassified the blocker as intermittent Codex environment binding/visibility failure.
+- Restored Owner-action requirement because exact local M7 bytes cannot be recovered/published while Codex cannot resolve the environment.
+- Preserved local commit/test evidence without treating it as GitHub authority or M7 acceptance.
 
-### 1.4.5 — 2026-08-27
-- Corrected the false diagnosis that the BOOK OS Codex environment had never been created.
-- Recorded GitHub evidence that the environment was created/enabled and used on PR #3.
-- Reclassified the then-current blocker as Codex environment resolution/binding/visibility failure.
-- Recorded branch/PR hygiene and removed stale temporary M7 control workflow.
+### 1.4.6 — 2026-08-27
+- Recorded local M7 completion report and delivery blocker before the environment failure recurred.
