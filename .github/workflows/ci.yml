@@ -55,6 +55,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: brain/task-008-bookbench
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: python tools/m7_final_fix.py
@@ -62,7 +63,7 @@ jobs:
         run: |
           git config user.name "book-os-ci"
           git config user.email "book-os-ci@users.noreply.github.com"
-          git checkout HEAD^ -- .github/workflows/ci.yml
+          git show 9891fc34ba46375f1507ad9180805be503111eef:.github/workflows/ci.yml > .github/workflows/ci.yml
           git rm tools/m7_final_fix.py
           git add services/local-core/src/book_os_core/bookbench.py services/local-core/src/book_os_core/app.py services/local-core/tests/test_bookbench.py apps/desktop/src/BookBenchPanel.test.tsx .github/workflows/ci.yml
           git commit -m "fix: close M7 Voice Fingerprint and desktop acceptance gaps"
