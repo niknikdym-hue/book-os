@@ -175,7 +175,7 @@ test("run shows exact finding evidence and explicit editorial handoff", async ()
   expect(await screen.findByText("Exact snapshot ready")).toBeInTheDocument();
   fireEvent.click(screen.getByText("Run deterministic"));
   expect(await screen.findByText("FALSE_CONTRAST_TEMPLATE")).toBeInTheDocument();
-  expect(screen.getByText(/revision:x chars:1-12/)).toBeInTheDocument();
+  expect(screen.getAllByText(/revision:x chars:1-12/)).toHaveLength(2);
   fireEvent.click(screen.getByText("Send to Editorial Inbox"));
   expect(await screen.findByText(/Sent to Editorial Inbox/)).toBeInTheDocument();
 });
