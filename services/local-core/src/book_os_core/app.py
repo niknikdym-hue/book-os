@@ -59,8 +59,15 @@ from .projects import (
     ProjectNotFound,
     ProjectService,
 )
-from .provider_lane import RussiaPolicy, seed_capabilities
-from .provider_lane import ProviderLaneService
+from .provider_lane import (
+    GigaChatAdapter,
+    GigaChatEmbeddingAdapter,
+    ProviderLaneService,
+    RussiaPolicy,
+    YandexAdapter,
+    YandexEmbeddingAdapter,
+    seed_capabilities,
+)
 from .db import create_database
 from .research import (
     ClaimCreateRequest,
@@ -160,8 +167,14 @@ def create_app(
         raw_data_dir = os.environ.get("BOOK_OS_DATA_DIR")
         configured_data_dir = Path(raw_data_dir) if raw_data_dir else None
     projects = ProjectService(configured_data_dir) if configured_data_dir is not None else None
+    provider_secrets = MacOSKeychainSecretStore()
+    gigachat_generation = GigaChatAdapter(provider_secrets)
     configured_gateway = gateway or ModelGateway(
-        {"openai": OpenAIResponsesAdapter(MacOSKeychainSecretStore())}
+        {
+            "openai": OpenAIResponsesAdapter(provider_secrets),
+            "yandex": YandexAdapter(provider_secrets),
+            "gigachat": gigachat_generation,
+        }
     )
     drafting = (
         DraftingService(configured_data_dir, configured_gateway)
@@ -181,7 +194,11 @@ def create_app(
         else None
     )
     configured_embedding_gateway = embedding_gateway or EmbeddingGateway(
-        {"openai": OpenAIEmbeddingAdapter(MacOSKeychainSecretStore())}
+        {
+            "openai": OpenAIEmbeddingAdapter(provider_secrets),
+            "yandex": YandexEmbeddingAdapter(provider_secrets),
+            "gigachat": GigaChatEmbeddingAdapter(gigachat_generation),
+        }
     )
     memory = (
         BookMemoryService(configured_data_dir, configured_embedding_gateway)
@@ -414,6 +431,38 @@ def create_app(
             "reason": decision.reason,
             "provider": decision.capability.provider if decision.capability else None,
             "model": decision.capability.model if decision.capability else None,
+            "config_id": decision.capability.config_id if decision.capability else None,
+            "promotion": decision.capability.promotion if decision.capability else None,
+            "attempts": [attempt.__dict__.copy() for attempt in decision.attempts],
+        }
+
+    @app.get("/api/provider-lane/promotions")
+    def provider_promotions(_: None = Depends(require_token)) -> list[dict[str, str]]:
+        return provider_lane.promotion_evidence() if provider_lane else []
+
+    @app.get("/api/provider-lane/probes")
+    def provider_probes(_: None = Depends(require_token)) -> list[dict[str, str]]:
+        return provider_lane.probe_evidence() if provider_lane else []
+
+    @app.get("/api/provider-lane/readiness")
+    def provider_readiness(_: None = Depends(require_token)) -> dict[str, object]:
+        roles: dict[str, dict[str, object]] = {}
+        for role in ("WRITER", "EDITOR", "EVALUATOR"):
+            decision = (
+                provider_lane.route(role)
+                if provider_lane
+                else RussiaPolicy().route(seed_capabilities(), role=role)
+            )
+            roles[role] = {
+                "available": decision.available,
+                "reason": decision.reason,
+                "provider": decision.capability.provider if decision.capability else None,
+                "model": decision.capability.model if decision.capability else None,
+            }
+        return {
+            "region": "RU",
+            "ready": all(bool(value["available"]) for value in roles.values()),
+            "roles": roles,
         }
 
     @app.get("/api/projects")

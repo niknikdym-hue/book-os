@@ -103,7 +103,7 @@ Official source:
 
 ## IN SCOPE
 
-### A. Migration `0010` / regional provider evidence persistence
+### A. Migration `0009` / regional provider evidence persistence
 
 Use the next unused schema revision after the accepted M7 database.
 

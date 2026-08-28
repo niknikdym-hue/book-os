@@ -58,7 +58,7 @@ class BookBenchPairwiseOutput(BaseModel):
 class ModelTaskRequest(BaseModel):
     task_id: str
     task_type: Literal["SECTION_DRAFT", "BOOKBENCH_JUDGE", "BOOKBENCH_PAIRWISE"]
-    role: Literal["WRITER", "EVALUATOR"]
+    role: Literal["WRITER", "EDITOR", "EVALUATOR"]
     provider: str
     model: str
     prompt_id: str

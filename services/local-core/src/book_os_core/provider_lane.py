@@ -16,6 +16,7 @@ from sqlalchemy.engine import Engine
 
 from .model_gateway import (
     ModelAdapterResult,
+    ModelGateway,
     ModelOutputError,
     ModelProviderError,
     ModelTaskRequest,
@@ -123,10 +124,19 @@ def seed_capabilities() -> tuple[ProviderCapability, ...]:
 
 
 @dataclass(frozen=True)
+class RouteAttempt:
+    provider: str
+    model: str
+    config_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class RouteDecision:
     available: bool
     reason: str | None
     capability: ProviderCapability | None
+    attempts: tuple[RouteAttempt, ...] = ()
 
 
 class RussiaPolicy:
@@ -137,43 +147,49 @@ class RussiaPolicy:
         role: str,
         require_embeddings: bool = False,
     ) -> RouteDecision:
+        attempts: list[RouteAttempt] = []
         reasons: list[str] = []
-        for item in capabilities:
-            if item.region != "RU" or not item.legal:
-                reasons.append("REGION_NOT_SUPPORTED")
-                continue
-            if not item.commercial:
-                reasons.append("COMMERCIAL_PATH_NOT_VERIFIED")
-                continue
-            if not item.privacy_ok:
-                reasons.append("PRIVACY_POLICY_NOT_VERIFIED")
-                continue
-            if role not in item.roles or (require_embeddings and not item.embeddings):
-                reasons.append("CAPABILITY_MISSING")
-                continue
-            if item.promotion != "PROMOTED":
-                reasons.append("QUALITY_NOT_PROMOTED")
-                continue
-            if item.health != "HEALTHY":
-                reasons.append("PROVIDER_UNAVAILABLE")
-                continue
-            return RouteDecision(True, None, item)
-        return RouteDecision(
-            False,
-            next(
-                (
-                    value
-                    for value in (
-                        "QUALITY_NOT_PROMOTED",
-                        "COMMERCIAL_PATH_NOT_VERIFIED",
-                        "REGION_NOT_SUPPORTED",
-                    )
-                    if value in reasons
-                ),
-                "PROVIDER_UNAVAILABLE",
-            ),
-            None,
+        ordered = sorted(
+            capabilities,
+            key=lambda item: (item.provider, item.model, item.config_id, item.region),
         )
+        for item in ordered:
+            reason: str | None = None
+            if item.region != "RU" or not item.legal:
+                reason = "REGION_NOT_SUPPORTED"
+            elif not item.commercial:
+                reason = "COMMERCIAL_PATH_NOT_VERIFIED"
+            elif not item.privacy_ok:
+                reason = "PRIVACY_POLICY_NOT_VERIFIED"
+            elif role not in item.roles:
+                reason = "CAPABILITY_MISSING"
+            elif require_embeddings and not item.embeddings:
+                reason = "CAPABILITY_MISSING"
+            elif not require_embeddings and not item.generation:
+                reason = "CAPABILITY_MISSING"
+            elif item.promotion != "PROMOTED":
+                reason = "QUALITY_NOT_PROMOTED"
+            elif item.health != "HEALTHY":
+                reason = "PROVIDER_UNAVAILABLE"
+
+            if reason is not None:
+                attempts.append(RouteAttempt(item.provider, item.model, item.config_id, reason))
+                reasons.append(reason)
+                continue
+            attempts.append(RouteAttempt(item.provider, item.model, item.config_id, "SELECTED"))
+            return RouteDecision(True, None, item, tuple(attempts))
+
+        for priority in (
+            "QUALITY_NOT_PROMOTED",
+            "PROVIDER_UNAVAILABLE",
+            "CAPABILITY_MISSING",
+            "PRIVACY_POLICY_NOT_VERIFIED",
+            "COMMERCIAL_PATH_NOT_VERIFIED",
+            "REGION_NOT_SUPPORTED",
+        ):
+            if priority in reasons:
+                return RouteDecision(False, priority, None, tuple(attempts))
+        return RouteDecision(False, "PROVIDER_UNAVAILABLE", None, tuple(attempts))
 
 
 class ProviderLaneService:
@@ -231,30 +247,64 @@ class ProviderLaneService:
                     },
                 )
 
-    def capabilities(self) -> tuple[ProviderCapability, ...]:
+    def capabilities(self, *, role: str | None = None) -> tuple[ProviderCapability, ...]:
         with self.engine.connect() as connection:
-            promotion_rows = (
+            promotion_by_identity: dict[tuple[str, str, str, str], PROMOTION] = {}
+            if role is not None:
+                promotion_rows = (
+                    connection.execute(
+                        text(
+                            "SELECT provider, model, config_id, region, decision FROM provider_role_promotions WHERE role=:role AND superseded_at IS NULL ORDER BY created_at DESC"
+                        ),
+                        {"role": role},
+                    )
+                    .mappings()
+                    .all()
+                )
+                for row in promotion_rows:
+                    identity = (
+                        str(row["provider"]),
+                        str(row["model"]),
+                        str(row["config_id"]),
+                        str(row["region"]),
+                    )
+                    if identity in promotion_by_identity:
+                        continue
+                    raw_decision = str(row["decision"])
+                    if raw_decision not in ("PROMOTED", "REJECTED", "EXPIRED"):
+                        raise ValueError(f"invalid persisted promotion decision: {raw_decision}")
+                    promotion_by_identity[identity] = cast(PROMOTION, raw_decision)
+
+            health_by_identity: dict[tuple[str, str, str, str], str] = {}
+            probe_rows = (
                 connection.execute(
                     text(
-                        "SELECT provider, model, config_id, region, decision FROM provider_role_promotions WHERE superseded_at IS NULL"
+                        "SELECT provider, model, config_id, region, outcome FROM provider_probe_runs ORDER BY created_at DESC"
                     )
                 )
                 .mappings()
                 .all()
             )
-            promoted = {
-                (str(row["provider"]), str(row["model"]), str(row["config_id"]), str(row["region"]))
-                for row in promotion_rows
-                if row["decision"] == "PROMOTED"
-            }
+            for row in probe_rows:
+                identity = (
+                    str(row["provider"]),
+                    str(row["model"]),
+                    str(row["config_id"]),
+                    str(row["region"]),
+                )
+                if identity not in health_by_identity:
+                    health_by_identity[identity] = (
+                        "HEALTHY" if str(row["outcome"]) == "SUCCESS" else "UNAVAILABLE"
+                    )
+
             rows = connection.execute(
                 text(
                     "SELECT provider, model, config_id, region, matrix_version, verified_at, health_state, policy_json, capabilities_json, privacy_json, sources_json FROM provider_capabilities WHERE current_state='CURRENT' AND superseded_at IS NULL"
                 )
             ).mappings()
-            result = []
+            result: list[ProviderCapability] = []
             for row in rows:
-                policy, caps, privacy = (
+                policy_data, caps, privacy = (
                     json.loads(row["policy_json"]),
                     json.loads(row["capabilities_json"]),
                     json.loads(row["privacy_json"]),
@@ -265,48 +315,86 @@ class ProviderLaneService:
                     str(row["config_id"]),
                     str(row["region"]),
                 )
-                raw_promotion = str(policy["promotion"])
+                raw_promotion = str(policy_data["promotion"])
                 if raw_promotion not in (
-                    "CANDIDATE", "EVALUATED", "PROMOTED", "REJECTED", "EXPIRED"
+                    "CANDIDATE",
+                    "EVALUATED",
+                    "PROMOTED",
+                    "REJECTED",
+                    "EXPIRED",
                 ):
                     raise ValueError(f"invalid persisted promotion state: {raw_promotion}")
-                promotion: PROMOTION = (
-                    "PROMOTED" if identity in promoted else cast(PROMOTION, raw_promotion)
-                )
+                promotion = promotion_by_identity.get(identity, cast(PROMOTION, raw_promotion))
+                health = health_by_identity.get(identity, str(row["health_state"]))
                 result.append(
                     ProviderCapability(
                         str(row["provider"]),
                         str(row["model"]),
                         str(row["config_id"]),
                         str(row["region"]),
-                        tuple(caps["roles"]),
+                        tuple(str(value) for value in caps["roles"]),
                         bool(caps["generation"]),
                         bool(caps["embeddings"]),
                         bool(caps["structured_output"]),
                         bool(caps["tools"]),
-                        bool(policy["legal"]),
-                        bool(policy["commercial"]),
+                        bool(policy_data["legal"]),
+                        bool(policy_data["commercial"]),
                         bool(privacy["privacy_ok"]),
-                        str(row["health_state"]),
+                        health,
                         promotion,
                         str(row["matrix_version"]),
                         str(row["verified_at"]),
-                        tuple(json.loads(row["sources_json"])),
+                        tuple(str(value) for value in json.loads(row["sources_json"])),
                     )
                 )
         return tuple(result)
 
     def route(self, role: str, *, embeddings: bool = False) -> RouteDecision:
-        return RussiaPolicy().route(self.capabilities(), role=role, require_embeddings=embeddings)
+        return RussiaPolicy().route(
+            self.capabilities(role=role), role=role, require_embeddings=embeddings
+        )
 
     def promotion_evidence(self) -> list[dict[str, str]]:
         with self.engine.connect() as connection:
             rows = connection.execute(
                 text(
-                    "SELECT provider, model, config_id, region, role, dataset_hash, scorecard_ref, decision, reason, independence_state, matrix_hash, actor, created_at FROM provider_role_promotions ORDER BY created_at DESC"
+                    "SELECT promotion_id, provider, model, config_id, region, role, dataset_snapshot_id, dataset_hash, scorecard_ref, decision, reason, independence_state, matrix_hash, actor, created_at, superseded_at FROM provider_role_promotions ORDER BY created_at DESC"
                 )
             ).mappings()
-            return [{key: str(value) for key, value in row.items()} for row in rows]
+            return [
+                {key: "" if value is None else str(value) for key, value in row.items()}
+                for row in rows
+            ]
+
+    def probe_evidence(self) -> list[dict[str, str]]:
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT probe_id, provider, model, config_id, matrix_hash, probe_type, region, capability, latency_ms, usage_json, cost_json, outcome, external_request_id, created_at FROM provider_probe_runs ORDER BY created_at DESC"
+                )
+            ).mappings()
+            return [
+                {key: "" if value is None else str(value) for key, value in row.items()}
+                for row in rows
+            ]
+
+    def _capability_row(
+        self, *, provider: str, model: str, config_id: str, region: str
+    ) -> dict[str, Any]:
+        with self.engine.connect() as connection:
+            row = (
+                connection.execute(
+                    text(
+                        "SELECT matrix_hash, policy_json, capabilities_json, privacy_json FROM provider_capabilities WHERE provider=:provider AND model=:model AND config_id=:config AND region=:region AND current_state='CURRENT' AND superseded_at IS NULL"
+                    ),
+                    {"provider": provider, "model": model, "config": config_id, "region": region},
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            raise ValueError("provider capability identity is not current")
+        return dict(row)
 
     def record_promotion(
         self,
@@ -316,24 +404,56 @@ class ProviderLaneService:
         config_id: str,
         region: str,
         role: str,
-        decision: Literal["CANDIDATE", "EVALUATED", "PROMOTED", "REJECTED"],
+        decision: Literal["PROMOTED", "REJECTED", "EXPIRED"],
         dataset_hash: str,
         scorecard_ref: str,
         quality_floor_passed: bool,
         reason: str,
         actor: str,
-    ) -> None:
-        if decision == "PROMOTED" and not quality_floor_passed:
-            raise ValueError("quality floor failure cannot be promoted")
+        dataset_snapshot_id: str | None = None,
+        independence_state: str = "UNKNOWN",
+    ) -> str:
+        capability = self._capability_row(
+            provider=provider, model=model, config_id=config_id, region=region
+        )
+        policy_data = json.loads(capability["policy_json"])
+        caps = json.loads(capability["capabilities_json"])
+        privacy = json.loads(capability["privacy_json"])
+        if decision == "PROMOTED":
+            if not quality_floor_passed:
+                raise ValueError("quality floor failure cannot be promoted")
+            if not bool(policy_data["legal"]) or not bool(policy_data["commercial"]):
+                raise ValueError("region/legal/commercial gate blocks promotion")
+            if not bool(privacy["privacy_ok"]):
+                raise ValueError("privacy gate blocks promotion")
+            if role not in tuple(str(value) for value in caps["roles"]):
+                raise ValueError("role capability gate blocks promotion")
+            if role == "EVALUATOR" and independence_state != "INDEPENDENT":
+                raise ValueError("release-grade evaluator promotion requires independent evidence")
+        if not dataset_hash or not scorecard_ref or not actor:
+            raise ValueError("promotion evidence requires dataset, scorecard, and actor")
+
         now = datetime.now(timezone.utc).isoformat()
         promotion_id = hashlib.sha256(
-            f"{provider}|{model}|{config_id}|{role}|{now}".encode()
+            f"{provider}|{model}|{config_id}|{region}|{role}|{decision}|{now}".encode()
         ).hexdigest()[:26]
-        persisted = decision if decision in ("PROMOTED", "REJECTED") else "REJECTED"
         with self.engine.begin() as connection:
             connection.execute(
                 text(
-                    "INSERT INTO provider_role_promotions (promotion_id, provider, model, config_id, region, role, dataset_hash, scorecard_ref, decision, reason, independence_state, matrix_hash, actor, created_at) VALUES (:id,:provider,:model,:config,:region,:role,:dataset,:scorecard,:decision,:reason,'UNKNOWN','m8-stage-a',:actor,:created)"
+                    "UPDATE provider_role_promotions SET superseded_at=:now WHERE provider=:provider AND model=:model AND config_id=:config AND region=:region AND role=:role AND superseded_at IS NULL"
+                ),
+                {
+                    "now": now,
+                    "provider": provider,
+                    "model": model,
+                    "config": config_id,
+                    "region": region,
+                    "role": role,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO provider_role_promotions (promotion_id, provider, model, config_id, region, role, dataset_snapshot_id, dataset_hash, scorecard_ref, decision, reason, independence_state, matrix_hash, actor, created_at) VALUES (:id,:provider,:model,:config,:region,:role,:dataset_snapshot,:dataset,:scorecard,:decision,:reason,:independence,:matrix_hash,:actor,:created)"
                 ),
                 {
                     "id": promotion_id,
@@ -342,14 +462,75 @@ class ProviderLaneService:
                     "config": config_id,
                     "region": region,
                     "role": role,
+                    "dataset_snapshot": dataset_snapshot_id,
                     "dataset": dataset_hash,
                     "scorecard": scorecard_ref,
-                    "decision": persisted,
+                    "decision": decision,
                     "reason": reason,
+                    "independence": independence_state,
+                    "matrix_hash": str(capability["matrix_hash"]),
                     "actor": actor,
                     "created": now,
                 },
             )
+        return promotion_id
+
+    def record_probe(
+        self,
+        *,
+        provider: str,
+        model: str,
+        config_id: str,
+        region: str,
+        capability: str,
+        outcome: Literal["SUCCESS", "REFUSAL", "UNAVAILABLE", "ERROR"],
+        probe_type: Literal["MOCK", "LIVE"] = "MOCK",
+        latency_ms: int | None = None,
+        usage: dict[str, Any] | None = None,
+        cost: dict[str, Any] | None = None,
+        external_request_id: str | None = None,
+    ) -> str:
+        if probe_type == "LIVE" and os.environ.get("BOOK_OS_ALLOW_LIVE_PROVIDER") != "1":
+            raise RuntimeError("live provider execution requires BOOK_OS_ALLOW_LIVE_PROVIDER=1")
+        current = self._capability_row(
+            provider=provider, model=model, config_id=config_id, region=region
+        )
+        now = datetime.now(timezone.utc).isoformat()
+        probe_id = hashlib.sha256(
+            f"{provider}|{model}|{config_id}|{region}|{capability}|{probe_type}|{now}".encode()
+        ).hexdigest()[:26]
+        with self.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO provider_probe_runs (probe_id, provider, model, config_id, matrix_hash, probe_type, region, capability, latency_ms, usage_json, cost_json, outcome, external_request_id, created_at) VALUES (:id,:provider,:model,:config,:matrix_hash,:probe_type,:region,:capability,:latency,:usage,:cost,:outcome,:external,:created)"
+                ),
+                {
+                    "id": probe_id,
+                    "provider": provider,
+                    "model": model,
+                    "config": config_id,
+                    "matrix_hash": str(current["matrix_hash"]),
+                    "probe_type": probe_type,
+                    "region": region,
+                    "capability": capability,
+                    "latency": latency_ms,
+                    "usage": json.dumps(usage or {}),
+                    "cost": json.dumps(cost or {}),
+                    "outcome": outcome,
+                    "external": external_request_id,
+                    "created": now,
+                },
+            )
+        return probe_id
+
+    def generate_ru(
+        self,
+        gateway: ModelGateway,
+        request: ModelTaskRequest,
+        prompt: PromptTemplate,
+    ) -> ModelAdapterResult:
+        decision = self.route(request.role)
+        return gateway.generate_ru(request, prompt, route=decision)
 
 
 def _validated_output(request: ModelTaskRequest, payload: dict[str, Any]) -> dict[str, Any]:
