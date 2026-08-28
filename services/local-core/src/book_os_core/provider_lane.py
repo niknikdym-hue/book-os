@@ -835,7 +835,75 @@ class GigaChatEmbeddingAdapter:
         return _embedding_result(self.provider_name, model, payload)
 
 
-def run_live_probe() -> None:
+@dataclass(frozen=True)
+class LiveProbeBudget:
+    max_generation_requests: int
+    max_embedding_requests: int
+    max_total_requests: int
+    max_estimated_cost: float | None = None
+
+    def validate(self) -> None:
+        if (
+            min(self.max_generation_requests, self.max_embedding_requests, self.max_total_requests)
+            < 0
+        ):
+            raise ValueError("request budget cannot be negative")
+        if (
+            self.max_total_requests <= 0
+            or self.max_total_requests < self.max_generation_requests + self.max_embedding_requests
+        ):
+            raise ValueError("request budget must be bounded and cover requested work")
+
+
+@dataclass(frozen=True)
+class LiveProbePreflight:
+    provider: str
+    model: str
+    config_id: str
+    region: str
+    roles: tuple[str, ...]
+    yandex_credential: str
+    gigachat_credential: str
+    budget: LiveProbeBudget
+    estimated_cost: float | None
+    state: str = "LIVE_PROMOTION_REQUIRED"
+
+    def public_plan(self) -> dict[str, object]:
+        return {
+            "state": self.state,
+            "provider": self.provider,
+            "model": self.model,
+            "config_id": self.config_id,
+            "region": self.region,
+            "roles": self.roles,
+            "generation_requests_max": self.budget.max_generation_requests,
+            "embedding_requests_max": self.budget.max_embedding_requests,
+            "total_requests_max": self.budget.max_total_requests,
+            "estimated_cost": self.estimated_cost,
+        }
+
+
+def credential_availability(secrets: SecretStore) -> dict[str, str]:
+    def state(name: str) -> str:
+        try:
+            secrets.get_secret(name)
+        except Exception:
+            return "NOT AVAILABLE"
+        return "AVAILABLE"
+
+    return {
+        "yandex": state("yandex_ai_studio_api_key"),
+        "gigachat": state("gigachat_authorization_key"),
+    }
+
+
+def run_live_probe(*, preflight: LiveProbePreflight) -> dict[str, object]:
+    """Fail closed until an Owner-authorized live run explicitly enables the environment flag."""
+    preflight.budget.validate()
+    if preflight.region != "RU":
+        raise RuntimeError("live provider execution requires RU candidate")
     if os.environ.get("BOOK_OS_ALLOW_LIVE_PROVIDER") != "1":
         raise RuntimeError("live provider execution requires BOOK_OS_ALLOW_LIVE_PROVIDER=1")
-    raise RuntimeError("live promotion requires explicit Central Brain execution context")
+    raise RuntimeError(
+        "live execution requires Owner-authorized bounded budget; no automatic promotion"
+    )

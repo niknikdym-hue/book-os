@@ -23,6 +23,8 @@ from book_os_core.prompts import SECTION_DRAFT_V1
 from book_os_core.provider_lane import (
     GigaChatAdapter,
     GigaChatEmbeddingAdapter,
+    LiveProbeBudget,
+    LiveProbePreflight,
     ProviderLaneService,
     RussiaPolicy,
     YandexAdapter,
@@ -224,8 +226,19 @@ def test_gigachat_mocked_oauth_cache_rate_limit_refusal_and_provenance() -> None
 
 def test_live_runner_is_never_implicit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BOOK_OS_ALLOW_LIVE_PROVIDER", raising=False)
+    preflight = LiveProbePreflight(
+        "yandex",
+        "m",
+        "c",
+        "RU",
+        ("WRITER",),
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        LiveProbeBudget(1, 0, 1),
+        None,
+    )
     with pytest.raises(RuntimeError, match="BOOK_OS_ALLOW_LIVE_PROVIDER"):
-        run_live_probe()
+        run_live_probe(preflight=preflight)
 
 
 def test_mocked_embedding_adapters_return_exact_model_identity_and_validate_output() -> None:
