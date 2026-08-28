@@ -1,5 +1,56 @@
-export type ProviderCapabilityView = { provider: string; model: string; region: string; promotion: string; health: string; commercial: boolean };
+export type ProviderCapabilityView = {
+  provider: string;
+  model: string;
+  config_id: string;
+  region: string;
+  roles: string[];
+  generation: boolean;
+  embeddings: boolean;
+  structured_output: boolean;
+  tools: boolean;
+  legal: boolean;
+  commercial: boolean;
+  privacy_ok: boolean;
+  promotion: string;
+  health: string;
+  matrix_version: string;
+  verified_at: string;
+};
 
-export function ProviderLanePanel({ capabilities, unavailableReason }: { capabilities: ProviderCapabilityView[]; unavailableReason: string | null }) {
-  return <section className="panel"><h2>Provider Lane / Availability</h2><p>Russia/no-VPN route policy. Provider access requires role promotion.</p>{unavailableReason && <p className="error">Unavailable: {unavailableReason}</p>}<ul>{capabilities.map((item) => <li key={`${item.provider}:${item.model}`}>{item.provider} / {item.model} — {item.region}, {item.promotion}, {item.health}{!item.commercial && " (commercial route unavailable)"}</li>)}</ul></section>;
+export function ProviderLanePanel({
+  capabilities,
+  unavailableReason,
+}: {
+  capabilities: ProviderCapabilityView[];
+  unavailableReason: string | null;
+}) {
+  const writerReady = unavailableReason === null;
+
+  return (
+    <section className="panel">
+      <h2>Provider Lane / Availability</h2>
+      <p>
+        Region: <strong>RU</strong> · Russia-ready (WRITER):{" "}
+        <strong>{writerReady ? "YES" : "NO"}</strong>
+      </p>
+      <p>Production routing requires verified regional policy and an explicit role promotion.</p>
+      {unavailableReason && <p className="error">Unavailable: {unavailableReason}</p>}
+      <ul>
+        {capabilities.map((item) => (
+          <li key={`${item.provider}:${item.model}:${item.config_id}`}>
+            <strong>
+              {item.provider} / {item.model}
+            </strong>{" "}
+            — {item.region}; roles: {item.roles.join(", ") || "none"}; generation:{" "}
+            {item.generation ? "yes" : "no"}; embeddings: {item.embeddings ? "yes" : "no"};
+            structured output: {item.structured_output ? "yes" : "no"}; legal:{" "}
+            {item.legal ? "verified" : "blocked/unknown"}; commercial:{" "}
+            {item.commercial ? "verified" : "blocked/unknown"}; privacy:{" "}
+            {item.privacy_ok ? "verified" : "blocked/unknown"}; promotion: {item.promotion}; health:{" "}
+            {item.health}; verified: {item.verified_at}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
