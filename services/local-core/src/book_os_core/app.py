@@ -59,6 +59,9 @@ from .projects import (
     ProjectNotFound,
     ProjectService,
 )
+from .provider_lane import RussiaPolicy, seed_capabilities
+from .provider_lane import ProviderLaneService
+from .db import create_database
 from .research import (
     ClaimCreateRequest,
     ClaimReviewRequest,
@@ -136,6 +139,11 @@ class HandoffRequest(BaseModel):
     actor: str = "OWNER"
 
 
+class ProviderRouteRequest(BaseModel):
+    role: str = Field(min_length=1, max_length=64)
+    embeddings: bool = False
+
+
 def create_app(
     token: str | None = None,
     data_dir: Path | None = None,
@@ -193,6 +201,11 @@ def create_app(
     )
 
     app = FastAPI(title="BOOK OS Local Core", docs_url=None, redoc_url=None, openapi_url=None)
+    provider_lane = (
+        ProviderLaneService(create_database(configured_data_dir / "provider-lane.sqlite"))
+        if configured_data_dir is not None
+        else None
+    )
 
     def require_token(authorization: str | None = Header(default=None)) -> None:
         if (
@@ -379,6 +392,29 @@ def create_app(
     @app.get("/health")
     def health(_: None = Depends(require_token)) -> dict[str, str]:
         return {"status": "healthy", "version": __version__}
+
+    @app.get("/api/provider-lane/capabilities")
+    def provider_capability_matrix(_: None = Depends(require_token)) -> list[dict[str, object]]:
+        capabilities = provider_lane.capabilities() if provider_lane else seed_capabilities()
+        return [item.__dict__.copy() for item in capabilities]
+
+    @app.post("/api/provider-lane/route")
+    def provider_route(
+        payload: ProviderRouteRequest, _: None = Depends(require_token)
+    ) -> dict[str, object]:
+        decision = (
+            provider_lane.route(payload.role, embeddings=payload.embeddings)
+            if provider_lane
+            else RussiaPolicy().route(
+                seed_capabilities(), role=payload.role, require_embeddings=payload.embeddings
+            )
+        )
+        return {
+            "available": decision.available,
+            "reason": decision.reason,
+            "provider": decision.capability.provider if decision.capability else None,
+            "model": decision.capability.model if decision.capability else None,
+        }
 
     @app.get("/api/projects")
     def list_projects(

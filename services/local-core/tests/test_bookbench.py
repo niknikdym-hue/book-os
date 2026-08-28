@@ -200,7 +200,7 @@ def test_m7_schema_snapshot_exactness_and_currentness(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0008"
+            == "0009"
         )
         assert connection.execute(
             text("SELECT COUNT(*) FROM evaluation_snapshot_targets WHERE snapshot_id=:snapshot_id"),

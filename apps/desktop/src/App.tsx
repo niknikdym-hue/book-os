@@ -6,6 +6,7 @@ import { BookMemoryPanel } from "./BookMemoryPanel";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import { ProviderLanePanel, type ProviderCapabilityView } from "./ProviderLanePanel";
 import type {
   ArchitectureChapter,
   BookArchitecturePayload,
@@ -132,6 +133,8 @@ export function App() {
   const [chapterContract, setChapterContract] = useState<ChapterContractPayload>(
     clone(emptyChapterContract),
   );
+  const [providerCapabilities, setProviderCapabilities] = useState<ProviderCapabilityView[]>([]);
+  const [providerUnavailableReason, setProviderUnavailableReason] = useState<string | null>(null);
 
   const selectedChapter = useMemo(
     () => project?.chapters.find((chapter) => chapter.chapter_id === selectedChapterId) ?? null,
@@ -162,6 +165,11 @@ export function App() {
     setProjects(items);
   }
 
+  async function refreshProviderLane() {
+    setProviderCapabilities(await coreApi<ProviderCapabilityView[]>("GET", "/api/provider-lane/capabilities"));
+    setProviderUnavailableReason((await coreApi<{ reason: string | null }>("POST", "/api/provider-lane/route", { role: "WRITER" })).reason);
+  }
+
   async function openProject(bookId: string) {
     setBusy(true);
     setError(null);
@@ -179,6 +187,7 @@ export function App() {
       .then(async (value) => {
         setHealth(value);
         await refreshProjects();
+        await refreshProviderLane();
       })
       .catch((reason: unknown) => setError(String(reason)));
   }, []);
@@ -702,6 +711,7 @@ export function App() {
               <BookMemoryPanel project={project} chapter={selectedChapter} />
               <EditorialPanel project={project} chapter={selectedChapter} />
               <BookBenchPanel project={project} />
+              <ProviderLanePanel capabilities={providerCapabilities} unavailableReason={providerUnavailableReason} />
             </>
           )}
         </section>

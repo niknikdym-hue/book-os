@@ -192,7 +192,7 @@ def test_m4_schema_and_claim_attach_to_exact_current_draft(tmp_path: Path) -> No
             connection.execute(
                 text("SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1")
             ).scalar_one()
-            == "0008"
+            == "0009"
         )
         history = connection.execute(
             text("SELECT new_state,actor_kind FROM claim_state_history WHERE claim_id=:claim_id"),

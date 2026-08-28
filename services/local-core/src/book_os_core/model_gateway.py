@@ -97,6 +97,17 @@ class ModelGateway:
             raise ModelProviderError(f"provider is not configured: {request.provider}") from exc
         return adapter.generate(request, prompt)
 
+    def generate_ru(
+        self, request: ModelTaskRequest, prompt: PromptTemplate, *, route: Any
+    ) -> ModelAdapterResult:
+        """Run only a policy-selected M8 route; no implicit provider fallback exists here."""
+        if not route.available or route.capability is None:
+            raise ModelProviderError(f"UNAVAILABLE:{route.reason or 'PROVIDER_UNAVAILABLE'}")
+        selected = request.model_copy(
+            update={"provider": route.capability.provider, "model": route.capability.model}
+        )
+        return self.generate(selected, prompt)
+
 
 class DeterministicFakeAdapter:
     provider_name = "fake"
