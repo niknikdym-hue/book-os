@@ -12,6 +12,11 @@ jobs:
         with:
           ref: brain/task-009-russia-provider-lane
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install bounded formatter
+        run: python -m pip install ruff==0.12.11
       - name: Run bounded completion script
         run: python tools/m8_brain_complete.py
       - name: Format and check bounded files
