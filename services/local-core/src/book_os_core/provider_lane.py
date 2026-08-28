@@ -8,7 +8,7 @@ import json
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import httpx
 from sqlalchemy import text
@@ -265,8 +265,13 @@ class ProviderLaneService:
                     str(row["config_id"]),
                     str(row["region"]),
                 )
+                raw_promotion = str(policy["promotion"])
+                if raw_promotion not in (
+                    "CANDIDATE", "EVALUATED", "PROMOTED", "REJECTED", "EXPIRED"
+                ):
+                    raise ValueError(f"invalid persisted promotion state: {raw_promotion}")
                 promotion: PROMOTION = (
-                    "PROMOTED" if identity in promoted else str(policy["promotion"])
+                    "PROMOTED" if identity in promoted else cast(PROMOTION, raw_promotion)
                 )
                 result.append(
                     ProviderCapability(
@@ -418,13 +423,11 @@ class GigaChatAdapter:
         endpoint: str = "https://api.giga.chat",
         clock: Any = time.time,
     ) -> None:
-        self.secrets, self.client, self.endpoint, self.clock, self._token = (
-            secrets,
-            client or httpx.Client(),
-            endpoint.rstrip("/"),
-            clock,
-            None,
-        )
+        self.secrets = secrets
+        self.client = client or httpx.Client()
+        self.endpoint = endpoint.rstrip("/")
+        self.clock = clock
+        self._token: tuple[str, float] | None = None
 
     def _access_token(self) -> str:
         if self._token and self._token[1] > self.clock() + 5:
