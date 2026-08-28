@@ -4,7 +4,7 @@
 
 Task 009 / M8 Stage A is accepted on PR #12.
 
-Accepted exact implementation/evidence HEAD before this authority record:
+Accepted implementation/evidence HEAD:
 `1219fa07df3185b9aaf365ef2dff59c524251a8c`
 
 Authoritative GitHub Actions run:
@@ -24,10 +24,10 @@ Evidence:
 - secret scan: PASS;
 - normal CI external/provider/model calls: `0`;
 - normal CI paid calls: `0`;
-- `verify=False` production path: absent;
+- production `verify=False`: absent;
 - M9/M10 scope: not started.
 
-Stage A acceptance covers Task 009 acceptance items 1–20: M8 schema/backup compatibility, persisted capability/policy/probe/promotion evidence, fail-closed RU routing, OpenAI exclusion from mandatory RU runtime, current mocked Yandex and GigaChat generation/embedding protocol adapters, role-specific promotion gates, deterministic eligible fallback with provenance, explicit live-run guard, authenticated secret-safe API, and Provider Lane desktop unavailable/availability presentation.
+Stage A acceptance covers Task 009 acceptance items 1–20: M8 schema/backup compatibility, persisted capability/policy/probe/promotion evidence, fail-closed RU routing, OpenAI exclusion from mandatory RU runtime, mocked current-protocol Yandex and GigaChat generation/embedding adapters, role-specific promotion gates, deterministic eligible fallback with provenance, explicit live-run guard, authenticated secret-safe API, and Provider Lane desktop unavailable/availability presentation.
 
 This decision DOES NOT accept M8 as a whole and DOES NOT authorize a Russia-ready product claim.
 
