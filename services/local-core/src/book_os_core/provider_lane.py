@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 import httpx
@@ -232,6 +233,20 @@ class ProviderLaneService:
 
     def capabilities(self) -> tuple[ProviderCapability, ...]:
         with self.engine.connect() as connection:
+            promotion_rows = (
+                connection.execute(
+                    text(
+                        "SELECT provider, model, config_id, region, decision FROM provider_role_promotions WHERE superseded_at IS NULL"
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            promoted = {
+                (str(row["provider"]), str(row["model"]), str(row["config_id"]), str(row["region"]))
+                for row in promotion_rows
+                if row["decision"] == "PROMOTED"
+            }
             rows = connection.execute(
                 text(
                     "SELECT provider, model, config_id, region, matrix_version, verified_at, health_state, policy_json, capabilities_json, privacy_json, sources_json FROM provider_capabilities WHERE current_state='CURRENT' AND superseded_at IS NULL"
@@ -243,6 +258,15 @@ class ProviderLaneService:
                     json.loads(row["policy_json"]),
                     json.loads(row["capabilities_json"]),
                     json.loads(row["privacy_json"]),
+                )
+                identity = (
+                    str(row["provider"]),
+                    str(row["model"]),
+                    str(row["config_id"]),
+                    str(row["region"]),
+                )
+                promotion: PROMOTION = (
+                    "PROMOTED" if identity in promoted else str(policy["promotion"])
                 )
                 result.append(
                     ProviderCapability(
@@ -259,7 +283,7 @@ class ProviderLaneService:
                         bool(policy["commercial"]),
                         bool(privacy["privacy_ok"]),
                         str(row["health_state"]),
-                        str(policy["promotion"]),
+                        promotion,
                         str(row["matrix_version"]),
                         str(row["verified_at"]),
                         tuple(json.loads(row["sources_json"])),
@@ -278,6 +302,49 @@ class ProviderLaneService:
                 )
             ).mappings()
             return [{key: str(value) for key, value in row.items()} for row in rows]
+
+    def record_promotion(
+        self,
+        *,
+        provider: str,
+        model: str,
+        config_id: str,
+        region: str,
+        role: str,
+        decision: Literal["CANDIDATE", "EVALUATED", "PROMOTED", "REJECTED"],
+        dataset_hash: str,
+        scorecard_ref: str,
+        quality_floor_passed: bool,
+        reason: str,
+        actor: str,
+    ) -> None:
+        if decision == "PROMOTED" and not quality_floor_passed:
+            raise ValueError("quality floor failure cannot be promoted")
+        now = datetime.now(timezone.utc).isoformat()
+        promotion_id = hashlib.sha256(
+            f"{provider}|{model}|{config_id}|{role}|{now}".encode()
+        ).hexdigest()[:26]
+        persisted = decision if decision in ("PROMOTED", "REJECTED") else "REJECTED"
+        with self.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO provider_role_promotions (promotion_id, provider, model, config_id, region, role, dataset_hash, scorecard_ref, decision, reason, independence_state, matrix_hash, actor, created_at) VALUES (:id,:provider,:model,:config,:region,:role,:dataset,:scorecard,:decision,:reason,'UNKNOWN','m8-stage-a',:actor,:created)"
+                ),
+                {
+                    "id": promotion_id,
+                    "provider": provider,
+                    "model": model,
+                    "config": config_id,
+                    "region": region,
+                    "role": role,
+                    "dataset": dataset_hash,
+                    "scorecard": scorecard_ref,
+                    "decision": persisted,
+                    "reason": reason,
+                    "actor": actor,
+                    "created": now,
+                },
+            )
 
 
 def _validated_output(request: ModelTaskRequest, payload: dict[str, Any]) -> dict[str, Any]:
