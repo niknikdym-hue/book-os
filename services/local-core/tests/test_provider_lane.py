@@ -83,13 +83,21 @@ def test_deterministic_fallback_uses_only_eligible_promoted_healthy_route() -> N
 
 def test_yandex_mocked_response_errors_and_secret_safety() -> None:
     def success(http_request: httpx.Request) -> httpx.Response:
+        assert http_request.url.path == "/foundationModels/v1/completion"
         assert http_request.headers["Authorization"] == "Api-Key test-key"
+        body = json.loads(http_request.content)
+        assert body["jsonSchema"]["schema"]["type"] == "object"
         return httpx.Response(
             200,
             json={
                 "id": "yc-1",
-                "result": {"text": "Synthetic", "notes": []},
-                "usage": {"tokens": 2},
+                "result": {
+                    "alternatives": [
+                        {"message": {"text": json.dumps({"text": "Synthetic", "notes": []})}}
+                    ],
+                    "usage": {"totalTokens": "2"},
+                    "modelVersion": "yandexgpt:stage-a",
+                },
             },
         )
 
@@ -99,6 +107,7 @@ def test_yandex_mocked_response_errors_and_secret_safety() -> None:
     )
     result = adapter.generate(request("yandex", "gpt://folder/yandexgpt/latest"), SECTION_DRAFT_V1)
     assert result.output["text"] == "Synthetic"
+    assert result.usage["model_version"] == "yandexgpt:stage-a"
     assert "test-key" not in repr(result)
 
     missing = YandexAdapter(
@@ -111,59 +120,106 @@ def test_yandex_mocked_response_errors_and_secret_safety() -> None:
         DictSecretStore({"yandex_ai_studio_api_key": "key"}),
         client=httpx.Client(
             transport=httpx.MockTransport(
-                lambda _: httpx.Response(200, json={"result": {"notes": []}})
+                lambda _: httpx.Response(
+                    200,
+                    json={
+                        "result": {
+                            "alternatives": [{"message": {"text": json.dumps({"notes": []})}}]
+                        }
+                    },
+                )
             )
         ),
     )
     with pytest.raises(ModelOutputError, match="schema"):
         malformed.generate(request("yandex", "m"), SECTION_DRAFT_V1)
 
+    provider_error = YandexAdapter(
+        DictSecretStore({"yandex_ai_studio_api_key": "key"}),
+        client=httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(503))),
+    )
+    with pytest.raises(ModelProviderError, match="503"):
+        provider_error.generate(request("yandex", "m"), SECTION_DRAFT_V1)
 
-def test_gigachat_mocked_oauth_cache_rate_limit_and_secret_safety() -> None:
+
+def test_gigachat_mocked_oauth_cache_rate_limit_refusal_and_provenance() -> None:
     calls: list[str] = []
 
     def handler(http_request: httpx.Request) -> httpx.Response:
         calls.append(str(http_request.url))
-        if http_request.url.path.endswith("oauth"):
+        if http_request.url.path.endswith("/api/v2/oauth"):
+            assert http_request.url.host == "ngw.devices.sberbank.ru"
+            assert http_request.headers["RqUID"]
             return httpx.Response(200, json={"access_token": "access", "expires_in": 1800})
+        assert http_request.url.host == "api.giga.chat"
+        assert http_request.url.path == "/v1/chat/completions"
+        body = json.loads(http_request.content)
+        assert body["response_format"]["type"] == "json_schema"
+        assert body["response_format"]["strict"] is True
+        assert "json_schema" not in body["response_format"]
         return httpx.Response(
             200,
             json={
                 "id": "gc-1",
+                "model": "GigaChat-2-Pro:stage-a",
                 "choices": [
-                    {"message": {"content": json.dumps({"text": "Synthetic", "notes": []})}}
+                    {
+                        "message": {"content": json.dumps({"text": "Synthetic", "notes": []})},
+                        "finish_reason": "stop",
+                    }
                 ],
+                "usage": {"total_tokens": 4},
             },
         )
 
     adapter = GigaChatAdapter(
         DictSecretStore({"gigachat_authorization_key": "test-auth"}),
         client=httpx.Client(transport=httpx.MockTransport(handler)),
-        endpoint="https://example.test",
     )
-    assert (
-        adapter.generate(request("gigachat", "GigaChat-2-Pro"), SECTION_DRAFT_V1).output["text"]
-        == "Synthetic"
-    )
-    assert (
-        adapter.generate(request("gigachat", "GigaChat-2-Pro"), SECTION_DRAFT_V1).output["text"]
-        == "Synthetic"
-    )
-    assert sum(url.endswith("oauth") for url in calls) == 1
+    first = adapter.generate(request("gigachat", "GigaChat-2-Pro"), SECTION_DRAFT_V1)
+    second = adapter.generate(request("gigachat", "GigaChat-2-Pro"), SECTION_DRAFT_V1)
+    assert first.output["text"] == "Synthetic"
+    assert second.output["text"] == "Synthetic"
+    assert first.usage["model_version"] == "GigaChat-2-Pro:stage-a"
+    assert sum(url.endswith("/api/v2/oauth") for url in calls) == 1
     assert "test-auth" not in repr(adapter)
 
+    with pytest.raises(ValueError, match="commercial"):
+        GigaChatAdapter(DictSecretStore({}), scope="GIGACHAT_API_PERS")
+
     def limited(http_request: httpx.Request) -> httpx.Response:
-        if http_request.url.path.endswith("oauth"):
-            return httpx.Response(200, json={"access_token": "access"})
+        if http_request.url.path.endswith("/api/v2/oauth"):
+            return httpx.Response(200, json={"access_token": "access", "expires_in": 1800})
         return httpx.Response(429, json={"error": "rate limited"})
 
     limited_adapter = GigaChatAdapter(
         DictSecretStore({"gigachat_authorization_key": "auth"}),
         client=httpx.Client(transport=httpx.MockTransport(limited)),
-        endpoint="https://example.test",
     )
     with pytest.raises(ModelProviderError, match="429"):
         limited_adapter.generate(request("gigachat", "GigaChat-2-Pro"), SECTION_DRAFT_V1)
+
+    def refusal(http_request: httpx.Request) -> httpx.Response:
+        if http_request.url.path.endswith("/api/v2/oauth"):
+            return httpx.Response(200, json={"access_token": "access", "expires_in": 1800})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {"content": "{}"},
+                        "finish_reason": "blacklist",
+                    }
+                ]
+            },
+        )
+
+    refusal_adapter = GigaChatAdapter(
+        DictSecretStore({"gigachat_authorization_key": "auth"}),
+        client=httpx.Client(transport=httpx.MockTransport(refusal)),
+    )
+    with pytest.raises(ModelProviderError, match="refusal"):
+        refusal_adapter.generate(request("gigachat", "GigaChat-2-Pro"), SECTION_DRAFT_V1)
 
 
 def test_live_runner_is_never_implicit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,9 +229,16 @@ def test_live_runner_is_never_implicit(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_mocked_embedding_adapters_return_exact_model_identity_and_validate_output() -> None:
-    def yandex(_: httpx.Request) -> httpx.Response:
+    yandex_requests: list[dict[str, object]] = []
+
+    def yandex(http_request: httpx.Request) -> httpx.Response:
+        assert http_request.url.path == "/foundationModels/v1/textEmbedding"
+        body = json.loads(http_request.content)
+        yandex_requests.append(body)
+        assert "text" in body and "texts" not in body
         return httpx.Response(
-            200, json={"model": "yandex-v1", "embeddings": [{"embedding": [0.1, 0.2]}]}
+            200,
+            json={"modelVersion": "yandex-embed-v1", "embedding": [0.1, 0.2], "numTokens": "2"},
         )
 
     yandex_gateway = EmbeddingGateway(
@@ -186,19 +249,17 @@ def test_mocked_embedding_adapters_return_exact_model_identity_and_validate_outp
             )
         }
     )
-    assert (
-        yandex_gateway.embed(["synthetic"], provider="yandex", model="m").model_version
-        == "yandex-v1"
-    )
+    yandex_result = yandex_gateway.embed(["one", "two"], provider="yandex", model="m")
+    assert yandex_result.model_version == "yandex-embed-v1"
+    assert len(yandex_result.vectors) == 2
+    assert len(yandex_requests) == 2
 
     malformed_gateway = EmbeddingGateway(
         {
             "yandex": YandexEmbeddingAdapter(
                 DictSecretStore({"yandex_ai_studio_api_key": "key"}),
                 client=httpx.Client(
-                    transport=httpx.MockTransport(
-                        lambda _: httpx.Response(200, json={"embeddings": [{}]})
-                    )
+                    transport=httpx.MockTransport(lambda _: httpx.Response(200, json={}))
                 ),
             )
         }
@@ -207,14 +268,14 @@ def test_mocked_embedding_adapters_return_exact_model_identity_and_validate_outp
         malformed_gateway.embed(["synthetic"], provider="yandex", model="m")
 
     def giga(http_request: httpx.Request) -> httpx.Response:
-        if http_request.url.path.endswith("oauth"):
-            return httpx.Response(200, json={"access_token": "access"})
+        if http_request.url.path.endswith("/api/v2/oauth"):
+            return httpx.Response(200, json={"access_token": "access", "expires_in": 1800})
+        assert http_request.url.path == "/v1/embeddings"
         return httpx.Response(200, json={"model": "giga-v1", "data": [{"embedding": [0.1, 0.2]}]})
 
     giga_adapter = GigaChatAdapter(
         DictSecretStore({"gigachat_authorization_key": "auth"}),
         client=httpx.Client(transport=httpx.MockTransport(giga)),
-        endpoint="https://example.test",
     )
     giga_gateway = EmbeddingGateway({"gigachat": GigaChatEmbeddingAdapter(giga_adapter)})
     assert (

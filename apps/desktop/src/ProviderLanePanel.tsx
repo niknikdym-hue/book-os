@@ -30,10 +30,10 @@ export function ProviderLanePanel({
     <section className="panel">
       <h2>Provider Lane / Availability</h2>
       <p>
-        Region: <strong>RU</strong> · Russia-ready (WRITER):{" "}
-        <strong>{writerReady ? "YES" : "NO"}</strong>
+        Region: <strong>RU</strong> · WRITER production route:{" "}
+        <strong>{writerReady ? "AVAILABLE" : "UNAVAILABLE"}</strong>
       </p>
-      <p>Production routing requires verified regional policy and an explicit role promotion.</p>
+      <p>Production routing requires verified regional policy and an explicit role promotion. A Russia-ready claim additionally requires Stage B live promotion acceptance.</p>
       {unavailableReason && <p className="error">Unavailable: {unavailableReason}</p>}
       <ul>
         {capabilities.map((item) => (

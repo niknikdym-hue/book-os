@@ -30,13 +30,14 @@ it("shows fail-closed RU provider readiness without VPN guidance", () => {
 
   expect(screen.getByText("Provider Lane / Availability")).toBeInTheDocument();
   expect(container).toHaveTextContent("Region: RU");
-  expect(container).toHaveTextContent("Russia-ready (WRITER): NO");
+  expect(container).toHaveTextContent("WRITER production route: UNAVAILABLE");
   expect(container).toHaveTextContent("Unavailable: QUALITY_NOT_PROMOTED");
   expect(container).toHaveTextContent("yandex / yandexgpt");
   expect(container).toHaveTextContent("generation: yes");
   expect(container).toHaveTextContent("embeddings: yes");
   expect(container).toHaveTextContent("promotion: CANDIDATE");
   expect(container).not.toHaveTextContent(/use vpn/i);
+  expect(container).toHaveTextContent("Russia-ready claim additionally requires Stage B");
 });
 
 it("shows a ready writer lane only when routing has no unavailable reason", () => {
@@ -47,6 +48,6 @@ it("shows a ready writer lane only when routing has no unavailable reason", () =
     />,
   );
 
-  expect(container).toHaveTextContent("Russia-ready (WRITER): YES");
+  expect(container).toHaveTextContent("WRITER production route: AVAILABLE");
   expect(container).not.toHaveTextContent("Unavailable:");
 });

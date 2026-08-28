@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
@@ -560,9 +561,11 @@ class YandexAdapter:
         secrets: SecretStore,
         *,
         client: httpx.Client | None = None,
-        endpoint: str = "https://ai.api.cloud.yandex.net/v1/foundationModels/v1/completion",
+        endpoint: str = "https://ai.api.cloud.yandex.net/foundationModels/v1/completion",
     ) -> None:
-        self.secrets, self.client, self.endpoint = secrets, client or httpx.Client(), endpoint
+        self.secrets = secrets
+        self.client = client or httpx.Client()
+        self.endpoint = endpoint
 
     def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
         try:
@@ -571,14 +574,20 @@ class YandexAdapter:
             raise ModelProviderError("Yandex credential is unavailable") from exc
         response = self.client.post(
             self.endpoint,
-            headers={"Authorization": f"Api-Key {key}"},
+            headers={"Authorization": f"Api-Key {key}", "Content-Type": "application/json"},
             json={
                 "modelUri": request.model,
-                "completionOptions": {"responseFormat": "JSON_OBJECT"},
+                "completionOptions": {
+                    "stream": False,
+                    "maxTokens": str(request.max_output_tokens),
+                },
                 "messages": [
                     {"role": "system", "text": prompt.developer_text},
                     {"role": "user", "text": request.section_objective},
                 ],
+                "jsonSchema": {
+                    "schema": OpenAIResponsesAdapter.output_schema(request.task_type),
+                },
             },
         )
         if response.status_code >= 400:
@@ -586,15 +595,31 @@ class YandexAdapter:
         payload = response.json()
         if not isinstance(payload, dict):
             raise ModelOutputError("Yandex response must be an object")
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise ModelOutputError("Yandex response has no result object")
+        alternatives = result.get("alternatives")
+        if not isinstance(alternatives, list) or not alternatives:
+            raise ModelOutputError("Yandex response has no alternatives")
+        first = alternatives[0]
+        message = first.get("message") if isinstance(first, dict) else None
+        text_value = message.get("text") if isinstance(message, dict) else None
+        if not isinstance(text_value, str) or not text_value:
+            raise ModelOutputError("Yandex response has no generated text")
+        usage_raw = result.get("usage")
+        usage = dict(usage_raw) if isinstance(usage_raw, dict) else {}
+        if result.get("modelVersion") is not None:
+            usage["model_version"] = str(result["modelVersion"])
         return ModelAdapterResult(
             str(payload.get("id")) if payload.get("id") else None,
-            _validated_output(request, payload),
-            payload.get("usage", {}) if isinstance(payload.get("usage"), dict) else {},
+            _validated_output(request, {"output": text_value}),
+            usage,
         )
 
 
 class GigaChatAdapter:
     provider_name = "gigachat"
+    _COMMERCIAL_SCOPES = {"GIGACHAT_API_B2B", "GIGACHAT_API_CORP"}
 
     def __init__(
         self,
@@ -602,13 +627,32 @@ class GigaChatAdapter:
         *,
         client: httpx.Client | None = None,
         endpoint: str = "https://api.giga.chat",
+        auth_endpoint: str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+        scope: str = "GIGACHAT_API_B2B",
+        ca_bundle: str | None = None,
         clock: Any = time.time,
     ) -> None:
+        if scope not in self._COMMERCIAL_SCOPES:
+            raise ValueError("GigaChat product runtime requires a commercial B2B/CORP scope")
         self.secrets = secrets
-        self.client = client or httpx.Client()
+        self.client = client or httpx.Client(verify=ca_bundle if ca_bundle is not None else True)
         self.endpoint = endpoint.rstrip("/")
+        self.auth_endpoint = auth_endpoint
+        self.scope = scope
         self.clock = clock
         self._token: tuple[str, float] | None = None
+
+    def _token_expiry(self, payload: dict[str, Any]) -> float:
+        expires_in = payload.get("expires_in")
+        if isinstance(expires_in, (int, float)):
+            return self.clock() + float(expires_in)
+        expires_at = payload.get("expires_at")
+        if isinstance(expires_at, (int, float)):
+            value = float(expires_at)
+            if value > 10_000_000_000:
+                value /= 1000.0
+            return value
+        return self.clock() + 1800.0
 
     def _access_token(self) -> str:
         if self._token and self._token[1] > self.clock() + 5:
@@ -618,9 +662,14 @@ class GigaChatAdapter:
         except Exception as exc:
             raise ModelProviderError("GigaChat credential is unavailable") from exc
         response = self.client.post(
-            f"{self.endpoint}/api/v2/oauth",
-            headers={"Authorization": f"Basic {auth}", "RqUID": "book-os-m8"},
-            data={"scope": "GIGACHAT_API_B2B"},
+            self.auth_endpoint,
+            headers={
+                "Authorization": f"Basic {auth}",
+                "RqUID": str(uuid.uuid4()),
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json",
+            },
+            data={"scope": self.scope},
         )
         if response.status_code >= 400:
             raise ModelProviderError(f"GigaChat token HTTP {response.status_code}")
@@ -628,13 +677,16 @@ class GigaChatAdapter:
         token = payload.get("access_token") if isinstance(payload, dict) else None
         if not isinstance(token, str) or not token:
             raise ModelProviderError("GigaChat token response is malformed")
-        self._token = (token, self.clock() + int(payload.get("expires_in", 1800)))
+        self._token = (token, self._token_expiry(payload))
         return token
 
     def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
         response = self.client.post(
-            f"{self.endpoint}/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {self._access_token()}"},
+            f"{self.endpoint}/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self._access_token()}",
+                "Content-Type": "application/json",
+            },
             json={
                 "model": request.model,
                 "messages": [
@@ -643,10 +695,8 @@ class GigaChatAdapter:
                 ],
                 "response_format": {
                     "type": "json_schema",
-                    "json_schema": {
-                        "strict": True,
-                        "schema": OpenAIResponsesAdapter.output_schema(request.task_type),
-                    },
+                    "schema": OpenAIResponsesAdapter.output_schema(request.task_type),
+                    "strict": True,
                 },
             },
         )
@@ -655,16 +705,23 @@ class GigaChatAdapter:
         payload = response.json()
         if not isinstance(payload, dict):
             raise ModelOutputError("GigaChat response must be an object")
-        choice = payload.get("choices", [{}])
-        content = (
-            choice[0].get("message", {}).get("content")
-            if isinstance(choice, list) and choice
-            else None
-        )
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ModelOutputError("GigaChat response has no choices")
+        first = choices[0]
+        finish_reason = str(first.get("finish_reason") or "")
+        if finish_reason.casefold() in {"blacklist", "content_filter", "refusal"}:
+            raise ModelProviderError(f"GigaChat refusal: {finish_reason}")
+        message = first.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        usage_raw = payload.get("usage")
+        usage = dict(usage_raw) if isinstance(usage_raw, dict) else {}
+        if payload.get("model") is not None:
+            usage["model_version"] = str(payload["model"])
         return ModelAdapterResult(
             str(payload.get("id")) if payload.get("id") else None,
             _validated_output(request, {"output": content}),
-            payload.get("usage", {}) if isinstance(payload.get("usage"), dict) else {},
+            usage,
         )
 
 
@@ -698,26 +755,57 @@ class YandexEmbeddingAdapter:
         secrets: SecretStore,
         *,
         client: httpx.Client | None = None,
-        endpoint: str = "https://ai.api.cloud.yandex.net/v1/foundationModels:embedText",
+        endpoint: str = "https://llm.api.cloud.yandex.net/foundationModels/v1/textEmbedding",
     ) -> None:
-        self.secrets, self.client, self.endpoint = secrets, client or httpx.Client(), endpoint
+        self.secrets = secrets
+        self.client = client or httpx.Client()
+        self.endpoint = endpoint
 
     def embed(self, texts: list[str], model: str) -> EmbeddingBatchResult:
         try:
             key = self.secrets.get_secret("yandex_ai_studio_api_key")
-            response = self.client.post(
-                self.endpoint,
-                headers={"Authorization": f"Api-Key {key}"},
-                json={"modelUri": model, "texts": texts},
-            )
-        except httpx.HTTPError as exc:
-            raise EmbeddingProviderError("Yandex embeddings request failed") from exc
-        if response.status_code >= 400:
-            raise EmbeddingProviderError(f"Yandex embeddings HTTP {response.status_code}")
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise EmbeddingOutputError("Yandex embeddings response must be an object")
-        return _embedding_result(self.provider_name, model, payload)
+        except Exception as exc:
+            raise EmbeddingProviderError("Yandex embedding credential is unavailable") from exc
+        vectors: list[list[float]] = []
+        model_version: str | None = None
+        total_tokens = 0
+        for text_value in texts:
+            try:
+                response = self.client.post(
+                    self.endpoint,
+                    headers={"Authorization": f"Api-Key {key}", "Content-Type": "application/json"},
+                    json={"modelUri": model, "text": text_value},
+                )
+            except httpx.HTTPError as exc:
+                raise EmbeddingProviderError("Yandex embeddings request failed") from exc
+            if response.status_code >= 400:
+                raise EmbeddingProviderError(f"Yandex embeddings HTTP {response.status_code}")
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise EmbeddingOutputError("Yandex embeddings response must be an object")
+            raw_vector = payload.get("embedding")
+            if not isinstance(raw_vector, list):
+                raise EmbeddingOutputError("Yandex embedding item is malformed")
+            try:
+                vectors.append([float(value) for value in raw_vector])
+            except (TypeError, ValueError) as exc:
+                raise EmbeddingOutputError("Yandex embedding is non-numeric") from exc
+            returned_version = str(payload.get("modelVersion") or model)
+            if model_version is None:
+                model_version = returned_version
+            elif returned_version != model_version:
+                raise EmbeddingOutputError("Yandex embeddings returned inconsistent model versions")
+            try:
+                total_tokens += int(payload.get("numTokens") or 0)
+            except (TypeError, ValueError):
+                pass
+        return EmbeddingBatchResult(
+            self.provider_name,
+            model,
+            model_version or model,
+            vectors,
+            {"input_count": len(texts), "input_tokens": total_tokens},
+        )
 
 
 class GigaChatEmbeddingAdapter:
@@ -729,8 +817,11 @@ class GigaChatEmbeddingAdapter:
     def embed(self, texts: list[str], model: str) -> EmbeddingBatchResult:
         try:
             response = self._generation.client.post(
-                f"{self._generation.endpoint}/api/v1/embeddings",
-                headers={"Authorization": f"Bearer {self._generation._access_token()}"},
+                f"{self._generation.endpoint}/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self._generation._access_token()}",
+                    "Content-Type": "application/json",
+                },
                 json={"model": model, "input": texts},
             )
         except httpx.HTTPError as exc:
