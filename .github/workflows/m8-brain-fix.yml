@@ -1,0 +1,40 @@
+name: M8 Brain bounded fix
+on:
+  push:
+    branches: [brain/task-009-russia-provider-lane]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.event.head_commit.message == 'chore: apply bounded M8 typing fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-009-russia-provider-lane
+          fetch-depth: 0
+      - name: Apply exact typing fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('services/local-core/src/book_os_core/provider_lane.py')
+          s = p.read_text()
+          s = s.replace('from typing import Any, Literal\n', 'from typing import Any, Literal, cast\n')
+          old = '''                promotion: PROMOTION = (\n                    "PROMOTED" if identity in promoted else str(policy["promotion"])\n                )\n'''
+          new = '''                raw_promotion = str(policy["promotion"])\n                if raw_promotion not in (\n                    "CANDIDATE", "EVALUATED", "PROMOTED", "REJECTED", "EXPIRED"\n                ):\n                    raise ValueError(f"invalid persisted promotion state: {raw_promotion}")\n                promotion: PROMOTION = (\n                    "PROMOTED" if identity in promoted else cast(PROMOTION, raw_promotion)\n                )\n'''
+          if old not in s:
+              raise SystemExit('promotion snippet not found')
+          s = s.replace(old, new)
+          old = '''        self.secrets, self.client, self.endpoint, self.clock, self._token = (\n            secrets,\n            client or httpx.Client(),\n            endpoint.rstrip("/"),\n            clock,\n            None,\n        )\n'''
+          new = '''        self.secrets = secrets\n        self.client = client or httpx.Client()\n        self.endpoint = endpoint.rstrip("/")\n        self.clock = clock\n        self._token: tuple[str, float] | None = None\n'''
+          if old not in s:
+              raise SystemExit('token snippet not found')
+          s = s.replace(old, new)
+          p.write_text(s)
+          PY
+          rm .github/workflows/m8-brain-fix.yml
+          git config user.name niknikdym-hue
+          git config user.email niknikdym@gmail.com
+          git add -A
+          git commit -m 'fix: close M8 provider typing gates'
+          git push origin HEAD:brain/task-009-russia-provider-lane
