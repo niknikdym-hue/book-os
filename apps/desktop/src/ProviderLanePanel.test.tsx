@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, expect, it } from "vitest";
 import { ProviderLanePanel, type ProviderCapabilityView } from "./ProviderLanePanel";
 
 const yandex: ProviderCapabilityView = {
@@ -21,30 +21,32 @@ const yandex: ProviderCapabilityView = {
   verified_at: "2026-08-27",
 };
 
+afterEach(cleanup);
+
 it("shows fail-closed RU provider readiness without VPN guidance", () => {
-  render(
+  const { container } = render(
     <ProviderLanePanel capabilities={[yandex]} unavailableReason="QUALITY_NOT_PROMOTED" />,
   );
 
   expect(screen.getByText("Provider Lane / Availability")).toBeInTheDocument();
-  expect(screen.getByText(/Region: RU/)).toBeInTheDocument();
-  expect(screen.getByText(/Russia-ready \(WRITER\): NO/)).toBeInTheDocument();
-  expect(screen.getByText(/Unavailable: QUALITY_NOT_PROMOTED/)).toBeInTheDocument();
-  expect(screen.getByText(/yandex \/ yandexgpt/)).toBeInTheDocument();
-  expect(screen.getByText(/generation: yes/)).toBeInTheDocument();
-  expect(screen.getByText(/embeddings: yes/)).toBeInTheDocument();
-  expect(screen.getByText(/promotion: CANDIDATE/)).toBeInTheDocument();
-  expect(screen.queryByText(/use vpn/i)).not.toBeInTheDocument();
+  expect(container).toHaveTextContent("Region: RU");
+  expect(container).toHaveTextContent("Russia-ready (WRITER): NO");
+  expect(container).toHaveTextContent("Unavailable: QUALITY_NOT_PROMOTED");
+  expect(container).toHaveTextContent("yandex / yandexgpt");
+  expect(container).toHaveTextContent("generation: yes");
+  expect(container).toHaveTextContent("embeddings: yes");
+  expect(container).toHaveTextContent("promotion: CANDIDATE");
+  expect(container).not.toHaveTextContent(/use vpn/i);
 });
 
 it("shows a ready writer lane only when routing has no unavailable reason", () => {
-  render(
+  const { container } = render(
     <ProviderLanePanel
       capabilities={[{ ...yandex, promotion: "PROMOTED", health: "HEALTHY" }]}
       unavailableReason={null}
     />,
   );
 
-  expect(screen.getByText(/Russia-ready \(WRITER\): YES/)).toBeInTheDocument();
-  expect(screen.queryByText(/Unavailable:/)).not.toBeInTheDocument();
+  expect(container).toHaveTextContent("Russia-ready (WRITER): YES");
+  expect(container).not.toHaveTextContent("Unavailable:");
 });
