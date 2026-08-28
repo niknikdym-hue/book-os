@@ -630,7 +630,7 @@ class GigaChatAdapter:
         auth_endpoint: str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
         scope: str = "GIGACHAT_API_B2B",
         ca_bundle: str | None = None,
-        clock: Any = time.time,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         if scope not in self._COMMERCIAL_SCOPES:
             raise ValueError("GigaChat product runtime requires a commercial B2B/CORP scope")
