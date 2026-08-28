@@ -70,13 +70,13 @@ def test_deterministic_fallback_uses_only_eligible_promoted_healthy_route() -> N
         item for item in seed_capabilities() if item.provider == "gigachat" and item.commercial
     )
     candidates = (
-        replace(yandex, promotion="PROMOTED", health="UNAVAILABLE"),
-        replace(giga, promotion="PROMOTED", health="HEALTHY"),
+        replace(giga, promotion="PROMOTED", health="UNAVAILABLE"),
+        replace(yandex, promotion="PROMOTED", health="HEALTHY"),
     )
     decision = RussiaPolicy().route(candidates, role="WRITER")
     assert decision.available
     assert decision.capability is not None
-    assert decision.capability.provider == "gigachat"
+    assert decision.capability.provider == "yandex"
     assert any(attempt.reason == "PROVIDER_UNAVAILABLE" for attempt in decision.attempts)
     assert decision.attempts[-1].reason == "SELECTED"
 
