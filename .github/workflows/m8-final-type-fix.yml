@@ -1,0 +1,25 @@
+name: M8 final type hardening
+on:
+  push:
+    branches: [brain/task-009-russia-provider-lane]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-009-russia-provider-lane
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/m8_mypy_fix.py
+      - run: |
+          rm .github/workflows/m8-final-type-fix.yml tools/m8_mypy_fix.py
+          git config user.name niknikdym-hue
+          git config user.email niknikdym@gmail.com
+          git add -A
+          git commit -m 'fix: type GigaChat token clock explicitly'
+          git push origin HEAD:brain/task-009-russia-provider-lane
