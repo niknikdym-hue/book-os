@@ -9,6 +9,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timezone
+from collections.abc import Callable
 from typing import Any, Literal, cast
 
 import httpx
