@@ -1,25 +1,20 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** M8 ACTIVE — TASK 009 READY
-**Version:** 1.5.1
-**Date:** 2026-08-27
+**Status:** GLOBAL / OPENAI-FIRST QUALITY PATH ACTIVE  
+**Version:** 1.6.0  
+**Date:** 2026-08-29  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
 
-**IMPLEMENTATION MILESTONE 8 — RUSSIA / NO-VPN PROVIDER LANE**
+BOOK OS is a **global editorial-authoring system** for high-quality nonfiction.
 
-Canonical accepted `main` at M8 activation:
+The current execution sequence is governed by:
 
-`5115a20512437a68da7ee7eed44e55b8ebbf0d90`
+- `docs/decisions/2026-08-29-global-openai-first.md`;
+- `docs/IMPLEMENTATION_ROADMAP_v0.2.md`.
 
-Active contract:
-
-`docs/tasks/CODEX_TASK_009_RUSSIA_PROVIDER_LANE.md`
-
-Planned branch:
-
-`brain/task-009-russia-provider-lane`
+The former Russia/no-VPN provider-lane requirement is SUPERSEDED and removed from the current program.
 
 ## Accepted milestones
 
@@ -30,73 +25,67 @@ Planned branch:
 - M4 / Task 005 — ACCEPTED AND MERGED.
 - M5 / Task 006 — ACCEPTED AND MERGED.
 - M6 / Task 007 — ACCEPTED AND MERGED.
-- **M7 / Task 008 — ACCEPTED AND MERGED:** PR #11; accepted HEAD `8052ed9e1fe9f7902526a19ea8f6c9727946e4e4`; merge commit `5115a20512437a68da7ee7eed44e55b8ebbf0d90`; final exact-head CI `33101458190` SUCCESS with 74/74 pytest, 9/9 desktop tests, Rust test/check, dependency and secret scans.
+- M7 / Task 008 — BookBench v0.1 — ACCEPTED AND MERGED; PR #11; merge commit `5115a20512437a68da7ee7eed44e55b8ebbf0d90`.
 
 Do not return to M0–M7 without a concrete regression.
 
-## M8 objective
+## Superseded former M8
 
-Prove a provider-neutral runtime lane for a user in Russia that:
-- requires no VPN;
-- requires no personal foreign AI subscription/key;
-- does not circumvent provider geography/contracts;
-- retains provider/model/config provenance and data-minimization rules;
-- routes only through positively eligible provider/model/configs;
-- does not lower BOOK OS role-quality gates;
-- has structured unavailable/fallback behavior.
+The former `M8 — Russia/no-VPN provider lane` is no longer a current milestone.
 
-M8 uses two-stage acceptance:
-1. implementation + mocked CI;
-2. explicit live provider promotion evidence.
+Owner Decision on 2026-08-29 removed the Russia/no-VPN/regional-runtime task entirely from the current BOOK OS product program.
 
-Passing Stage A alone is not Russia-ready acceptance.
+Former PR #12:
 
-## Current official facts verified 2026-08-27
+- final historical HEAD: `bb29e8a80cafeea1dd141910cae192fd73479ed1`;
+- final CI: `33252854938` SUCCESS;
+- state: CLOSED, NOT MERGED;
+- disposition: historical/salvage evidence only.
 
-- Yandex Cloud exposes a Russia region and AI Studio text/embeddings APIs; structured JSON/JSON-Schema output and scoped API-key/IAM authorization are documented.
-- GigaChat uses `https://api.giga.chat`; access-token authorization, B2B/CORP scopes and strict JSON-Schema output are documented.
-- GigaChat commercial use requires an appropriate paid/commercial path; `GigaChat-3-Ultra` is currently physical-person freemium only and is not a BOOK OS commercial-production candidate.
-- Russia remains absent from OpenAI's official API-supported-country list, so OpenAI cannot be the mandatory Russian runtime route.
+No Yandex/GigaChat live promotion is required.
+No regional provider availability blocks Literary Master, the real-book pilot, or GO/NO-GO.
 
-Canonical dated sources are embedded in Task 009.
+## Model strategy
 
-## Non-negotiable M8 rules
+OpenAI is the primary intelligence lane for the current MVP and real-book pilot.
 
-- normal CI external/provider/model calls = 0; paid calls = 0;
-- secrets remain behind SecretStore and never reach React/Git/logs;
-- no `verify=False` production TLS path;
-- live promotion is explicit-flag gated and never triggered by ordinary UI/tests;
-- provider health does not imply provider quality;
-- a route is production-eligible only after BookBench role promotion;
-- no fallback below quality floor;
-- no M9/M10 implementation inside M8.
+Provider-neutral architecture remains mandatory:
 
-## Execution state
+- provider-specific behavior stays behind ModelGateway/EmbeddingGateway adapters;
+- exact provider/model/config provenance remains required;
+- OpenAI is not permanent architecture authority;
+- future competitors may be benchmarked when they offer credible quality/cost/capability value.
 
-Task 009 is READY. Create the M8 branch from the exact canonical `main` after this control-state commit, open one draft PR, and implement only Task 009.
+No backup provider is required before the real-book pilot.
 
-Codex report text is not delivery authority. Required delivery evidence is:
-`published GitHub HEAD + inspectable PR diff + authoritative GitHub CI`.
+## Current critical path
 
-## Fixed critical path
+`OpenAI-first quality path → Literary Master + exports → real Business Nonfiction pilot → GO/NO-GO`
 
-`M8 Russia/no-VPN provider lane → M9 Literary Master + exports → M10 real Business Nonfiction pilot → GO/NO-GO`
+## Immediate next objective
 
-## Next action
+Build and accept the Literary Master/export capability on top of accepted M0–M7, using the OpenAI-first quality lane for the MVP.
 
-1. Commit Task 009 + this state/hash synchronization to canonical `main`.
-2. Create `brain/task-009-russia-provider-lane`.
-3. Open one draft M8 PR.
-4. Execute Stage A implementation against exact baseline.
-5. Central Brain reviews actual GitHub HEAD/diff/CI.
-6. If Stage A passes but credentials/commercial access/live-eval budget are absent, record `BLOCKED_LIVE_PROMOTION`; do not lower quality.
-7. After Stage B live promotion and final CI, ACCEPT + merge M8.
-8. Only then start M9.
+Then immediately run the real Business Nonfiction pilot from Idea to Literary Master and make the final GO/NO-GO decision from actual quality evidence.
+
+## Non-negotiable invariants
+
+- GitHub is source of truth;
+- human/Owner authority cannot be auto-approved by AI;
+- accepted authority is immutable and replacements are traceable/SUPERSEDED;
+- BookBench BLOCKING gates cannot be averaged away;
+- real private manuscripts/evaluation corpus are not committed publicly;
+- provider-specific code cannot become book authority;
+- no hidden automatic manuscript acceptance;
+- Literary Master must be reproducible from exact accepted revisions.
 
 ## Change log
 
-### 1.5.1 — 2026-08-27
-- Recorded M7 ACCEPT + merge and final exact-head CI.
-- Activated M8 / Task 009.
-- Added current provider-policy facts verified from official Yandex/GigaChat/OpenAI sources.
-- Added two-stage M8 acceptance and the hard GitHub-delivery rule.
+### 1.6.0 — 2026-08-29
+- Reaffirmed BOOK OS as a global system.
+- Removed the Russia/no-VPN/regional-runtime task from the current product program.
+- Superseded former M8 / Task 009 as a launch gate.
+- Closed PR #12 without merge; retained it only as historical/salvage evidence.
+- Adopted `IMPLEMENTATION_ROADMAP_v0.2.md`.
+- Set OpenAI as primary MVP/pilot intelligence lane while preserving provider-neutral architecture.
+- New critical path: OpenAI-first quality → Literary Master → real-book pilot → GO/NO-GO.
