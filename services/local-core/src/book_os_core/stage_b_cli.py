@@ -152,9 +152,7 @@ def run(argv: Sequence[str] | None = None, *, secrets: SecretStore | None = None
                 secrets=secret_store,
                 run_semantic=bool(args.semantic),
             )
-            print(
-                json.dumps(writer_evidence.public_dict(), ensure_ascii=False, sort_keys=True)
-            )
+            print(json.dumps(writer_evidence.public_dict(), ensure_ascii=False, sort_keys=True))
             return 0
 
         if args.command == "editor":
@@ -168,9 +166,7 @@ def run(argv: Sequence[str] | None = None, *, secrets: SecretStore | None = None
                 lane=lane,
                 secrets=secret_store,
             )
-            print(
-                json.dumps(editor_evidence.public_dict(), ensure_ascii=False, sort_keys=True)
-            )
+            print(json.dumps(editor_evidence.public_dict(), ensure_ascii=False, sort_keys=True))
             return 0
 
         plan = _plan(args, preflight, ("EVALUATOR",))
