@@ -1,0 +1,48 @@
+name: M9 M7 identity fix once
+on:
+  push:
+    branches: [brain/task-010-literary-master]
+    paths:
+      - '.github/workflows/m9-m7-identity-fix.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-010-literary-master
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          lm = Path('services/local-core/src/book_os_core/literary_master.py')
+          text = lm.read_text()
+          old = 'expected_snapshot[("CHAPTER_CONTRACT", contract_head.entity_id)] = ('
+          new = 'expected_snapshot[("CHAPTER_CONTRACT", chapter_id)] = ('
+          if old not in text:
+              raise SystemExit('chapter contract identity anchor not found')
+          lm.write_text(text.replace(old, new, 1))
+
+          test = Path('services/local-core/tests/test_literary_master.py')
+          text = test.read_text()
+          old = '''            (\n                "CHAPTER_CONTRACT",\n                chapter_contract.entity_id,\n                chapter_id,\n                None,\n                chapter_contract.revision_id,\n                chapter_contract.revision_hash,\n            ),\n'''
+          new = '''            (\n                "CHAPTER_CONTRACT",\n                chapter_id,\n                chapter_id,\n                None,\n                chapter_contract.revision_id,\n                chapter_contract.revision_hash,\n            ),\n'''
+          if old not in text:
+              raise SystemExit('test chapter contract identity anchor not found')
+          test.write_text(text.replace(old, new, 1))
+          PY
+      - run: pip install ruff==0.12.11
+      - run: ruff format services/local-core/src/book_os_core/literary_master.py services/local-core/tests/test_literary_master.py
+      - run: |
+          git config user.name 'BOOK OS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/m9-m7-identity-fix.yml
+          git add services/local-core/src/book_os_core/literary_master.py services/local-core/tests/test_literary_master.py
+          git commit -m 'fix: align Literary Master with M7 chapter contract identities'
+          git push origin HEAD:brain/task-010-literary-master
