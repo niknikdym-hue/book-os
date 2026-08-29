@@ -33,6 +33,10 @@ export function ProviderLanePanel({
         Region: <strong>RU</strong> · WRITER production route:{" "}
         <strong>{writerReady ? "AVAILABLE" : "UNAVAILABLE"}</strong>
       </p>
+      <p>
+        Stage B: <strong>LIVE PROMOTION REQUIRED</strong> — this workspace never starts a live
+        provider run or exposes credentials.
+      </p>
       <p>Production routing requires verified regional policy and an explicit role promotion. A Russia-ready claim additionally requires Stage B live promotion acceptance.</p>
       {unavailableReason && <p className="error">Unavailable: {unavailableReason}</p>}
       <ul>

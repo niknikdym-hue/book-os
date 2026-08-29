@@ -13,8 +13,6 @@ from book_os_core.db import create_database
 from book_os_core.memory_embeddings import EmbeddingGateway, EmbeddingOutputError
 from book_os_core.model_gateway import (
     AuthorityInputRef,
-    DeterministicFakeAdapter,
-    ModelGateway,
     ModelOutputError,
     ModelProviderError,
     ModelTaskRequest,
@@ -24,11 +22,11 @@ from book_os_core.provider_lane import (
     GigaChatAdapter,
     GigaChatEmbeddingAdapter,
     LiveProbeBudget,
-    LiveProbePreflight,
     ProviderLaneService,
     RussiaPolicy,
     YandexAdapter,
     YandexEmbeddingAdapter,
+    build_live_probe_preflight,
     run_live_probe,
     seed_capabilities,
 )
@@ -224,21 +222,43 @@ def test_gigachat_mocked_oauth_cache_rate_limit_refusal_and_provenance() -> None
         refusal_adapter.generate(request("gigachat", "GigaChat-2-Pro"), SECTION_DRAFT_V1)
 
 
-def test_live_runner_is_never_implicit(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_live_runner_is_never_implicit_and_requires_exact_plan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.delenv("BOOK_OS_ALLOW_LIVE_PROVIDER", raising=False)
-    preflight = LiveProbePreflight(
-        "yandex",
-        "m",
-        "c",
-        "RU",
-        ("WRITER",),
-        "NOT AVAILABLE",
-        "NOT AVAILABLE",
-        LiveProbeBudget(1, 0, 1),
-        None,
+    service = ProviderLaneService(create_database(tmp_path / "runner.sqlite"))
+    preflight = build_live_probe_preflight(
+        service,
+        DictSecretStore({"yandex_ai_studio_api_key": "not-serialized"}),
+        provider="yandex",
+        model="yandexgpt",
+        config_id="latest-discovery",
+        region="RU",
+        roles=("WRITER",),
+        budget=LiveProbeBudget(1, 0, 1, 2.0),
+        estimated_cost=None,
     )
     with pytest.raises(RuntimeError, match="BOOK_OS_ALLOW_LIVE_PROVIDER"):
         run_live_probe(preflight=preflight)
+    assert "not-serialized" not in repr(preflight.public_plan())
+
+    monkeypatch.setenv("BOOK_OS_ALLOW_LIVE_PROVIDER", "1")
+    with pytest.raises(RuntimeError, match="exact approved"):
+        run_live_probe(preflight=preflight, service=service, expected_plan_hash="wrong")
+    result = run_live_probe(
+        preflight=preflight,
+        service=service,
+        expected_plan_hash=preflight.plan_hash,
+        request_executor=lambda _: {
+            "outcome": "SUCCESS",
+            "latency_ms": 3,
+            "usage": {"total_tokens": 1},
+            "cost": 0.5,
+            "external_request_id": "mock-request",
+        },
+    )
+    assert result["state"] == "EVIDENCE_AWAITING_OWNER_DECISION"
+    assert service.promotion_evidence() == []
 
 
 def test_mocked_embedding_adapters_return_exact_model_identity_and_validate_output() -> None:
@@ -321,15 +341,13 @@ def test_persisted_role_promotion_probe_overlay_and_gateway_execution(tmp_path: 
         outcome="SUCCESS",
     )
     writer = service.route("WRITER")
-    assert writer.available
-    assert writer.capability is not None and writer.capability.provider == "yandex"
+    assert not writer.available
+    assert any(attempt.reason == "PROVIDER_UNAVAILABLE" for attempt in writer.attempts)
     editor = service.route("EDITOR")
     assert not editor.available
     assert editor.reason == "QUALITY_NOT_PROMOTED"
 
-    gateway = ModelGateway({"yandex": DeterministicFakeAdapter()})
-    result = service.generate_ru(gateway, request("ignored", "ignored"), SECTION_DRAFT_V1)
-    assert result.output["text"].startswith("Draft for:")
+    # A mocked probe never becomes production routing truth.
 
     with pytest.raises(ValueError, match="quality floor"):
         service.record_promotion(

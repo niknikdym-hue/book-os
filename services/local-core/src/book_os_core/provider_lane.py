@@ -8,7 +8,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from collections.abc import Callable
 from typing import Any, Literal, cast
 
@@ -29,6 +29,7 @@ from .prompts import PromptTemplate
 from .secrets import SecretStore
 
 PROMOTION = Literal["CANDIDATE", "EVALUATED", "PROMOTED", "REJECTED", "EXPIRED"]
+LIVE_PROBE_FRESHNESS = timedelta(hours=24)
 
 
 @dataclass(frozen=True)
@@ -277,11 +278,24 @@ class ProviderLaneService:
                         raise ValueError(f"invalid persisted promotion decision: {raw_decision}")
                     promotion_by_identity[identity] = cast(PROMOTION, raw_decision)
 
+            capability_hashes = {
+                (
+                    str(row["provider"]),
+                    str(row["model"]),
+                    str(row["config_id"]),
+                    str(row["region"]),
+                ): str(row["matrix_hash"])
+                for row in connection.execute(
+                    text(
+                        "SELECT provider, model, config_id, region, matrix_hash FROM provider_capabilities WHERE current_state='CURRENT' AND superseded_at IS NULL"
+                    )
+                ).mappings()
+            }
             health_by_identity: dict[tuple[str, str, str, str], str] = {}
             probe_rows = (
                 connection.execute(
                     text(
-                        "SELECT provider, model, config_id, region, outcome FROM provider_probe_runs ORDER BY created_at DESC"
+                        "SELECT provider, model, config_id, region, matrix_hash, outcome, created_at FROM provider_probe_runs WHERE probe_type='LIVE' ORDER BY created_at DESC"
                     )
                 )
                 .mappings()
@@ -294,6 +308,23 @@ class ProviderLaneService:
                     str(row["config_id"]),
                     str(row["region"]),
                 )
+                # Simulations are evidence for tests only.  A live result for an old
+                # capability matrix, or a stale result, cannot make a production route healthy.
+                if str(row["matrix_hash"]) != capability_hashes.get(identity):
+                    continue
+                try:
+                    created_at = datetime.fromisoformat(
+                        str(row["created_at"]).replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    continue
+                if created_at.tzinfo is None:
+                    continue
+                if (
+                    datetime.now(timezone.utc) - created_at.astimezone(timezone.utc)
+                    > LIVE_PROBE_FRESHNESS
+                ):
+                    continue
                 if identity not in health_by_identity:
                     health_by_identity[identity] = (
                         "HEALTHY" if str(row["outcome"]) == "SUCCESS" else "UNAVAILABLE"
@@ -862,8 +893,7 @@ class LiveProbePreflight:
     config_id: str
     region: str
     roles: tuple[str, ...]
-    yandex_credential: str
-    gigachat_credential: str
+    credential_state: str
     budget: LiveProbeBudget
     estimated_cost: float | None
     state: str = "LIVE_PROMOTION_REQUIRED"
@@ -880,7 +910,13 @@ class LiveProbePreflight:
             "embedding_requests_max": self.budget.max_embedding_requests,
             "total_requests_max": self.budget.max_total_requests,
             "estimated_cost": self.estimated_cost,
+            "credential_state": self.credential_state,
         }
+
+    @property
+    def plan_hash(self) -> str:
+        payload = json.dumps(self.public_plan(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def credential_availability(secrets: SecretStore) -> dict[str, str]:
@@ -897,13 +933,104 @@ def credential_availability(secrets: SecretStore) -> dict[str, str]:
     }
 
 
-def run_live_probe(*, preflight: LiveProbePreflight) -> dict[str, object]:
-    """Fail closed until an Owner-authorized live run explicitly enables the environment flag."""
+def build_live_probe_preflight(
+    service: ProviderLaneService,
+    secrets: SecretStore,
+    *,
+    provider: str,
+    model: str,
+    config_id: str,
+    region: str,
+    roles: tuple[str, ...],
+    budget: LiveProbeBudget,
+    estimated_cost: float | None,
+) -> LiveProbePreflight:
+    """Create a secret-safe, zero-network plan for one persisted RU candidate."""
+    budget.validate()
+    if region != "RU" or not roles:
+        raise ValueError("live preflight requires an RU candidate and at least one role")
+    row = service._capability_row(
+        provider=provider, model=model, config_id=config_id, region=region
+    )
+    policy, caps, privacy = (
+        json.loads(row["policy_json"]),
+        json.loads(row["capabilities_json"]),
+        json.loads(row["privacy_json"]),
+    )
+    if (
+        not bool(policy["legal"])
+        or not bool(policy["commercial"])
+        or not bool(privacy["privacy_ok"])
+    ):
+        raise ValueError("candidate fails region/legal/commercial/privacy preflight")
+    if not bool(caps["generation"]) or any(role not in tuple(caps["roles"]) for role in roles):
+        raise ValueError("candidate fails required role capability preflight")
+    availability = credential_availability(secrets)
+    credential_state = availability.get(provider, "NOT AVAILABLE")
+    return LiveProbePreflight(
+        provider, model, config_id, region, roles, credential_state, budget, estimated_cost
+    )
+
+
+def run_live_probe(
+    *,
+    preflight: LiveProbePreflight,
+    service: ProviderLaneService | None = None,
+    expected_plan_hash: str | None = None,
+    request_executor: Callable[[str], dict[str, Any]] | None = None,
+) -> dict[str, object]:
+    """Bounded future-only executor. It never promotes a provider and has no implicit transport."""
     preflight.budget.validate()
     if preflight.region != "RU":
         raise RuntimeError("live provider execution requires RU candidate")
     if os.environ.get("BOOK_OS_ALLOW_LIVE_PROVIDER") != "1":
         raise RuntimeError("live provider execution requires BOOK_OS_ALLOW_LIVE_PROVIDER=1")
-    raise RuntimeError(
-        "live execution requires Owner-authorized bounded budget; no automatic promotion"
-    )
+    if expected_plan_hash != preflight.plan_hash:
+        raise RuntimeError("live provider execution requires the exact approved preflight plan")
+    if preflight.credential_state != "AVAILABLE":
+        raise RuntimeError("live provider execution requires available provider credentials")
+    if service is None or request_executor is None:
+        raise RuntimeError("live provider execution requires an explicit bounded executor")
+
+    requested = min(len(preflight.roles), preflight.budget.max_generation_requests)
+    if requested != len(preflight.roles) or requested > preflight.budget.max_total_requests:
+        raise RuntimeError("approved request budget does not cover the preflight plan")
+    evidence: list[str] = []
+    spent = 0.0
+    cost_known = True
+    for role in preflight.roles:
+        result = request_executor(role)
+        cost = result.get("cost")
+        if isinstance(cost, (int, float)):
+            spent += float(cost)
+            if (
+                preflight.budget.max_estimated_cost is not None
+                and spent > preflight.budget.max_estimated_cost
+            ):
+                raise RuntimeError("live provider execution exceeded approved cost budget")
+        else:
+            cost_known = False
+        evidence.append(
+            service.record_probe(
+                provider=preflight.provider,
+                model=preflight.model,
+                config_id=preflight.config_id,
+                region=preflight.region,
+                capability=f"GENERATION:{role}",
+                probe_type="LIVE",
+                outcome=cast(
+                    Literal["SUCCESS", "REFUSAL", "UNAVAILABLE", "ERROR"],
+                    result.get("outcome", "ERROR"),
+                ),
+                latency_ms=cast(int | None, result.get("latency_ms")),
+                usage=cast(dict[str, Any] | None, result.get("usage")),
+                cost={"actual": cost if isinstance(cost, (int, float)) else "UNKNOWN"},
+                external_request_id=cast(str | None, result.get("external_request_id")),
+            )
+        )
+    return {
+        "state": "EVIDENCE_AWAITING_OWNER_DECISION",
+        "plan_hash": preflight.plan_hash,
+        "probe_ids": evidence,
+        "actual_cost": spent if cost_known else "UNKNOWN",
+    }

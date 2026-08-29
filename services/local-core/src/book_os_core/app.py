@@ -66,6 +66,7 @@ from .provider_lane import (
     RussiaPolicy,
     YandexAdapter,
     YandexEmbeddingAdapter,
+    credential_availability,
     seed_capabilities,
 )
 from .db import create_database
@@ -462,6 +463,9 @@ def create_app(
         return {
             "region": "RU",
             "ready": all(bool(value["available"]) for value in roles.values()),
+            "implementation_ready": True,
+            "live_promotion_required": True,
+            "credentials": credential_availability(provider_secrets),
             "roles": roles,
         }
 
