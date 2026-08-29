@@ -170,7 +170,7 @@ def test_budgeted_gigachat_transport_counts_auth_and_generation_before_calls(
         assert runtime.ledger.total_requests == 2
         assert calls == ["/api/v2/oauth", "/v1/chat/completions"]
 
-        with pytest.raises(StageBBudgetExceeded, match="generation"):
+        with pytest.raises(StageBBudgetExceeded, match="total provider"):
             runtime.generation.generate(
                 _request("gigachat", "GigaChat-2-Pro"),
                 SECTION_DRAFT_V1,
