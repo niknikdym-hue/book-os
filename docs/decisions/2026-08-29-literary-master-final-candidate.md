@@ -6,7 +6,7 @@ The integrated Task 010 implementation has completed release-gate hardening and 
 
 Final implementation head before this control-only commit:
 
-`f47b4ea6d262500608f4632ef62435b7cc31aee7`
+`08aebeb3d613e056cdb33c8c89a2600619ac3967`
 
 The final release gate requires:
 
@@ -16,6 +16,7 @@ The final release gate requires:
 - zero BookBench BLOCKING findings;
 - exact current APPROVED/LOCKED authority revisions;
 - M7-compatible target identities (`BOOK_CONTRACT` by authority entity, `CHAPTER_CONTRACT` by chapter ID, manuscript units by unit ID);
+- immutable BookBench evidence (tests create new stale artifacts rather than rewriting snapshots);
 - HUMAN evidence for material editorial waivers.
 
 This control commit exists only to trigger authoritative GitHub CI from a normal owner-authored head. Acceptance requires every canonical job to pass on the resulting exact PR head; this record does not itself accept or merge Task 010.
