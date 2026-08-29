@@ -227,9 +227,10 @@ def test_live_runner_is_never_implicit_and_requires_exact_plan(
 ) -> None:
     monkeypatch.delenv("BOOK_OS_ALLOW_LIVE_PROVIDER", raising=False)
     service = ProviderLaneService(create_database(tmp_path / "runner.sqlite"))
+    secrets = DictSecretStore({"yandex_ai_studio_api_key": "not-serialized"})
     preflight = build_live_probe_preflight(
         service,
-        DictSecretStore({"yandex_ai_studio_api_key": "not-serialized"}),
+        secrets,
         provider="yandex",
         model="yandexgpt",
         config_id="latest-discovery",
@@ -248,8 +249,9 @@ def test_live_runner_is_never_implicit_and_requires_exact_plan(
     result = run_live_probe(
         preflight=preflight,
         service=service,
+        secrets=secrets,
         expected_plan_hash=preflight.plan_hash,
-        request_executor=lambda _: {
+        request_executor=lambda _, __: {
             "outcome": "SUCCESS",
             "latency_ms": 3,
             "usage": {"total_tokens": 1},

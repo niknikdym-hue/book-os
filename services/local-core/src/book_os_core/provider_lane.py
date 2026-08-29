@@ -872,6 +872,7 @@ class LiveProbeBudget:
     max_embedding_requests: int
     max_total_requests: int
     max_estimated_cost: float | None = None
+    max_authentication_requests: int = 0
 
     def validate(self) -> None:
         if (
@@ -881,7 +882,10 @@ class LiveProbeBudget:
             raise ValueError("request budget cannot be negative")
         if (
             self.max_total_requests <= 0
-            or self.max_total_requests < self.max_generation_requests + self.max_embedding_requests
+            or self.max_total_requests
+            < self.max_generation_requests
+            + self.max_embedding_requests
+            + self.max_authentication_requests
         ):
             raise ValueError("request budget must be bounded and cover requested work")
 
@@ -893,6 +897,7 @@ class LiveProbePreflight:
     config_id: str
     region: str
     roles: tuple[str, ...]
+    matrix_hash: str
     credential_state: str
     budget: LiveProbeBudget
     estimated_cost: float | None
@@ -906,9 +911,11 @@ class LiveProbePreflight:
             "config_id": self.config_id,
             "region": self.region,
             "roles": self.roles,
+            "matrix_hash": self.matrix_hash,
             "generation_requests_max": self.budget.max_generation_requests,
             "embedding_requests_max": self.budget.max_embedding_requests,
             "total_requests_max": self.budget.max_total_requests,
+            "authentication_requests_max": self.budget.max_authentication_requests,
             "estimated_cost": self.estimated_cost,
             "credential_state": self.credential_state,
         }
@@ -965,10 +972,20 @@ def build_live_probe_preflight(
         raise ValueError("candidate fails region/legal/commercial/privacy preflight")
     if not bool(caps["generation"]) or any(role not in tuple(caps["roles"]) for role in roles):
         raise ValueError("candidate fails required role capability preflight")
+    if provider == "gigachat" and budget.max_authentication_requests < 1:
+        raise ValueError("GigaChat preflight budget must include token exchange")
     availability = credential_availability(secrets)
     credential_state = availability.get(provider, "NOT AVAILABLE")
     return LiveProbePreflight(
-        provider, model, config_id, region, roles, credential_state, budget, estimated_cost
+        provider,
+        model,
+        config_id,
+        region,
+        roles,
+        str(row["matrix_hash"]),
+        credential_state,
+        budget,
+        estimated_cost,
     )
 
 
@@ -976,8 +993,9 @@ def run_live_probe(
     *,
     preflight: LiveProbePreflight,
     service: ProviderLaneService | None = None,
+    secrets: SecretStore | None = None,
     expected_plan_hash: str | None = None,
-    request_executor: Callable[[str], dict[str, Any]] | None = None,
+    request_executor: Callable[[LiveProbePreflight, str], dict[str, Any]] | None = None,
 ) -> dict[str, object]:
     """Bounded future-only executor. It never promotes a provider and has no implicit transport."""
     preflight.budget.validate()
@@ -987,10 +1005,20 @@ def run_live_probe(
         raise RuntimeError("live provider execution requires BOOK_OS_ALLOW_LIVE_PROVIDER=1")
     if expected_plan_hash != preflight.plan_hash:
         raise RuntimeError("live provider execution requires the exact approved preflight plan")
-    if preflight.credential_state != "AVAILABLE":
+    if preflight.credential_state != "AVAILABLE" or secrets is None:
         raise RuntimeError("live provider execution requires available provider credentials")
+    if credential_availability(secrets).get(preflight.provider) != "AVAILABLE":
+        raise RuntimeError("live provider credentials changed after preflight")
     if service is None or request_executor is None:
         raise RuntimeError("live provider execution requires an explicit bounded executor")
+    current = service._capability_row(
+        provider=preflight.provider,
+        model=preflight.model,
+        config_id=preflight.config_id,
+        region=preflight.region,
+    )
+    if str(current["matrix_hash"]) != preflight.matrix_hash:
+        raise RuntimeError("provider capability matrix changed after preflight")
 
     requested = min(len(preflight.roles), preflight.budget.max_generation_requests)
     if requested != len(preflight.roles) or requested > preflight.budget.max_total_requests:
@@ -999,7 +1027,7 @@ def run_live_probe(
     spent = 0.0
     cost_known = True
     for role in preflight.roles:
-        result = request_executor(role)
+        result = request_executor(preflight, role)
         cost = result.get("cost")
         if isinstance(cost, (int, float)):
             spent += float(cost)
