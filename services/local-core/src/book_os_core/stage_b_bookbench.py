@@ -30,7 +30,12 @@ from .projects import (
 )
 from .provider_lane import ProviderLaneService
 from .secrets import SecretStore
-from .stage_b import StageBPlan, StageBPreflightService, build_provider_runtime, require_authorized_execution
+from .stage_b import (
+    StageBPlan,
+    StageBPreflightService,
+    build_provider_runtime,
+    require_authorized_execution,
+)
 
 STAGE_B_FIXTURE_VERSION = "m8-stage-b-synthetic-v1"
 

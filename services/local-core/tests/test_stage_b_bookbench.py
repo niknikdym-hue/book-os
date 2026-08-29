@@ -116,21 +116,23 @@ def test_writer_fixture_uses_real_drafting_and_bookbench_with_mocked_provider(
     assert all(row["probe_type"] == "LIVE" for row in probes)
     assert sentinel not in json.dumps(probes, sort_keys=True)
 
-    project_engine = create_database(
-        tmp_path / "projects" / evidence.book_id / "project.sqlite"
-    )
+    project_engine = create_database(tmp_path / "projects" / evidence.book_id / "project.sqlite")
     with project_engine.connect() as connection:
         manuscript_count = connection.execute(
             text("SELECT COUNT(*) FROM manuscript_units WHERE book_id=:book_id"),
             {"book_id": evidence.book_id},
         ).scalar_one()
-        model_versions = connection.execute(
-            text(
-                "SELECT DISTINCT pr.model_version FROM provenance_records pr "
-                "JOIN revisions r ON r.provenance_id=pr.provenance_id "
-                "WHERE r.entity_type='manuscript.unit'"
+        model_versions = (
+            connection.execute(
+                text(
+                    "SELECT DISTINCT pr.model_version FROM provenance_records pr "
+                    "JOIN revisions r ON r.provenance_id=pr.provenance_id "
+                    "WHERE r.entity_type='manuscript.unit'"
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         approvals = connection.execute(text("SELECT COUNT(*) FROM approvals")).scalar_one()
         snapshots = connection.execute(
             text("SELECT COUNT(*) FROM evaluation_snapshots")
@@ -138,7 +140,9 @@ def test_writer_fixture_uses_real_drafting_and_bookbench_with_mocked_provider(
         runs = connection.execute(text("SELECT COUNT(*) FROM evaluation_runs")).scalar_one()
     assert manuscript_count == 2
     assert model_versions == ["yandexgpt-stage-b-exact-v1"]
-    assert approvals == 4  # Book + architecture/chapter human fixture approvals only; drafts stay DRAFT.
+    assert (
+        approvals == 4
+    )  # Book + architecture/chapter human fixture approvals only; drafts stay DRAFT.
     assert snapshots == 1
     assert runs == 7
     assert lane.promotion_evidence() == []
