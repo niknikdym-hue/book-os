@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Callable, Literal, Sequence
 
 import httpx
-from sqlalchemy import text
 
 from .bookbench import BookBenchReport
 from .memory_embeddings import EmbeddingAdapter
@@ -372,44 +371,16 @@ def production_capabilities(
     now: datetime | None = None,
     live_health_ttl: timedelta = timedelta(hours=24),
 ) -> tuple[ProviderCapability, ...]:
-    """Overlay role promotion with LIVE-only, exact-config, fresh health evidence."""
+    """Delegate production health to the canonical ProviderLaneService.
 
-    reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    capabilities = lane.capabilities(role=role)
-    with lane.engine.connect() as connection:
-        rows = (
-            connection.execute(
-                text(
-                    "SELECT provider, model, config_id, region, outcome, created_at "
-                    "FROM provider_probe_runs WHERE probe_type='LIVE' ORDER BY created_at DESC"
-                )
-            )
-            .mappings()
-            .all()
-        )
+    ProviderLaneService already enforces LIVE-only evidence, exact current
+    matrix_hash, exact provider/model/config/region identity and freshness.
+    Stage B must not reimplement or weaken those semantics. The optional time
+    arguments remain for API compatibility only.
+    """
 
-    latest: dict[tuple[str, str, str, str], tuple[str, str]] = {}
-    for row in rows:
-        identity = (
-            str(row["provider"]),
-            str(row["model"]),
-            str(row["config_id"]),
-            str(row["region"]),
-        )
-        latest.setdefault(identity, (str(row["outcome"]), str(row["created_at"])))
-
-    result: list[ProviderCapability] = []
-    for item in capabilities:
-        identity = (item.provider, item.model, item.config_id, item.region)
-        evidence = latest.get(identity)
-        health: HealthState = "UNKNOWN"
-        if evidence is not None:
-            outcome, created_at = evidence
-            timestamp = _parse_timestamp(created_at)
-            if timestamp is not None and reference - timestamp <= live_health_ttl:
-                health = "HEALTHY" if outcome == "SUCCESS" else "UNAVAILABLE"
-        result.append(replace(item, health=health))
-    return tuple(result)
+    _ = (now, live_health_ttl)
+    return lane.capabilities(role=role)
 
 
 def production_route(

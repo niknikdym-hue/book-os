@@ -281,7 +281,7 @@ class DraftingService:
                     "task_id": task_id,
                     "provider": model_request.provider,
                     "model": model_request.model,
-                    "model_version": model_request.model,
+                    "model_version": str(result.usage.get("model_version") or model_request.model),
                     "transformation": transformation,
                     "created_at": now,
                 },
