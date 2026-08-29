@@ -1,0 +1,1726 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/book-os/book-os/apps/desktop[39m
+
+ [32m✓[39m src/PilotPanel.test.tsx[2m > [22mstarts a pilot only with an explicit human owner[32m 69[2mms[22m[39m
+ [32m✓[39m src/PilotPanel.test.tsx[2m > [22mshows fail-closed blockers and zero-call OpenAI preflight[32m 88[2mms[22m[39m
+ [32m✓[39m src/PilotPanel.test.tsx[2m > [22mshows final decision only when evidence is ready and records a HUMAN decision[32m 38[2mms[22m[39m
+ [31m×[39m src/PilotPanel.test.tsx[2m > [22mresolves an open categorized observation as HUMAN[33m 1010[2mms[22m[39m
+[31m   → Found multiple elements with the text: /BOOKBENCH_FALSE_POSITIVE/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<option>[31m
+  [0mBOOKBENCH_FALSE_POSITIVE[0m
+[36m</option>[31m
+
+Ignored nodes: comments, script, style
+[36m<li>[31m
+  [36m<code>[31m
+    [0mATTENTION[0m
+  [36m</code>[31m
+  [0m · [0m
+  [0mBOOKBENCH_FALSE_POSITIVE[0m
+  [0m · [0m
+  [0mSynthetic false positive[0m
+  [0m [0m
+  [36m<button[31m
+    [33mclass[31m=[32m"secondary"[31m
+    [33mdisabled[31m=[32m""[31m
+  [36m>[31m
+    [0mResolve as HUMAN[0m
+  [36m</button>[31m
+[36m</li>[31m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[31m
+  [36m<div>[31m
+    [36m<section[31m
+      [33maria-label[31m=[32m"Real-book Pilot"[31m
+      [33mclass[31m=[32m"panel"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"panel-heading"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<p[31m
+            [33mclass[31m=[32m"eyebrow"[31m
+          [36m>[31m
+            [0mREAL BUSINESS NONFICTION PILOT[0m
+          [36m</p>[31m
+          [36m<h3>[31m
+            [0mGO / NO-GO evidence[0m
+          [36m</h3>[31m
+        [36m</div>[31m
+        [36m<span[31m
+          [33mclass[31m=[32m"badge draft"[31m
+        [36m>[31m
+          [0mEVIDENCE INCOMPLETE[0m
+        [36m</span>[31m
+      [36m</div>[31m
+      [36m<p[31m
+        [33mclass[31m=[32m"muted"[31m
+      [36m>[31m
+        [0mPilot evidence is local to this book. Manuscript text is not copied into this workspace summary.[0m
+      [36m</p>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"Pilot evidence summary"[31m
+        [33mclass[31m=[32m"summary-grid"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mStages[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m1[0m
+            [0m/[0m
+            [0m12[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mHuman time[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m15[0m
+            [0m min[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mAI runs[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m0[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mModel cost[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m0[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mOpen BLOCKING[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m0[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mLiterary Master[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0mnot reached[0m
+          [36m</span>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"GO NO-GO blockers"[31m
+      [36m>[31m
+        [36m<strong>[31m
+          [0mEvidence blockers[0m
+        [36m</strong>[31m
+        [36m<ul>[31m
+          [36m<li>[31m
+            [0mLITERARY_MASTER_MISSING[0m
+          [36m</li>[31m
+          [36m<li>[31m
+            [0mAI_RUN_EVIDENCE_MISSING[0m
+          [36m</li>[31m
+        [36m</ul>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman actor[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mPilot stage[0m
+          [36m</span>[31m
+          [36m<select>[31m
+            [36m<option>[31m
+              [0mIDEA[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOK_DEFINITION[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mRESEARCH[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOK_CONTRACT[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mARCHITECTURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mCHAPTER_CONTRACTS[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mDRAFTING[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOK_MEMORY[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mEDITORIAL[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOKBENCH[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mFINAL_REVIEW[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mLITERARY_MASTER[0m
+            [36m</option>[31m
+          [36m</select>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman minutes[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mMark stage complete[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mWorkflow observation[0m
+          [36m</span>[31m
+          [36m<textarea[31m
+            [33mplaceholder[31m=[32m"Local/private observation"[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mObservation category[0m
+          [36m</span>[31m
+          [36m<select>[31m
+            [36m<option>[31m
+              [0mPRODUCT_DEFECT[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mWORKFLOW_FRICTION[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mMISSED_ERROR[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOKBENCH_FALSE_NEGATIVE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mMODEL_QUALITY_FAILURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mVOICE_FAILURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mRESEARCH_TRACEABILITY_FAILURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mHUMAN_DECISION_REASON[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mOTHER[0m
+            [36m</option>[31m
+          [36m</select>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mSeverity[0m
+          [36m</span>[31m
+          [36m<select>[31m
+            [36m<option>[31m
+              [0mINFO[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mATTENTION[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBLOCKING[0m
+            [36m</option>[31m
+          [36m</select>[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mRecord observation[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"Open pilot observations"[31m
+      [36m>[31m
+        [36m<strong>[31m
+          [0mOpen pilot observations[0m
+        [36m</strong>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman resolution reason[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<ul>[31m
+          [36m<li>[31m
+            [36m<code>[31m
+              [0mATTENTION[0m
+            [36m</code>[31m
+            [0m · [0m
+            [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [0m · [0m
+            [0mSynthetic false positive[0m
+            [0m [0m
+            [36m<button[31m
+              [33mclass[31m=[32m"secondary"[31m
+              [33mdisabled[31m=[32m""[31m
+            [36m>[31m
+              [0mResolve as HUMAN[0m
+            [36m</button>[31m
+          [36m</li>[31m
+        [36m</ul>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"Human pilot reviews"[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman review note[0m
+          [36m</span>[31m
+          [36m<textarea />[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mRecord BookBench defect review[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mRecord literary quality judgment[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"OpenAI zero-call preflight"[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mWriter model[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mEvaluator model[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax requests[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax input tokens[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax output tokens[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax cost USD[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"decimal"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mCheck OpenAI readiness — zero calls[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+    [36m</section>[31m
+  [36m</div>[31m
+[36m</body>[31m
+
+Ignored nodes: comments, script, style
+[36m<body>[31m
+  [36m<div>[31m
+    [36m<section[31m
+      [33maria-label[31m=[32m"Real-book Pilot"[31m
+      [33mclass[31m=[32m"panel"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"panel-heading"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<p[31m
+            [33mclass[31m=[32m"eyebrow"[31m
+          [36m>[31m
+            [0mREAL BUSINESS NONFICTION PILOT[0m
+          [36m</p>[31m
+          [36m<h3>[31m
+            [0mGO / NO-GO evidence[0m
+          [36m</h3>[31m
+        [36m</div>[31m
+        [36m<span[31m
+          [33mclass[31m=[32m"badge draft"[31m
+        [36m>[31m
+          [0mEVIDENCE INCOMPLETE[0m
+        [36m</span>[31m
+      [36m</div>[31m
+      [36m<p[31m
+        [33mclass[31m=[32m"muted"[31m
+      [36m>[31m
+        [0mPilot evidence is local to this book. Manuscript text is not copied into this workspace summary.[0m
+      [36m</p>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"Pilot evidence summary"[31m
+        [33mclass[31m=[32m"summary-grid"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mStages[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m1[0m
+            [0m/[0m
+            [0m12[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mHuman time[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m15[0m
+            [0m min[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mAI runs[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m0[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mModel cost[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m0[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mOpen BLOCKING[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0m0[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div>[31m
+          [36m<strong>[31m
+            [0mLiterary Master[0m
+          [36m</strong>[31m
+          [36m<span>[31m
+            [0mnot reached[0m
+          [36m</span>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"GO NO-GO blockers"[31m
+      [36m>[31m
+        [36m<strong>[31m
+          [0mEvidence blockers[0m
+        [36m</strong>[31m
+        [36m<ul>[31m
+          [36m<li>[31m
+            [0mLITERARY_MASTER_MISSING[0m
+          [36m</li>[31m
+          [36m<li>[31m
+            [0mAI_RUN_EVIDENCE_MISSING[0m
+          [36m</li>[31m
+        [36m</ul>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman actor[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mPilot stage[0m
+          [36m</span>[31m
+          [36m<select>[31m
+            [36m<option>[31m
+              [0mIDEA[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOK_DEFINITION[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mRESEARCH[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOK_CONTRACT[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mARCHITECTURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mCHAPTER_CONTRACTS[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mDRAFTING[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOK_MEMORY[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mEDITORIAL[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOKBENCH[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mFINAL_REVIEW[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mLITERARY_MASTER[0m
+            [36m</option>[31m
+          [36m</select>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman minutes[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mMark stage complete[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mWorkflow observation[0m
+          [36m</span>[31m
+          [36m<textarea[31m
+            [33mplaceholder[31m=[32m"Local/private observation"[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mObservation category[0m
+          [36m</span>[31m
+          [36m<select>[31m
+            [36m<option>[31m
+              [0mPRODUCT_DEFECT[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mWORKFLOW_FRICTION[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mMISSED_ERROR[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBOOKBENCH_FALSE_NEGATIVE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mMODEL_QUALITY_FAILURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mVOICE_FAILURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mRESEARCH_TRACEABILITY_FAILURE[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mHUMAN_DECISION_REASON[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mOTHER[0m
+            [36m</option>[31m
+          [36m</select>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mSeverity[0m
+          [36m</span>[31m
+          [36m<select>[31m
+            [36m<option>[31m
+              [0mINFO[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mATTENTION[0m
+            [36m</option>[31m
+            [36m<option>[31m
+              [0mBLOCKING[0m
+            [36m</option>[31m
+          [36m</select>[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mRecord observation[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"Open pilot observations"[31m
+      [36m>[31m
+        [36m<strong>[31m
+          [0mOpen pilot observations[0m
+        [36m</strong>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman resolution reason[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<ul>[31m
+          [36m<li>[31m
+            [36m<code>[31m
+              [0mATTENTION[0m
+            [36m</code>[31m
+            [0m · [0m
+            [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [0m · [0m
+            [0mSynthetic false positive[0m
+            [0m [0m
+            [36m<button[31m
+              [33mclass[31m=[32m"secondary"[31m
+              [33mdisabled[31m=[32m""[31m
+            [36m>[31m
+              [0mResolve as HUMAN[0m
+            [36m</button>[31m
+          [36m</li>[31m
+        [36m</ul>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"Human pilot reviews"[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mHuman review note[0m
+          [36m</span>[31m
+          [36m<textarea />[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mRecord BookBench defect review[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mRecord literary quality judgment[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"OpenAI zero-call preflight"[31m
+        [33mclass[31m=[32m"form-grid"[31m
+      [36m>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mWriter model[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mEvaluator model[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax requests[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax input tokens[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax output tokens[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"numeric"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<label[31m
+          [33mclass[31m=[32m"field"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMax cost USD[0m
+          [36m</span>[31m
+          [36m<input[31m
+            [33minputmode[31m=[32m"decimal"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</label>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"secondary"[31m
+            [33mdisabled[31m=[32m""[31m
+          [36m>[31m
+            [0mCheck OpenAI readiness — zero calls[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+    [36m</section>[31m
+  [36m</div>[31m
+[36m</body>[31m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/PilotPanel.test.tsx[2m > [22mresolves an open categorized observation as HUMAN
+[31m[1mTestingLibraryElementError[22m[39m: Found multiple elements with the text: /BOOKBENCH_FALSE_POSITIVE/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<option>[39m
+  [0mBOOKBENCH_FALSE_POSITIVE[0m
+[36m</option>[39m
+
+Ignored nodes: comments, script, style
+[36m<li>[39m
+  [36m<code>[39m
+    [0mATTENTION[0m
+  [36m</code>[39m
+  [0m · [0m
+  [0mBOOKBENCH_FALSE_POSITIVE[0m
+  [0m · [0m
+  [0mSynthetic false positive[0m
+  [0m [0m
+  [36m<button[39m
+    [33mclass[39m=[32m"secondary"[39m
+    [33mdisabled[39m=[32m""[39m
+  [36m>[39m
+    [0mResolve as HUMAN[0m
+  [36m</button>[39m
+[36m</li>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<section[39m
+      [33maria-label[39m=[32m"Real-book Pilot"[39m
+      [33mclass[39m=[32m"panel"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel-heading"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"eyebrow"[39m
+          [36m>[39m
+            [0mREAL BUSINESS NONFICTION PILOT[0m
+          [36m</p>[39m
+          [36m<h3>[39m
+            [0mGO / NO-GO evidence[0m
+          [36m</h3>[39m
+        [36m</div>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"badge draft"[39m
+        [36m>[39m
+          [0mEVIDENCE INCOMPLETE[0m
+        [36m</span>[39m
+      [36m</div>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"muted"[39m
+      [36m>[39m
+        [0mPilot evidence is local to this book. Manuscript text is not copied into this workspace summary.[0m
+      [36m</p>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"Pilot evidence summary"[39m
+        [33mclass[39m=[32m"summary-grid"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mStages[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m1[0m
+            [0m/[0m
+            [0m12[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mHuman time[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m15[0m
+            [0m min[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mAI runs[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m0[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mModel cost[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m0[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mOpen BLOCKING[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m0[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mLiterary Master[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0mnot reached[0m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"GO NO-GO blockers"[39m
+      [36m>[39m
+        [36m<strong>[39m
+          [0mEvidence blockers[0m
+        [36m</strong>[39m
+        [36m<ul>[39m
+          [36m<li>[39m
+            [0mLITERARY_MASTER_MISSING[0m
+          [36m</li>[39m
+          [36m<li>[39m
+            [0mAI_RUN_EVIDENCE_MISSING[0m
+          [36m</li>[39m
+        [36m</ul>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman actor[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mPilot stage[0m
+          [36m</span>[39m
+          [36m<select>[39m
+            [36m<option>[39m
+              [0mIDEA[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOK_DEFINITION[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mRESEARCH[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOK_CONTRACT[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mARCHITECTURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mCHAPTER_CONTRACTS[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mDRAFTING[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOK_MEMORY[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mEDITORIAL[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOKBENCH[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mFINAL_REVIEW[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mLITERARY_MASTER[0m
+            [36m</option>[39m
+          [36m</select>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman minutes[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mMark stage complete[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mWorkflow observation[0m
+          [36m</span>[39m
+          [36m<textarea[39m
+            [33mplaceholder[39m=[32m"Local/private observation"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mObservation category[0m
+          [36m</span>[39m
+          [36m<select>[39m
+            [36m<option>[39m
+              [0mPRODUCT_DEFECT[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mWORKFLOW_FRICTION[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mMISSED_ERROR[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOKBENCH_FALSE_NEGATIVE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mMODEL_QUALITY_FAILURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mVOICE_FAILURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mRESEARCH_TRACEABILITY_FAILURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mHUMAN_DECISION_REASON[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mOTHER[0m
+            [36m</option>[39m
+          [36m</select>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mSeverity[0m
+          [36m</span>[39m
+          [36m<select>[39m
+            [36m<option>[39m
+              [0mINFO[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mATTENTION[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBLOCKING[0m
+            [36m</option>[39m
+          [36m</select>[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mRecord observation[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"Open pilot observations"[39m
+      [36m>[39m
+        [36m<strong>[39m
+          [0mOpen pilot observations[0m
+        [36m</strong>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman resolution reason[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<ul>[39m
+          [36m<li>[39m
+            [36m<code>[39m
+              [0mATTENTION[0m
+            [36m</code>[39m
+            [0m · [0m
+            [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [0m · [0m
+            [0mSynthetic false positive[0m
+            [0m [0m
+            [36m<button[39m
+              [33mclass[39m=[32m"secondary"[39m
+              [33mdisabled[39m=[32m""[39m
+            [36m>[39m
+              [0mResolve as HUMAN[0m
+            [36m</button>[39m
+          [36m</li>[39m
+        [36m</ul>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"Human pilot reviews"[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman review note[0m
+          [36m</span>[39m
+          [36m<textarea />[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mRecord BookBench defect review[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mRecord literary quality judgment[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"OpenAI zero-call preflight"[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mWriter model[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mEvaluator model[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax requests[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax input tokens[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax output tokens[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax cost USD[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"decimal"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mCheck OpenAI readiness — zero calls[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+    [36m</section>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<section[39m
+      [33maria-label[39m=[32m"Real-book Pilot"[39m
+      [33mclass[39m=[32m"panel"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel-heading"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"eyebrow"[39m
+          [36m>[39m
+            [0mREAL BUSINESS NONFICTION PILOT[0m
+          [36m</p>[39m
+          [36m<h3>[39m
+            [0mGO / NO-GO evidence[0m
+          [36m</h3>[39m
+        [36m</div>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"badge draft"[39m
+        [36m>[39m
+          [0mEVIDENCE INCOMPLETE[0m
+        [36m</span>[39m
+      [36m</div>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"muted"[39m
+      [36m>[39m
+        [0mPilot evidence is local to this book. Manuscript text is not copied into this workspace summary.[0m
+      [36m</p>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"Pilot evidence summary"[39m
+        [33mclass[39m=[32m"summary-grid"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mStages[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m1[0m
+            [0m/[0m
+            [0m12[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mHuman time[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m15[0m
+            [0m min[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mAI runs[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m0[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mModel cost[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m0[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mOpen BLOCKING[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0m0[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<strong>[39m
+            [0mLiterary Master[0m
+          [36m</strong>[39m
+          [36m<span>[39m
+            [0mnot reached[0m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"GO NO-GO blockers"[39m
+      [36m>[39m
+        [36m<strong>[39m
+          [0mEvidence blockers[0m
+        [36m</strong>[39m
+        [36m<ul>[39m
+          [36m<li>[39m
+            [0mLITERARY_MASTER_MISSING[0m
+          [36m</li>[39m
+          [36m<li>[39m
+            [0mAI_RUN_EVIDENCE_MISSING[0m
+          [36m</li>[39m
+        [36m</ul>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman actor[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mPilot stage[0m
+          [36m</span>[39m
+          [36m<select>[39m
+            [36m<option>[39m
+              [0mIDEA[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOK_DEFINITION[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mRESEARCH[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOK_CONTRACT[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mARCHITECTURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mCHAPTER_CONTRACTS[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mDRAFTING[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOK_MEMORY[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mEDITORIAL[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOKBENCH[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mFINAL_REVIEW[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mLITERARY_MASTER[0m
+            [36m</option>[39m
+          [36m</select>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman minutes[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mMark stage complete[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mWorkflow observation[0m
+          [36m</span>[39m
+          [36m<textarea[39m
+            [33mplaceholder[39m=[32m"Local/private observation"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mObservation category[0m
+          [36m</span>[39m
+          [36m<select>[39m
+            [36m<option>[39m
+              [0mPRODUCT_DEFECT[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mWORKFLOW_FRICTION[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mMISSED_ERROR[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBOOKBENCH_FALSE_NEGATIVE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mMODEL_QUALITY_FAILURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mVOICE_FAILURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mRESEARCH_TRACEABILITY_FAILURE[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mHUMAN_DECISION_REASON[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mOTHER[0m
+            [36m</option>[39m
+          [36m</select>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mSeverity[0m
+          [36m</span>[39m
+          [36m<select>[39m
+            [36m<option>[39m
+              [0mINFO[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mATTENTION[0m
+            [36m</option>[39m
+            [36m<option>[39m
+              [0mBLOCKING[0m
+            [36m</option>[39m
+          [36m</select>[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mRecord observation[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"Open pilot observations"[39m
+      [36m>[39m
+        [36m<strong>[39m
+          [0mOpen pilot observations[0m
+        [36m</strong>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman resolution reason[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<ul>[39m
+          [36m<li>[39m
+            [36m<code>[39m
+              [0mATTENTION[0m
+            [36m</code>[39m
+            [0m · [0m
+            [0mBOOKBENCH_FALSE_POSITIVE[0m
+            [0m · [0m
+            [0mSynthetic false positive[0m
+            [0m [0m
+            [36m<button[39m
+              [33mclass[39m=[32m"secondary"[39m
+              [33mdisabled[39m=[32m""[39m
+            [36m>[39m
+              [0mResolve as HUMAN[0m
+            [36m</button>[39m
+          [36m</li>[39m
+        [36m</ul>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"Human pilot reviews"[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mHuman review note[0m
+          [36m</span>[39m
+          [36m<textarea />[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mRecord BookBench defect review[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mRecord literary quality judgment[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-label[39m=[32m"OpenAI zero-call preflight"[39m
+        [33mclass[39m=[32m"form-grid"[39m
+      [36m>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mWriter model[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mEvaluator model[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax requests[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax input tokens[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax output tokens[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"numeric"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label[39m
+          [33mclass[39m=[32m"field"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mMax cost USD[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33minputmode[39m=[32m"decimal"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"secondary"[39m
+            [33mdisabled[39m=[32m""[39m
+          [36m>[39m
+            [0mCheck OpenAI readiness — zero calls[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+    [36m</section>[39m
+  [36m</div>[39m
+[36m</body>[39m
+[90m [2m❯[22m waitForWrapper node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:[2m163:27[22m[39m
+[90m [2m❯[22m node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:[2m86:33[22m[39m
+[36m [2m❯[22m src/PilotPanel.test.tsx:[2m216:23[22m[39m
+    [90m214| [39m
+    [90m215| [39m  [34mrender[39m([33m<[39m[33mPilotPanel[39m [33mproject[39m[33m=[39m[33m{[39mproject[33m}[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m216| [39m  expect(await screen.findByText(/BOOKBENCH_FALSE_POSITIVE/)).toBeInTh…
+    [90m   | [39m                      [31m^[39m
+    [90m217| [39m  fireEvent.change(screen.getByLabelText("Human actor"), { target: { v…
+    [90m218| [39m  fireEvent[33m.[39m[34mchange[39m(screen[33m.[39m[34mgetByLabelText[39m([32m"Human resolution reason"[39m)[33m,[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 20:01:02
+[2m   Duration [22m 2.06s[2m (transform 104ms, setup 58ms, collect 178ms, tests 1.21s, environment 345ms, prepare 70ms)[22m
+
+exit_code=1
