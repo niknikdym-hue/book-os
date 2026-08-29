@@ -12,7 +12,12 @@ from book_os_core.drafting import DraftSectionRequest, DraftingService
 from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway
 from book_os_core.provider_lane import ProviderLaneService
 from book_os_core.secrets import DictSecretStore
-from book_os_core.stage_b import StageBBudget, StageBCandidate, StageBGateError, StageBPreflightService
+from book_os_core.stage_b import (
+    StageBBudget,
+    StageBCandidate,
+    StageBGateError,
+    StageBPreflightService,
+)
 from book_os_core.stage_b_bookbench import prepare_synthetic_project
 from book_os_core.stage_b_judge import execute_independent_judges
 
