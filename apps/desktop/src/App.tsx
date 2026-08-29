@@ -6,7 +6,11 @@ import { BookMemoryPanel } from "./BookMemoryPanel";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
 import { ResearchPanel } from "./ResearchPanel";
-import { ProviderLanePanel, type ProviderCapabilityView } from "./ProviderLanePanel";
+import {
+  ProviderLanePanel,
+  type ProviderCapabilityView,
+  type ProviderLaneReadiness,
+} from "./ProviderLanePanel";
 import type {
   ArchitectureChapter,
   BookArchitecturePayload,
@@ -135,6 +139,7 @@ export function App() {
   );
   const [providerCapabilities, setProviderCapabilities] = useState<ProviderCapabilityView[]>([]);
   const [providerUnavailableReason, setProviderUnavailableReason] = useState<string | null>(null);
+  const [providerReadiness, setProviderReadiness] = useState<ProviderLaneReadiness | null>(null);
 
   const selectedChapter = useMemo(
     () => project?.chapters.find((chapter) => chapter.chapter_id === selectedChapterId) ?? null,
@@ -168,6 +173,7 @@ export function App() {
   async function refreshProviderLane() {
     setProviderCapabilities(await coreApi<ProviderCapabilityView[]>("GET", "/api/provider-lane/capabilities"));
     setProviderUnavailableReason((await coreApi<{ reason: string | null }>("POST", "/api/provider-lane/route", { role: "WRITER" })).reason);
+    setProviderReadiness(await coreApi<ProviderLaneReadiness>("GET", "/api/provider-lane/readiness"));
   }
 
   async function openProject(bookId: string) {
@@ -711,7 +717,11 @@ export function App() {
               <BookMemoryPanel project={project} chapter={selectedChapter} />
               <EditorialPanel project={project} chapter={selectedChapter} />
               <BookBenchPanel project={project} />
-              <ProviderLanePanel capabilities={providerCapabilities} unavailableReason={providerUnavailableReason} />
+              <ProviderLanePanel
+                capabilities={providerCapabilities}
+                unavailableReason={providerUnavailableReason}
+                readiness={providerReadiness}
+              />
             </>
           )}
         </section>

@@ -17,12 +17,20 @@ export type ProviderCapabilityView = {
   verified_at: string;
 };
 
+export type ProviderLaneReadiness = {
+  implementation_ready: boolean;
+  live_promotion_required: boolean;
+  credentials: Record<string, string>;
+};
+
 export function ProviderLanePanel({
   capabilities,
   unavailableReason,
+  readiness,
 }: {
   capabilities: ProviderCapabilityView[];
   unavailableReason: string | null;
+  readiness: ProviderLaneReadiness | null;
 }) {
   const writerReady = unavailableReason === null;
 
@@ -34,8 +42,20 @@ export function ProviderLanePanel({
         <strong>{writerReady ? "AVAILABLE" : "UNAVAILABLE"}</strong>
       </p>
       <p>
-        Stage B: <strong>LIVE PROMOTION REQUIRED</strong> — this workspace never starts a live
-        provider run or exposes credentials.
+        Stage B:{" "}
+        <strong>
+          {readiness?.implementation_ready ? "IMPLEMENTATION READY" : "IMPLEMENTATION PENDING"}
+        </strong>
+        {" · "}
+        <strong>
+          {readiness?.live_promotion_required ? "LIVE PROMOTION REQUIRED" : "PROMOTION PENDING"}
+        </strong>
+        {" · "}
+        <strong>
+          {Object.values(readiness?.credentials ?? {}).some((state) => state === "AVAILABLE")
+            ? "CREDENTIAL CHECK COMPLETE"
+            : "CREDENTIAL NOT AVAILABLE"}
+        </strong>
       </p>
       <p>Production routing requires verified regional policy and an explicit role promotion. A Russia-ready claim additionally requires Stage B live promotion acceptance.</p>
       {unavailableReason && <p className="error">Unavailable: {unavailableReason}</p>}
