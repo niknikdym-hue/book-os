@@ -10,6 +10,7 @@ from sqlalchemy.exc import DatabaseError
 from book_os_core.authority import AuthorityService, new_ulid
 from book_os_core.authority_types import utc_now
 from book_os_core.backup import create_backup
+from book_os_core.bookbench import BookBenchService
 from book_os_core.db import create_database
 from book_os_core.literary_master import LiteraryMasterGateError, LiteraryMasterService
 
@@ -317,3 +318,71 @@ def test_master_and_exports_are_deterministic_and_append_only(tmp_path: Path) ->
     backup_dir = tmp_path / "backup"
     _, manifest_path = create_backup(database, backup_dir)
     assert json.loads(manifest_path.read_text(encoding="utf-8"))["alembic_revision"] == "0009"
+
+
+def test_release_gate_requires_full_deterministic_bookbench_suite(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _build_release_fixture(data_dir)
+    incomplete = BookBenchService(data_dir).create_snapshot(book_id, scope="BOOK")
+    readiness = LiteraryMasterService(data_dir).readiness(book_id)
+    assert readiness.snapshot_id == incomplete.snapshot_id
+    assert readiness.ready is False
+    assert "BOOKBENCH_REQUIRED_CHECKS_MISSING" in {item.code for item in readiness.blockers}
+
+
+def test_material_editorial_waiver_requires_human_state_evidence(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _build_release_fixture(data_dir)
+    database = data_dir / "projects" / book_id / "project.sqlite"
+    engine = create_database(database)
+    finding_id = new_ulid()
+    now = utc_now()
+    try:
+        with engine.begin() as connection:
+            unit = (
+                connection.execute(
+                    text(
+                        "SELECT mu.unit_id,mu.chapter_id,mu.authority_entity_id,h.revision_id,h.revision_hash "
+                        "FROM manuscript_units mu JOIN authority_heads h ON h.entity_id=mu.authority_entity_id "
+                        "WHERE mu.book_id=:book_id ORDER BY mu.ordinal LIMIT 1"
+                    ),
+                    {"book_id": book_id},
+                )
+                .mappings()
+                .one()
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO editorial_findings("
+                    "finding_id,run_id,book_id,role,category,target_kind,target_entity_id,chapter_id,unit_id,"
+                    "base_revision_id,base_revision_hash,diagnosis,why,evidence_json,severity,confidence,"
+                    "expected_effect,risks,actor,actor_kind,status,created_at,resolved_at) VALUES "
+                    "(:finding_id,NULL,:book_id,'LITERARY_EDITOR','release-waiver','MANUSCRIPT_UNIT',"
+                    ":entity_id,:chapter_id,:unit_id,:revision_id,:revision_hash,'diagnosis','why','{}',"
+                    "'CRITICAL',1.0,'effect','risk','AI','AI','WAIVED',:now,:now)"
+                ),
+                {
+                    "finding_id": finding_id,
+                    "book_id": book_id,
+                    "entity_id": unit["authority_entity_id"],
+                    "chapter_id": unit["chapter_id"],
+                    "unit_id": unit["unit_id"],
+                    "revision_id": unit["revision_id"],
+                    "revision_hash": unit["revision_hash"],
+                    "now": now,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO editorial_finding_state_history("
+                    "state_event_id,finding_id,prior_state,new_state,actor,actor_kind,reason,created_at) "
+                    "VALUES (:event_id,:finding_id,'OPEN','WAIVED','AI','AI','invalid simulated waiver',:now)"
+                ),
+                {"event_id": new_ulid(), "finding_id": finding_id, "now": now},
+            )
+    finally:
+        engine.dispose()
+
+    readiness = LiteraryMasterService(data_dir).readiness(book_id)
+    assert readiness.ready is False
+    assert "EDITORIAL_WAIVER_NOT_HUMAN" in {item.code for item in readiness.blockers}
