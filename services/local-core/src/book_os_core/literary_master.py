@@ -362,7 +362,7 @@ class LiteraryMasterService:
         snapshot = (
             connection.execute(
                 text(
-                    "SELECT snapshot_id,snapshot_hash FROM evaluation_snapshots "
+                    "SELECT snapshot_id,snapshot_hash,created_at FROM evaluation_snapshots "
                     "WHERE book_id=:book_id AND scope='BOOK' ORDER BY created_at DESC,snapshot_id DESC LIMIT 1"
                 ),
                 {"book_id": book_id},
@@ -399,6 +399,39 @@ class LiteraryMasterService:
                     ReleaseBlocker(
                         code="BOOKBENCH_SNAPSHOT_STALE",
                         detail="Latest BookBench snapshot does not match exact release revisions",
+                    )
+                )
+            snapshot_claim_count = int(
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM evaluation_snapshot_targets "
+                        "WHERE snapshot_id=:snapshot_id AND target_kind='CLAIM'"
+                    ),
+                    {"snapshot_id": snapshot_id},
+                ).scalar_one()
+            )
+            current_claim_count = int(
+                connection.execute(
+                    text("SELECT COUNT(*) FROM claims WHERE book_id=:book_id"),
+                    {"book_id": book_id},
+                ).scalar_one()
+            )
+            claims_changed_after_snapshot = int(
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM claims WHERE book_id=:book_id AND updated_at>:snapshot_created_at"
+                    ),
+                    {
+                        "book_id": book_id,
+                        "snapshot_created_at": str(snapshot["created_at"]),
+                    },
+                ).scalar_one()
+            )
+            if snapshot_claim_count != current_claim_count or claims_changed_after_snapshot:
+                blockers.append(
+                    ReleaseBlocker(
+                        code="BOOKBENCH_CLAIM_STATE_STALE",
+                        detail="Claim state changed after the latest BookBench release snapshot",
                     )
                 )
             succeeded_check_ids = {
