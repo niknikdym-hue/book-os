@@ -178,3 +178,4 @@ def test_post_start_master_and_bookbench_snapshot_are_visible_to_pilot(tmp_path:
     summary = service.summary(book_id, pilot.pilot_id)
     assert summary.latest_literary_master_id == "c" * 32
     assert summary.latest_bookbench_snapshot_id == "d" * 26
+    assert "BOOKBENCH_MASTER_MISMATCH" in summary.go_no_go.blockers

@@ -33,6 +33,10 @@ class OpenAIPreflightRequest(BaseModel):
     writer_model: str = Field(min_length=1, max_length=128)
     evaluator_model: str = Field(min_length=1, max_length=128)
     editor_lane: str = Field(default="deterministic-m6-current", min_length=1, max_length=128)
+    max_requests: int = Field(gt=0)
+    max_input_tokens: int = Field(gt=0)
+    max_output_tokens: int = Field(gt=0)
+    max_cost_usd: float | None = Field(default=None, ge=0)
 
 
 class PilotFinalDecisionRequest(BaseModel):
@@ -137,6 +141,10 @@ def build_pilot_router(data_dir: Path, require_token: Callable[..., None]) -> AP
                 writer_model=payload.writer_model,
                 evaluator_model=payload.evaluator_model,
                 editor_lane=payload.editor_lane,
+                max_requests=payload.max_requests,
+                max_input_tokens=payload.max_input_tokens,
+                max_output_tokens=payload.max_output_tokens,
+                max_cost_usd=payload.max_cost_usd,
             ).model_dump(mode="json")
         except PilotError as exc:
             raise_http(exc)

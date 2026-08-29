@@ -9,9 +9,11 @@ from book_os_core.projects import NewBookRequest, ProjectService
 
 
 def _project(data_dir: Path) -> str:
-    return ProjectService(data_dir).create_project(
-        NewBookRequest(working_title="Pilot API Book", primary_subtype="Strategy")
-    ).book_id
+    return (
+        ProjectService(data_dir)
+        .create_project(NewBookRequest(working_title="Pilot API Book", primary_subtype="Strategy"))
+        .book_id
+    )
 
 
 def test_pilot_api_requires_auth_and_exposes_fail_closed_summary(tmp_path: Path) -> None:
@@ -19,7 +21,10 @@ def test_pilot_api_requires_auth_and_exposes_fail_closed_summary(tmp_path: Path)
     book_id = _project(data_dir)
     client = TestClient(create_app("test-token", data_dir))
 
-    assert client.post(f"/api/projects/{book_id}/pilots", json={"human_actor": "Elena"}).status_code == 401
+    assert (
+        client.post(f"/api/projects/{book_id}/pilots", json={"human_actor": "Elena"}).status_code
+        == 401
+    )
 
     start = client.post(
         f"/api/projects/{book_id}/pilots",
@@ -110,6 +115,10 @@ def test_pilot_api_records_stage_observation_and_zero_call_openai_preflight(tmp_
             "writer_model": "writer-model",
             "evaluator_model": "evaluator-model",
             "editor_lane": "deterministic-m6-current",
+            "max_requests": 3,
+            "max_input_tokens": 1000,
+            "max_output_tokens": 500,
+            "max_cost_usd": 1.25,
         },
     )
     assert preflight.status_code == 200
@@ -123,6 +132,11 @@ def test_pilot_api_records_stage_observation_and_zero_call_openai_preflight(tmp_
         "writer_model",
         "evaluator_model",
         "editor_lane",
+        "max_requests",
+        "max_input_tokens",
+        "max_output_tokens",
+        "max_cost_usd",
+        "plan_hash",
         "external_calls",
         "paid_calls",
     }

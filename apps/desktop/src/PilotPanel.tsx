@@ -46,6 +46,11 @@ type OpenAIPreflight = {
   writer_model: string;
   evaluator_model: string;
   editor_lane: string;
+  max_requests: number;
+  max_input_tokens: number;
+  max_output_tokens: number;
+  max_cost_usd: number | null;
+  plan_hash: string;
   external_calls: number;
   paid_calls: number;
 };
@@ -75,6 +80,11 @@ export function PilotPanel({ project }: { project: ProjectView }) {
   const [observationSeverity, setObservationSeverity] = useState("ATTENTION");
   const [writerModel, setWriterModel] = useState("");
   const [evaluatorModel, setEvaluatorModel] = useState("");
+  const [maxRequests, setMaxRequests] = useState("");
+  const [maxInputTokens, setMaxInputTokens] = useState("");
+  const [maxOutputTokens, setMaxOutputTokens] = useState("");
+  const [maxCostUsd, setMaxCostUsd] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
   const [preflight, setPreflight] = useState<OpenAIPreflight | null>(null);
   const [decision, setDecision] = useState("GO");
   const [decisionReason, setDecisionReason] = useState("");
@@ -181,7 +191,23 @@ export function PilotPanel({ project }: { project: ProjectView }) {
   }
 
   async function checkOpenAI() {
-    if (!pilot || !writerModel.trim() || !evaluatorModel.trim()) return;
+    const requests = Number(maxRequests);
+    const inputTokens = Number(maxInputTokens);
+    const outputTokens = Number(maxOutputTokens);
+    const cost = maxCostUsd.trim() ? Number(maxCostUsd) : null;
+    if (
+      !pilot ||
+      !writerModel.trim() ||
+      !evaluatorModel.trim() ||
+      !Number.isInteger(requests) ||
+      requests <= 0 ||
+      !Number.isInteger(inputTokens) ||
+      inputTokens <= 0 ||
+      !Number.isInteger(outputTokens) ||
+      outputTokens <= 0 ||
+      (cost !== null && (!Number.isFinite(cost) || cost < 0))
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -193,9 +219,42 @@ export function PilotPanel({ project }: { project: ProjectView }) {
             writer_model: writerModel.trim(),
             evaluator_model: evaluatorModel.trim(),
             editor_lane: "deterministic-m6-current",
+            max_requests: requests,
+            max_input_tokens: inputTokens,
+            max_output_tokens: outputTokens,
+            max_cost_usd: cost,
           },
         ),
       );
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function recordHumanReview(kind: "DEFECT_REVIEW" | "LITERARY_QUALITY_JUDGMENT") {
+    if (!pilot || !humanActor.trim() || !reviewNote.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi(
+        "POST",
+        `/api/projects/${project.book_id}/pilots/${pilot.pilot_id}/stage-events`,
+        {
+          stage: kind === "DEFECT_REVIEW" ? "BOOKBENCH" : "FINAL_REVIEW",
+          event_kind: kind,
+          actor: humanActor.trim(),
+          actor_kind: "HUMAN",
+          outcome: "SUCCESS",
+          metadata:
+            kind === "DEFECT_REVIEW"
+              ? { reason: reviewNote.trim() }
+              : { judgment: reviewNote.trim() },
+        },
+      );
+      setReviewNote("");
+      await refresh();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -352,6 +411,21 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                 </div>
               </div>
 
+              <div className="form-grid" aria-label="Human pilot reviews">
+                <label className="field">
+                  <span>Human review note</span>
+                  <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
+                </label>
+                <div className="actions">
+                  <button className="secondary" onClick={() => void recordHumanReview("DEFECT_REVIEW")} disabled={busy || !humanActor.trim() || !reviewNote.trim()}>
+                    Record BookBench defect review
+                  </button>
+                  <button className="secondary" onClick={() => void recordHumanReview("LITERARY_QUALITY_JUDGMENT")} disabled={busy || !humanActor.trim() || !reviewNote.trim()}>
+                    Record literary quality judgment
+                  </button>
+                </div>
+              </div>
+
               <div className="form-grid" aria-label="OpenAI zero-call preflight">
                 <label className="field">
                   <span>Writer model</span>
@@ -361,18 +435,34 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                   <span>Evaluator model</span>
                   <input value={evaluatorModel} onChange={(event) => setEvaluatorModel(event.target.value)} />
                 </label>
+                <label className="field">
+                  <span>Max requests</span>
+                  <input inputMode="numeric" value={maxRequests} onChange={(event) => setMaxRequests(event.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Max input tokens</span>
+                  <input inputMode="numeric" value={maxInputTokens} onChange={(event) => setMaxInputTokens(event.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Max output tokens</span>
+                  <input inputMode="numeric" value={maxOutputTokens} onChange={(event) => setMaxOutputTokens(event.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Max cost USD (optional)</span>
+                  <input inputMode="decimal" value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} />
+                </label>
                 <div className="actions">
                   <button
                     className="secondary"
                     onClick={() => void checkOpenAI()}
-                    disabled={busy || !writerModel.trim() || !evaluatorModel.trim()}
+                    disabled={busy || !writerModel.trim() || !evaluatorModel.trim() || !maxRequests.trim() || !maxInputTokens.trim() || !maxOutputTokens.trim()}
                   >
                     Check OpenAI readiness — zero calls
                   </button>
                 </div>
                 {preflight && (
                   <p>
-                    OpenAI credential: <strong>{preflight.credential_state}</strong> · external calls: {preflight.external_calls} · paid calls: {preflight.paid_calls}
+                    OpenAI credential: <strong>{preflight.credential_state}</strong> · plan {preflight.plan_hash.slice(0, 16)}… · requests ≤ {preflight.max_requests} · input tokens ≤ {preflight.max_input_tokens} · output tokens ≤ {preflight.max_output_tokens} · cost cap {preflight.max_cost_usd ?? "unset"} · external calls: {preflight.external_calls} · paid calls: {preflight.paid_calls}
                   </p>
                 )}
               </div>

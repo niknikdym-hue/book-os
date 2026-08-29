@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -165,6 +166,11 @@ class OpenAIPreflightView(BaseModel):
     writer_model: str
     evaluator_model: str
     editor_lane: str
+    max_requests: int
+    max_input_tokens: int
+    max_output_tokens: int
+    max_cost_usd: float | None
+    plan_hash: str
     external_calls: int = 0
     paid_calls: int = 0
 
@@ -309,6 +315,20 @@ class PilotService:
             reason = payload.metadata.get("reason")
             if not isinstance(reason, str) or not reason.strip():
                 raise PilotGateError("NOT_APPLICABLE stage evidence requires a reason")
+        human_detail_keys = {
+            "HUMAN_REVIEW": "reason",
+            "LITERARY_QUALITY_JUDGMENT": "judgment",
+            "DEFECT_REVIEW": "reason",
+        }
+        detail_key = human_detail_keys.get(payload.event_kind)
+        if detail_key is not None:
+            if payload.actor_kind != "HUMAN":
+                raise PilotGateError(f"{payload.event_kind} stage evidence must be HUMAN")
+            detail = payload.metadata.get(detail_key)
+            if not isinstance(detail, str) or not detail.strip():
+                raise PilotGateError(
+                    f"{payload.event_kind} stage evidence requires nonblank {detail_key}"
+                )
         engine = self._engine(book_id)
         try:
             with engine.begin() as connection:
@@ -447,6 +467,8 @@ class PilotService:
                     raise PilotNotFound(f"pilot observation not found: {observation_id}")
                 if row["resolved_at"] is not None:
                     raise PilotGateError("pilot observation is already resolved")
+                if str(row["severity"]) == "BLOCKING" and actor_kind != "HUMAN":
+                    raise PilotGateError("BLOCKING pilot observation requires HUMAN resolution")
                 resolved_at = utc_now()
                 connection.execute(
                     text(
@@ -483,20 +505,40 @@ class PilotService:
         writer_model: str,
         evaluator_model: str,
         editor_lane: str = "deterministic-m6-current",
+        max_requests: int,
+        max_input_tokens: int,
+        max_output_tokens: int,
+        max_cost_usd: float | None = None,
     ) -> OpenAIPreflightView:
         if not writer_model.strip() or not evaluator_model.strip() or not editor_lane.strip():
             raise PilotGateError("OpenAI preflight requires explicit model/config identities")
+        if min(max_requests, max_input_tokens, max_output_tokens) <= 0:
+            raise PilotGateError("OpenAI preflight requires positive request/token bounds")
+        if max_cost_usd is not None and max_cost_usd < 0:
+            raise PilotGateError("OpenAI preflight cost bound cannot be negative")
         try:
             secrets.get_secret("openai_api_key")
         except Exception:
             credential_state: Literal["AVAILABLE", "NOT_AVAILABLE"] = "NOT_AVAILABLE"
         else:
             credential_state = "AVAILABLE"
+        plan = {
+            "provider": "openai",
+            "writer_model": writer_model.strip(),
+            "evaluator_model": evaluator_model.strip(),
+            "editor_lane": editor_lane.strip(),
+            "max_requests": max_requests,
+            "max_input_tokens": max_input_tokens,
+            "max_output_tokens": max_output_tokens,
+            "max_cost_usd": max_cost_usd,
+        }
+        plan_hash = hashlib.sha256(
+            json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
         return OpenAIPreflightView(
             credential_state=credential_state,
-            writer_model=writer_model.strip(),
-            evaluator_model=evaluator_model.strip(),
-            editor_lane=editor_lane.strip(),
+            plan_hash=plan_hash,
+            **plan,
         )
 
     def summary(self, book_id: str, pilot_id: str) -> PilotSummary:
@@ -637,7 +679,7 @@ class PilotService:
                 master = (
                     connection.execute(
                         text(
-                            "SELECT master_id,manifest_hash FROM literary_masters "
+                            "SELECT master_id,manifest_hash,manifest_json FROM literary_masters "
                             "WHERE book_id=:book_id AND status='LOCKED' AND created_at>=:started_at "
                             "ORDER BY created_at DESC,master_id DESC LIMIT 1"
                         ),
@@ -648,6 +690,12 @@ class PilotService:
                 )
                 master_id = str(master["master_id"]) if master is not None else None
                 master_hash = str(master["manifest_hash"]) if master is not None else None
+                master_snapshot_id: str | None = None
+                if master is not None:
+                    manifest = json.loads(str(master["manifest_json"]))
+                    bookbench = manifest.get("bookbench") if isinstance(manifest, dict) else None
+                    if isinstance(bookbench, dict) and bookbench.get("snapshot_id") is not None:
+                        master_snapshot_id = str(bookbench["snapshot_id"])
 
                 observation_rows = list(
                     connection.execute(
@@ -695,6 +743,8 @@ class PilotService:
                     blockers.append("BOOKBENCH_SNAPSHOT_MISSING")
                 elif bookbench_blocking:
                     blockers.append(f"BOOKBENCH_BLOCKING:{bookbench_blocking}")
+                if master_id is not None and master_snapshot_id != snapshot_id:
+                    blockers.append("BOOKBENCH_MASTER_MISMATCH")
                 if open_blocking:
                     blockers.append(f"PILOT_BLOCKING_OBSERVATIONS:{open_blocking}")
                 if not human_quality:

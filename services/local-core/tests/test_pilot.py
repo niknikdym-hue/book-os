@@ -110,6 +110,15 @@ def test_pilot_events_and_observations_do_not_mutate_authority(tmp_path: Path) -
     )
     summary = service.summary(book_id, pilot.pilot_id)
     assert summary.open_observations_by_severity["BLOCKING"] == 1
+    with pytest.raises(PilotGateError, match="requires HUMAN resolution"):
+        service.resolve_observation(
+            book_id,
+            pilot.pilot_id,
+            observation.observation_id,
+            actor="system",
+            actor_kind="SYSTEM",
+            reason="Automation cannot clear blocking evidence.",
+        )
     assert "PILOT_BLOCKING_OBSERVATIONS:1" in summary.go_no_go.blockers
 
     resolved = service.resolve_observation(
@@ -148,16 +157,26 @@ def test_openai_preflight_is_zero_call_and_secret_safe() -> None:
         DictSecretStore({"openai_api_key": secret}),
         writer_model="writer-model",
         evaluator_model="evaluator-model",
+        max_requests=3,
+        max_input_tokens=1000,
+        max_output_tokens=500,
+        max_cost_usd=1.25,
     )
     missing = PilotService.openai_preflight(
         DictSecretStore({}),
         writer_model="writer-model",
         evaluator_model="evaluator-model",
+        max_requests=3,
+        max_input_tokens=1000,
+        max_output_tokens=500,
+        max_cost_usd=1.25,
     )
     assert available.credential_state == "AVAILABLE"
     assert missing.credential_state == "NOT_AVAILABLE"
     assert available.external_calls == 0
     assert available.paid_calls == 0
+    assert available.max_requests == 3
+    assert len(available.plan_hash) == 64
     assert secret not in available.model_dump_json()
 
 
@@ -252,3 +271,36 @@ def test_checkpoint_does_not_complete_mandatory_stage(tmp_path: Path) -> None:
         blocker.startswith("MISSING_STAGES:") and "IDEA" in blocker
         for blocker in summary.go_no_go.blockers
     )
+
+
+def test_human_review_event_kinds_require_human_and_detail(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _project(data_dir)
+    service = PilotService(data_dir)
+    pilot = service.start(book_id, human_actor="Elena")
+    with pytest.raises(PilotGateError, match="must be HUMAN"):
+        service.record_stage_event(
+            book_id,
+            pilot.pilot_id,
+            PilotStageEventRequest(
+                stage="BOOKBENCH",
+                event_kind="DEFECT_REVIEW",
+                actor="AI",
+                actor_kind="AI",
+                outcome="SUCCESS",
+                metadata={"reason": "invalid"},
+            ),
+        )
+    with pytest.raises(PilotGateError, match="requires nonblank judgment"):
+        service.record_stage_event(
+            book_id,
+            pilot.pilot_id,
+            PilotStageEventRequest(
+                stage="FINAL_REVIEW",
+                event_kind="LITERARY_QUALITY_JUDGMENT",
+                actor="Elena",
+                actor_kind="HUMAN",
+                outcome="SUCCESS",
+                metadata={},
+            ),
+        )
