@@ -1786,6 +1786,12 @@ class BookBenchService:
         started = time.monotonic()
         response = self.model_gateway.generate(request, BOOKBENCH_JUDGE_V1)
         parsed = BookBenchJudgeOutput.model_validate(response.output)
+        raw_cost = response.usage.get("cost_usd")
+        cost_usd = (
+            float(raw_cost)
+            if isinstance(raw_cost, (int, float)) and not isinstance(raw_cost, bool)
+            else None
+        )
         drafts = [
             _FindingDraft(
                 targets[0],
@@ -1834,7 +1840,7 @@ class BookBenchService:
                 connection.exec_driver_sql("DROP TRIGGER evaluation_runs_no_update")
                 connection.execute(
                     text(
-                        "UPDATE evaluation_runs SET provider=:p,model=:m,config_id=:c,prompt_id=:pi,prompt_version=:pv,prompt_hash=:ph,independence_state=:i,usage_json=:u,cost_usd=0 WHERE evaluation_id=:e"
+                        "UPDATE evaluation_runs SET provider=:p,model=:m,config_id=:c,prompt_id=:pi,prompt_version=:pv,prompt_hash=:ph,independence_state=:i,usage_json=:u,cost_usd=:cost WHERE evaluation_id=:e"
                     ),
                     {
                         "p": provider,
@@ -1845,6 +1851,7 @@ class BookBenchService:
                         "ph": BOOKBENCH_JUDGE_V1.prompt_hash,
                         "i": state,
                         "u": _canonical_json(response.usage),
+                        "cost": cost_usd,
                         "e": eid,
                     },
                 )

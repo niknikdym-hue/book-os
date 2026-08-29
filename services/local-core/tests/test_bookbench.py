@@ -407,6 +407,7 @@ def test_judge_independence_blind_pairwise_and_persistence(tmp_path: Path) -> No
         writer={"provider": "fake", "model": "same", "config_id": "same"},
     )
     assert run.independence_state == "SAME_CONFIG" and run.output["release_grade"] is False
+    assert run.cost_usd is None
     first = service.run_pairwise(
         state["book_id"],
         snapshot.snapshot_id,
