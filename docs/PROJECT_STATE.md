@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** GLOBAL / OPENAI-FIRST QUALITY PATH ACTIVE  
-**Version:** 1.6.0  
+**Status:** REAL BUSINESS NONFICTION PILOT ACTIVE  
+**Version:** 1.7.0  
 **Date:** 2026-08-29  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -26,8 +26,28 @@ The former Russia/no-VPN provider-lane requirement is SUPERSEDED and removed fro
 - M5 / Task 006 — ACCEPTED AND MERGED.
 - M6 / Task 007 — ACCEPTED AND MERGED.
 - M7 / Task 008 — BookBench v0.1 — ACCEPTED AND MERGED; PR #11; merge commit `5115a20512437a68da7ee7eed44e55b8ebbf0d90`.
+- **Task 010 — Literary Master + exports — ACCEPTED AND MERGED:** accepted HEAD `51e3a97bf67b37a28a0c6c697baa94bcbec6c960`; authoritative CI `33270571416`; Python 82/82; desktop 11/11 + build/audit; Rust cargo test/check; secret scan all PASS; merge PR #14 commit `580f0123e50fe9f05a380528da734b3c8f10155a`.
 
-Do not return to M0–M7 without a concrete regression.
+Do not return to accepted milestones without a concrete regression.
+
+## Literary Master capability now accepted
+
+BOOK OS now has a fail-closed final release capability that:
+
+- freezes exact current APPROVED/LOCKED authority revisions into an append-only Literary Master;
+- requires a complete current deterministic M7 BookBench baseline with zero BLOCKING findings;
+- requires current BookBench registry and Claim state;
+- requires HUMAN evidence for material editorial waivers;
+- deterministically rebuilds and hashes the canonical manuscript;
+- produces deterministic Markdown export;
+- produces a domain-separated Audiobook Studio handoff manifest;
+- never auto-approves manuscript authority or creates a Literary Master without an explicit human release actor.
+
+Canonical schema is now Alembic `0009`.
+
+## Historical PR transfer note
+
+Task 010 was developed and accepted in draft PR #13. The connected GitHub GraphQL `markPullRequestReadyForReview` action failed on a platform schema error, so accepted exact HEAD `51e3a97...` was transferred unchanged to non-draft PR #14 solely to complete the merge. No code/evidence changed during the transfer.
 
 ## Superseded former M8
 
@@ -43,7 +63,7 @@ Former PR #12:
 - disposition: historical/salvage evidence only.
 
 No Yandex/GigaChat live promotion is required.
-No regional provider availability blocks Literary Master, the real-book pilot, or GO/NO-GO.
+No regional provider availability blocks the real-book pilot or GO/NO-GO.
 
 ## Model strategy
 
@@ -60,26 +80,48 @@ No backup provider is required before the real-book pilot.
 
 ## Current critical path
 
-`OpenAI-first quality path → Literary Master + exports → real Business Nonfiction pilot → GO/NO-GO`
+`real Business Nonfiction pilot → GO/NO-GO`
 
 ## Immediate next objective
 
-Build and accept the Literary Master/export capability on top of accepted M0–M7, using the OpenAI-first quality lane for the MVP.
+Run one real new Business Nonfiction book through the actual system from Idea to Literary Master.
 
-Then immediately run the real Business Nonfiction pilot from Idea to Literary Master and make the final GO/NO-GO decision from actual quality evidence.
+Public Git contains only pilot tooling/contracts/aggregate evidence schemas and synthetic tests. The real book manuscript, private research corpus and private evaluation content remain in the Owner's local project data and are never committed publicly.
+
+The pilot must measure actual workflow quality rather than merely prove code paths:
+
+- idea/reader/thesis decisions;
+- research and claim traceability;
+- Book/Chapter Contract quality;
+- controlled OpenAI drafting with exact provenance;
+- Book Memory usefulness;
+- editorial findings and human decisions;
+- BookBench misses/false positives;
+- cost/time by stage;
+- Literary Master reproducibility;
+- workflow friction and defects;
+- final human quality judgment.
 
 ## Non-negotiable invariants
 
-- GitHub is source of truth;
+- GitHub is source of truth for BOOK OS system authority;
 - human/Owner authority cannot be auto-approved by AI;
 - accepted authority is immutable and replacements are traceable/SUPERSEDED;
 - BookBench BLOCKING gates cannot be averaged away;
 - real private manuscripts/evaluation corpus are not committed publicly;
 - provider-specific code cannot become book authority;
 - no hidden automatic manuscript acceptance;
-- Literary Master must be reproducible from exact accepted revisions.
+- Literary Master must be reproducible from exact accepted revisions;
+- paid/model calls require an explicit bounded pilot budget before execution.
 
 ## Change log
+
+### 1.7.0 — 2026-08-29
+- ACCEPTED and merged Task 010 / Literary Master + exports.
+- Recorded exact acceptance HEAD `51e3a97bf67b37a28a0c6c697baa94bcbec6c960` and CI `33270571416`.
+- Advanced canonical schema to `0009`.
+- Activated the real Business Nonfiction pilot as the only remaining pre-GO/NO-GO milestone.
+- Preserved OpenAI-first MVP/pilot strategy and provider-neutral architecture.
 
 ### 1.6.0 — 2026-08-29
 - Reaffirmed BOOK OS as a global system.
