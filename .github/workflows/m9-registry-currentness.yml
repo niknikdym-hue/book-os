@@ -1,0 +1,62 @@
+name: M9 registry currentness once
+on:
+  push:
+    branches: [brain/task-010-literary-master]
+    paths:
+      - '.github/workflows/m9-registry-currentness.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-010-literary-master
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          lm = Path('services/local-core/src/book_os_core/literary_master.py')
+          text = lm.read_text()
+          anchor = 'from .authority_types import utc_now\n'
+          if 'from .bookbench_registry import registry_hash\n' not in text:
+              text = text.replace(anchor, anchor + 'from .bookbench_registry import registry_hash\n', 1)
+          text = text.replace(
+              '"SELECT snapshot_id,snapshot_hash,created_at FROM evaluation_snapshots "',
+              '"SELECT snapshot_id,snapshot_hash,snapshot_json,created_at FROM evaluation_snapshots "',
+              1,
+          )
+          anchor2 = '''            snapshot_id = str(snapshot["snapshot_id"])\n            snapshot_hash = str(snapshot["snapshot_hash"])\n            actual_snapshot: dict[tuple[str, str], tuple[str, str]] = {}\n'''
+          addition2 = '''            snapshot_id = str(snapshot["snapshot_id"])\n            snapshot_hash = str(snapshot["snapshot_hash"])\n            snapshot_manifest = json.loads(str(snapshot["snapshot_json"]))\n            if snapshot_manifest.get("registry_hash") != registry_hash():\n                blockers.append(\n                    ReleaseBlocker(\n                        code="BOOKBENCH_REGISTRY_STALE",\n                        detail="Latest BookBench snapshot uses a superseded check registry",\n                    )\n                )\n            actual_snapshot: dict[tuple[str, str], tuple[str, str]] = {}\n'''
+          if anchor2 not in text:
+              raise SystemExit('snapshot registry anchor not found')
+          lm.write_text(text.replace(anchor2, addition2, 1))
+
+          test = Path('services/local-core/tests/test_literary_master.py')
+          text = test.read_text()
+          anchor3 = 'from book_os_core.bookbench import BookBenchService\n'
+          if 'from book_os_core.bookbench_registry import registry_hash\n' not in text:
+              text = text.replace(anchor3, anchor3 + 'from book_os_core.bookbench_registry import registry_hash\n', 1)
+          old = '''        connection.execute(\n            text(\n                "INSERT INTO evaluation_snapshots("\n                "snapshot_id,book_id,scope,snapshot_json,snapshot_hash,created_at) VALUES "\n                "(:snapshot_id,:book_id,'BOOK','{}',:snapshot_hash,:now)"\n            ),\n            {\n                "snapshot_id": snapshot_id,\n                "book_id": book_id,\n                "snapshot_hash": snapshot_hash,\n                "now": now,\n            },\n        )\n'''
+          new = '''        snapshot_json = json.dumps({"registry_hash": registry_hash()}, sort_keys=True)\n        connection.execute(\n            text(\n                "INSERT INTO evaluation_snapshots("\n                "snapshot_id,book_id,scope,snapshot_json,snapshot_hash,created_at) VALUES "\n                "(:snapshot_id,:book_id,'BOOK',:snapshot_json,:snapshot_hash,:now)"\n            ),\n            {\n                "snapshot_id": snapshot_id,\n                "book_id": book_id,\n                "snapshot_json": snapshot_json,\n                "snapshot_hash": snapshot_hash,\n                "now": now,\n            },\n        )\n'''
+          if old not in text:
+              raise SystemExit('fixture snapshot anchor not found')
+          text = text.replace(old, new, 1)
+          if 'test_release_gate_rejects_stale_bookbench_registry' not in text:
+              text += '''\n\ndef test_release_gate_rejects_stale_bookbench_registry(tmp_path: Path) -> None:\n    data_dir = tmp_path / "data"\n    book_id = _build_release_fixture(data_dir)\n    database = data_dir / "projects" / book_id / "project.sqlite"\n    engine = create_database(database)\n    try:\n        with engine.begin() as connection:\n            snapshot_id = connection.execute(\n                text(\n                    "SELECT snapshot_id FROM evaluation_snapshots "\n                    "WHERE book_id=:book_id ORDER BY created_at DESC LIMIT 1"\n                ),\n                {"book_id": book_id},\n            ).scalar_one()\n            connection.execute(\n                text(\n                    "UPDATE evaluation_snapshots SET snapshot_json=:snapshot_json "\n                    "WHERE snapshot_id=:snapshot_id"\n                ),\n                {\n                    "snapshot_id": snapshot_id,\n                    "snapshot_json": json.dumps({"registry_hash": "superseded-registry"}),\n                },\n            )\n    finally:\n        engine.dispose()\n\n    readiness = LiteraryMasterService(data_dir).readiness(book_id)\n    assert readiness.ready is False\n    assert "BOOKBENCH_REGISTRY_STALE" in {item.code for item in readiness.blockers}\n'''
+          test.write_text(text)
+          PY
+      - run: pip install ruff==0.12.11
+      - run: ruff format services/local-core/src/book_os_core/literary_master.py services/local-core/tests/test_literary_master.py
+      - run: |
+          git config user.name 'BOOK OS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/m9-registry-currentness.yml
+          git add services/local-core/src/book_os_core/literary_master.py services/local-core/tests/test_literary_master.py
+          git commit -m 'M9: block release on stale BookBench registry'
+          git push origin HEAD:brain/task-010-literary-master
