@@ -4,7 +4,7 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text

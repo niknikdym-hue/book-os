@@ -78,7 +78,6 @@ test("starts a pilot only with an explicit human owner", async () => {
     }
     if (method === "GET" && path.endsWith("/summary")) return summary(false) as never;
     if (method === "GET" && path.includes("/observations?open_only=true")) return [] as never;
-    if (method === "GET" && path.includes("/observations?open_only=true")) return [] as never;
     throw new Error(`unexpected API call ${method} ${path}`);
   });
 
@@ -95,6 +94,7 @@ test("shows fail-closed blockers and zero-call OpenAI preflight", async () => {
   vi.mocked(coreApi).mockImplementation(async (method, path) => {
     if (method === "GET" && path.endsWith("/pilots/active")) return pilot as never;
     if (method === "GET" && path.endsWith("/summary")) return summary(false) as never;
+    if (method === "GET" && path.includes("/observations?open_only=true")) return [] as never;
     if (method === "POST" && path.endsWith("/openai-preflight")) {
       return {
         provider: "openai",

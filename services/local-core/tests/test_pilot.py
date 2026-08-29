@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import text
@@ -223,7 +223,7 @@ def test_final_decision_requires_ready_evidence_and_is_human_and_immutable(
             pilot.pilot_id,
             decision="GO",
             actor="system",
-            actor_kind=cast("HUMAN", "SYSTEM"),
+            actor_kind=cast(Any, "SYSTEM"),
             reason="Invalid actor.",
         )
 
