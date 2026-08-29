@@ -205,7 +205,9 @@ def test_editor_fixture_preserves_human_authority_and_supports_independent_bookb
     assert judge_calls == ["/api/v2/oauth", "/v1/chat/completions", "/v1/chat/completions"]
 
     finding_after_judge = editorial.get_finding(source_book_id, editor.finding_id)
-    proposal_after_judge = editorial.get_proposal(source_book_id, editor.finding_id, editor.proposal_id)
+    proposal_after_judge = editorial.get_proposal(
+        source_book_id, editor.finding_id, editor.proposal_id
+    )
     assert finding_after_judge.status == "OPEN"
     assert proposal_after_judge.status == "OPEN"
     assert lane.promotion_evidence() == []
