@@ -4,7 +4,7 @@
 
 Final implementation head before this control-only commit:
 
-`f73869ce6c808ca0450f020589d074890db6fce4`
+`c4770215bdefb120c6d4a35368430e3fdbe767dc`
 
 The offline pilot tooling now includes:
 
@@ -24,7 +24,8 @@ The offline pilot tooling now includes:
 - authenticated Local Core API;
 - desktop Real-book Pilot workspace;
 - synthetic backend/API/desktop/temporal-evidence regressions;
-- schema/backup compatibility through `0010`.
+- schema/backup compatibility through `0010`;
+- final CI-regression fixes for Ruff typing and the required open-observation desktop read.
 
 No real manuscript, private research corpus, OpenAI call or paid call is part of this candidate.
 
