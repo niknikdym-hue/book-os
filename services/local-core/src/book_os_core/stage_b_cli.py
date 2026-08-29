@@ -33,7 +33,14 @@ def _csv(value: str) -> tuple[str, ...]:
 def _add_candidate_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--provider", required=True, choices=("yandex", "gigachat"))
-    parser.add_argument("--model", required=True)
+    parser.add_argument("--model", required=True, help="Policy/capability model identity")
+    parser.add_argument(
+        "--execution-model", help="Exact generation model identity; Yandex requires gpt:// URI"
+    )
+    parser.add_argument(
+        "--embedding-execution-model",
+        help="Exact embedding model identity when embeddings are requested",
+    )
     parser.add_argument("--config-id", required=True)
     parser.add_argument("--region", default="RU")
     parser.add_argument("--max-generation", required=True, type=int)
@@ -99,6 +106,8 @@ def _candidate(
         region=args.region,
         roles=roles,
         require_embeddings=embeddings,
+        execution_model=args.execution_model,
+        embedding_execution_model=args.embedding_execution_model,
     )
 
 
@@ -122,6 +131,7 @@ def _plan(
         _candidate(args, roles, embeddings=embeddings),
         _budget(args),
         estimated_cost=args.estimated_cost,
+        require_exact_execution_identity=True,
     )
 
 

@@ -144,7 +144,7 @@ def execute_generation_cases(
             request = case.request.model_copy(
                 update={
                     "provider": plan.candidate.provider,
-                    "model": plan.candidate.model,
+                    "model": plan.generation_execution_model,
                 }
             )
             started = time.perf_counter()
@@ -171,7 +171,8 @@ def execute_generation_cases(
             returned_model = usage.get("model_version")
             if returned_model is not None:
                 returned_model = str(returned_model)
-            usage.setdefault("configured_model", plan.candidate.model)
+            usage.setdefault("policy_model", plan.candidate.model)
+            usage.setdefault("configured_model", plan.generation_execution_model)
             usage["case_id"] = case.case_id
             usage["role"] = case.role
             cost = _cost_metadata(usage, runtime)
@@ -194,7 +195,7 @@ def execute_generation_cases(
                     role=case.role,
                     probe_id=probe_id,
                     external_request_id=result.provider_run_id,
-                    configured_model=plan.candidate.model,
+                    configured_model=plan.generation_execution_model,
                     returned_model_version=returned_model,
                     latency_ms=latency_ms,
                     usage=usage,

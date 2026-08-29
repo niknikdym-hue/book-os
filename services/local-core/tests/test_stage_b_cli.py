@@ -14,6 +14,8 @@ def _base_args(tmp_path) -> list[str]:
         "yandex",
         "--model",
         "yandexgpt",
+        "--execution-model",
+        "gpt://synthetic-folder/yandexgpt/latest",
         "--config-id",
         "latest-discovery",
         "--max-generation",
@@ -37,6 +39,8 @@ def test_cli_preflight_is_zero_live_and_secret_safe(tmp_path, capsys, monkeypatc
     payload = json.loads(output)
     assert payload["state"] == "READY_FOR_OWNER_LIVE_AUTHORIZATION"
     assert payload["credential_state"] == "AVAILABLE"
+    assert payload["model"] == "yandexgpt"
+    assert payload["execution_model"] == "gpt://synthetic-folder/yandexgpt/latest"
     assert len(payload["plan_hash"]) == 64
     assert sentinel not in output
 
@@ -82,3 +86,16 @@ def test_cli_preflight_reports_missing_credential_without_secret_or_network(
     payload = json.loads(capsys.readouterr().out)
     assert payload["credential_state"] == "NOT AVAILABLE"
     assert "CREDENTIAL_MISSING" in payload["blockers"]
+
+
+def test_cli_yandex_preflight_blocks_without_exact_execution_model(tmp_path, capsys) -> None:
+    args = _base_args(tmp_path)
+    marker = args.index("--execution-model")
+    del args[marker : marker + 2]
+    status = run(
+        ["preflight", *args, "--roles", "WRITER"],
+        secrets=DictSecretStore({"yandex_ai_studio_api_key": "secret"}),
+    )
+    assert status == 3
+    payload = json.loads(capsys.readouterr().out)
+    assert "EXECUTION_MODEL_REQUIRED" in payload["blockers"]

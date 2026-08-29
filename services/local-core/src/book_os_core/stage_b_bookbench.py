@@ -269,7 +269,7 @@ def execute_writer_bookbench_fixture(
                 DraftSectionRequest(
                     section_objective=item["objective"],
                     provider=plan.candidate.provider,
-                    model=plan.candidate.model,
+                    model=plan.generation_execution_model,
                     max_output_tokens=1200,
                 ),
             )
@@ -307,7 +307,7 @@ def execute_writer_bookbench_fixture(
                 project.book_id,
                 snapshot.snapshot_id,
                 provider=plan.candidate.provider,
-                model=plan.candidate.model,
+                model=plan.embedding_execution_model or plan.generation_execution_model,
             )
             semantic_ids = tuple(semantic.evaluation_ids)
             semantic_config_hash = semantic.config_hash
@@ -324,7 +324,7 @@ def execute_writer_bookbench_fixture(
             blocking_dimensions=tuple(report.blocking_dimensions),
             provider_probe_ids=tuple(probe_ids),
             provider=plan.candidate.provider,
-            configured_model=plan.candidate.model,
+            configured_model=plan.generation_execution_model,
             config_id=plan.candidate.config_id,
             plan_hash=plan.plan_hash,
             budget_usage=runtime.ledger.public_dict(),

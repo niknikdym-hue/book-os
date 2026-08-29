@@ -162,7 +162,7 @@ def execute_editor_fixture(
             task_type="SECTION_DRAFT",
             role="EDITOR",
             provider=plan.candidate.provider,
-            model=plan.candidate.model,
+            model=plan.generation_execution_model,
             prompt_id=SECTION_DRAFT_V1.prompt_id,
             prompt_version=SECTION_DRAFT_V1.version,
             prompt_hash=SECTION_DRAFT_V1.prompt_hash,
@@ -278,7 +278,7 @@ def execute_editor_fixture(
             DraftSectionRequest(
                 section_objective="Persist exact synthetic EDITOR artifact for M7 BookBench evaluation",
                 provider=plan.candidate.provider,
-                model=plan.candidate.model,
+                model=plan.generation_execution_model,
                 max_output_tokens=1200,
             ),
         )
@@ -303,7 +303,7 @@ def execute_editor_fixture(
             evaluation_snapshot_hash=evaluation_snapshot.snapshot_hash,
             deterministic_evaluation_ids=tuple(run.evaluation_id for run in deterministic),
             provider=plan.candidate.provider,
-            configured_model=plan.candidate.model,
+            configured_model=plan.generation_execution_model,
             returned_model_version=returned_model_version,
             config_id=plan.candidate.config_id,
             provider_run_id=result.provider_run_id,

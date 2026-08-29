@@ -61,6 +61,8 @@ class StageBCandidate:
     region: str
     roles: tuple[str, ...]
     require_embeddings: bool = False
+    execution_model: str | None = None
+    embedding_execution_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -210,16 +212,28 @@ class StageBPlan:
     credential_state: CredentialState
     tls_ready: bool
     estimated_cost: float | None
+    exact_execution_identity_required: bool
     blockers: tuple[str, ...]
+
+    @property
+    def generation_execution_model(self) -> str:
+        return self.candidate.execution_model or self.candidate.model
+
+    @property
+    def embedding_execution_model(self) -> str | None:
+        return self.candidate.embedding_execution_model
 
     def canonical_payload(self) -> dict[str, object]:
         return {
             "provider": self.candidate.provider,
             "model": self.candidate.model,
+            "execution_model": self.generation_execution_model,
+            "embedding_execution_model": self.embedding_execution_model,
             "config_id": self.candidate.config_id,
             "region": self.candidate.region,
             "roles": list(self.candidate.roles),
             "require_embeddings": self.candidate.require_embeddings,
+            "exact_execution_identity_required": self.exact_execution_identity_required,
             "matrix_hash": self.matrix_hash,
             "matrix_version": self.matrix_version,
             "credential_state": self.credential_state,
@@ -266,6 +280,7 @@ class StageBPreflightService:
         *,
         estimated_cost: float | None = None,
         tls_ready: bool = True,
+        require_exact_execution_identity: bool = False,
     ) -> StageBPlan:
         budget.validate()
         if estimated_cost is not None and estimated_cost < 0:
@@ -309,6 +324,15 @@ class StageBPreflightService:
             blockers.append("TLS_TRUST_NOT_READY")
         if candidate.provider not in self._SECRET_NAMES:
             blockers.append("PROVIDER_NOT_SUPPORTED_FOR_RU_STAGE_B")
+        if require_exact_execution_identity and candidate.provider == "yandex":
+            if not candidate.execution_model or not candidate.execution_model.startswith("gpt://"):
+                blockers.append("EXECUTION_MODEL_REQUIRED")
+        if require_exact_execution_identity and candidate.require_embeddings:
+            embedding_model = candidate.embedding_execution_model
+            if not embedding_model:
+                blockers.append("EMBEDDING_EXECUTION_MODEL_REQUIRED")
+            elif candidate.provider == "yandex" and not embedding_model.startswith("emb://"):
+                blockers.append("EMBEDDING_EXECUTION_MODEL_REQUIRED")
 
         return StageBPlan(
             candidate=candidate,
@@ -318,6 +342,7 @@ class StageBPreflightService:
             credential_state=credential_state,
             tls_ready=tls_ready,
             estimated_cost=estimated_cost,
+            exact_execution_identity_required=require_exact_execution_identity,
             blockers=tuple(dict.fromkeys(blockers)),
         )
 
@@ -327,6 +352,7 @@ class StageBPreflightService:
             plan.budget,
             estimated_cost=plan.estimated_cost,
             tls_ready=plan.tls_ready,
+            require_exact_execution_identity=plan.exact_execution_identity_required,
         )
         if current.plan_hash != plan.plan_hash:
             raise StageBPlanMismatch("Stage B preflight is stale; build and authorize a new plan")
@@ -514,6 +540,17 @@ def build_provider_runtime(
 
     if plan.blockers:
         raise StageBGateError(f"Stage B preflight blocked: {','.join(plan.blockers)}")
+    if transport is None and plan.candidate.provider == "yandex":
+        if not plan.candidate.execution_model or not plan.candidate.execution_model.startswith(
+            "gpt://"
+        ):
+            raise StageBGateError("EXECUTION_MODEL_REQUIRED")
+    if transport is None and plan.candidate.require_embeddings:
+        embedding_model = plan.candidate.embedding_execution_model
+        if not embedding_model:
+            raise StageBGateError("EMBEDDING_EXECUTION_MODEL_REQUIRED")
+        if plan.candidate.provider == "yandex" and not embedding_model.startswith("emb://"):
+            raise StageBGateError("EMBEDDING_EXECUTION_MODEL_REQUIRED")
     ledger = StageBBudgetLedger(plan.budget)
     if transport is None:
         verify: bool | str = True

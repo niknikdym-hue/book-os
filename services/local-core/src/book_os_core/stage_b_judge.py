@@ -94,7 +94,7 @@ def execute_independent_judges(
 
     judge_identity = {
         "provider": plan.candidate.provider,
-        "model": plan.candidate.model,
+        "model": plan.generation_execution_model,
         "config_id": plan.candidate.config_id,
     }
     independence_state, release_grade = BookBenchService.independence(
@@ -123,7 +123,7 @@ def execute_independent_judges(
                 snapshot_id,
                 dimension=dimension,
                 provider=plan.candidate.provider,
-                model=plan.candidate.model,
+                model=plan.generation_execution_model,
                 config_id=plan.candidate.config_id,
                 writer=subject_identity,
             )
