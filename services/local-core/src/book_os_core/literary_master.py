@@ -172,9 +172,13 @@ class LiteraryMasterService:
             raise LiteraryMasterNotFound(f"book project not found: {book_id}")
 
         if project["book_contract_entity_id"] is None:
-            blockers.append(ReleaseBlocker(code="BOOK_CONTRACT_MISSING", detail="Book Contract missing"))
+            blockers.append(
+                ReleaseBlocker(code="BOOK_CONTRACT_MISSING", detail="Book Contract missing")
+            )
         if project["architecture_entity_id"] is None:
-            blockers.append(ReleaseBlocker(code="ARCHITECTURE_MISSING", detail="Architecture missing"))
+            blockers.append(
+                ReleaseBlocker(code="ARCHITECTURE_MISSING", detail="Architecture missing")
+            )
         if blockers:
             return None, blockers
 
@@ -293,13 +297,17 @@ class LiteraryMasterService:
                     "ordinal": int(row["ordinal"]),
                     "title": str(row["working_title"]),
                     "contract_revision_id": contract_head.revision_id if contract_head else None,
-                    "contract_revision_hash": contract_head.revision_hash if contract_head else None,
+                    "contract_revision_hash": contract_head.revision_hash
+                    if contract_head
+                    else None,
                     "units": units,
                 }
             )
 
         if not all_units:
-            blockers.append(ReleaseBlocker(code="MANUSCRIPT_EMPTY", detail="Book has no manuscript units"))
+            blockers.append(
+                ReleaseBlocker(code="MANUSCRIPT_EMPTY", detail="Book has no manuscript units")
+            )
 
         open_editorial = list(
             connection.execute(
@@ -342,7 +350,9 @@ class LiteraryMasterService:
         snapshot_hash = ""
         if snapshot is None:
             blockers.append(
-                ReleaseBlocker(code="BOOKBENCH_SNAPSHOT_MISSING", detail="No BOOK BookBench snapshot exists")
+                ReleaseBlocker(
+                    code="BOOKBENCH_SNAPSHOT_MISSING", detail="No BOOK BookBench snapshot exists"
+                )
             )
         else:
             snapshot_id = str(snapshot["snapshot_id"])
@@ -474,7 +484,9 @@ class LiteraryMasterService:
     def create_master(self, book_id: str, *, human_actor: str) -> LiteraryMasterView:
         actor = human_actor.strip()
         if not actor:
-            raise LiteraryMasterGateError("Literary Master creation requires an explicit human actor")
+            raise LiteraryMasterGateError(
+                "Literary Master creation requires an explicit human actor"
+            )
         engine = self._engine(book_id)
         try:
             with engine.begin() as connection:
@@ -628,7 +640,9 @@ class LiteraryMasterService:
                             .one_or_none()
                         )
                         if row is None or str(row["content_hash"]) != str(unit["revision_hash"]):
-                            raise LiteraryMasterError("master revision is unavailable or hash-mismatched")
+                            raise LiteraryMasterError(
+                                "master revision is unavailable or hash-mismatched"
+                            )
                         content = cast(dict[str, Any], json.loads(str(row["content_json"])))
                         text_value = content.get("text")
                         if not isinstance(text_value, str):
