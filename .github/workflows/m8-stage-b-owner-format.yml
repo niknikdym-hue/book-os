@@ -1,0 +1,36 @@
+name: M8 Stage B owner format once
+
+on:
+  push:
+    branches:
+      - brain/task-009-russia-provider-lane
+    paths:
+      - .github/workflows/m8-stage-b-owner-format.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-009-russia-provider-lane
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff==0.12.11
+      - run: |
+          cd services/local-core
+          ruff format src/book_os_core/stage_b_owner.py tests/test_stage_b_owner.py
+          ruff check src/book_os_core/stage_b_owner.py tests/test_stage_b_owner.py
+      - run: rm .github/workflows/m8-stage-b-owner-format.yml
+      - name: Commit owner CLI formatting
+        run: |
+          git config user.name "BOOK OS Central Brain"
+          git config user.email "actions@users.noreply.github.com"
+          git add services/local-core/src/book_os_core/stage_b_owner.py services/local-core/tests/test_stage_b_owner.py .github/workflows/m8-stage-b-owner-format.yml
+          git commit -m "M8 format owner promotion and fallback CLI"
+          git push origin HEAD:brain/task-009-russia-provider-lane
