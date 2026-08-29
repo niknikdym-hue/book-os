@@ -70,6 +70,14 @@ MANDATORY_STAGES: tuple[PilotStage, ...] = (
     "LITERARY_MASTER",
 )
 
+STAGE_COMPLETION_EVENT_KINDS = {
+    "COMPLETED",
+    "HUMAN_REVIEW",
+    "NOT_APPLICABLE",
+    "LITERARY_QUALITY_JUDGMENT",
+    "DEFECT_REVIEW",
+}
+
 
 class PilotError(RuntimeError):
     pass
@@ -507,7 +515,11 @@ class PilotService:
                         {"pilot_id": pilot_id},
                     ).mappings()
                 )
-                stage_counts = Counter(str(row["stage"]) for row in stage_rows)
+                stage_counts = Counter(
+                    str(row["stage"])
+                    for row in stage_rows
+                    if str(row["event_kind"]) in STAGE_COMPLETION_EVENT_KINDS
+                )
                 elapsed_total = sum(int(row["elapsed_seconds"] or 0) for row in stage_rows)
                 human_total = sum(int(row["human_minutes"] or 0) for row in stage_rows)
                 stage_cost = sum(float(row["provider_cost_usd"] or 0.0) for row in stage_rows)
@@ -599,9 +611,10 @@ class PilotService:
                     connection.execute(
                         text(
                             "SELECT snapshot_id FROM evaluation_snapshots WHERE book_id=:book_id "
-                            "AND scope='BOOK' ORDER BY created_at DESC,snapshot_id DESC LIMIT 1"
+                            "AND scope='BOOK' AND created_at>=:started_at "
+                            "ORDER BY created_at DESC,snapshot_id DESC LIMIT 1"
                         ),
-                        {"book_id": book_id},
+                        {"book_id": book_id, "started_at": pilot.started_at},
                     )
                     .mappings()
                     .one_or_none()
@@ -625,10 +638,10 @@ class PilotService:
                     connection.execute(
                         text(
                             "SELECT master_id,manifest_hash FROM literary_masters "
-                            "WHERE book_id=:book_id AND status='LOCKED' "
+                            "WHERE book_id=:book_id AND status='LOCKED' AND created_at>=:started_at "
                             "ORDER BY created_at DESC,master_id DESC LIMIT 1"
                         ),
-                        {"book_id": book_id},
+                        {"book_id": book_id, "started_at": pilot.started_at},
                     )
                     .mappings()
                     .one_or_none()

@@ -228,3 +228,27 @@ def test_final_decision_requires_ready_evidence_and_is_human_and_immutable(
                 )
     finally:
         engine.dispose()
+
+
+def test_checkpoint_does_not_complete_mandatory_stage(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _project(data_dir)
+    service = PilotService(data_dir)
+    pilot = service.start(book_id, human_actor="Elena")
+    service.record_stage_event(
+        book_id,
+        pilot.pilot_id,
+        PilotStageEventRequest(
+            stage="IDEA",
+            event_kind="CHECKPOINT",
+            actor="Elena",
+            actor_kind="HUMAN",
+            outcome="SUCCESS",
+        ),
+    )
+    summary = service.summary(book_id, pilot.pilot_id)
+    assert summary.stage_event_counts.get("IDEA", 0) == 0
+    assert any(
+        blocker.startswith("MISSING_STAGES:") and "IDEA" in blocker
+        for blocker in summary.go_no_go.blockers
+    )

@@ -126,7 +126,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
     }
   }
 
-  async function recordCheckpoint() {
+  async function recordStageCompleted() {
     if (!pilot || !humanActor.trim()) return;
     const minutes = stageHumanMinutes.trim() ? Number(stageHumanMinutes) : null;
     setBusy(true);
@@ -137,7 +137,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
         `/api/projects/${project.book_id}/pilots/${pilot.pilot_id}/stage-events`,
         {
           stage,
-          event_kind: "CHECKPOINT",
+          event_kind: "COMPLETED",
           actor: humanActor.trim(),
           actor_kind: "HUMAN",
           human_minutes: Number.isFinite(minutes) ? minutes : null,
@@ -313,10 +313,10 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                 <div className="actions">
                   <button
                     className="secondary"
-                    onClick={() => void recordCheckpoint()}
+                    onClick={() => void recordStageCompleted()}
                     disabled={busy || !humanActor.trim()}
                   >
-                    Record stage checkpoint
+                    Mark stage complete
                   </button>
                 </div>
               </div>
