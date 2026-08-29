@@ -215,7 +215,9 @@ def execute_generation_cases(
     )
 
 
-def assert_secret_safe_execution(result: StageBExecutionResult, secret_values: tuple[str, ...]) -> None:
+def assert_secret_safe_execution(
+    result: StageBExecutionResult, secret_values: tuple[str, ...]
+) -> None:
     serialized = json.dumps(result.public_dict(), sort_keys=True, ensure_ascii=True)
     for value in secret_values:
         if value and value in serialized:
