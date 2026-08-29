@@ -1,0 +1,188 @@
+name: Pilot DB and plan hardening once
+on:
+  push:
+    branches: [brain/task-011-real-book-pilot]
+    paths:
+      - '.github/workflows/pilot-db-plan-hardening.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-011-real-book-pilot
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          migration = Path('services/local-core/alembic/versions/0010_real_book_pilot.py')
+          text = migration.read_text()
+          decision_anchor = '''        sa.CheckConstraint(\n            "decision_actor_kind IS NULL OR decision_actor_kind='HUMAN'",\n            name="ck_pilot_decision_human",\n        ),\n'''
+          decision_new = decision_anchor + '''        sa.CheckConstraint(\n            "final_decision IS NULL OR (status='COMPLETED' AND completed_at IS NOT NULL "\n            "AND final_reason IS NOT NULL AND length(trim(final_reason))>0 "\n            "AND decision_actor IS NOT NULL AND length(trim(decision_actor))>0 "\n            "AND decision_actor_kind='HUMAN')",\n            name="ck_pilot_final_decision_complete",\n        ),\n'''
+          if 'ck_pilot_final_decision_complete' not in text:
+              if decision_anchor not in text:
+                  raise SystemExit('pilot final decision DB anchor missing')
+              text = text.replace(decision_anchor, decision_new, 1)
+
+          event_anchor = '''        sa.CheckConstraint("actor_kind IN ('HUMAN','AI','SYSTEM')", name="ck_pilot_event_actor"),\n'''
+          event_new = event_anchor + '''        sa.CheckConstraint(\n            "event_kind NOT IN ('HUMAN_REVIEW','LITERARY_QUALITY_JUDGMENT','DEFECT_REVIEW') "\n            "OR actor_kind='HUMAN'",\n            name="ck_pilot_human_review_actor",\n        ),\n'''
+          if 'ck_pilot_human_review_actor' not in text:
+              if event_anchor not in text:
+                  raise SystemExit('pilot event actor DB anchor missing')
+              text = text.replace(event_anchor, event_new, 1)
+
+          resolution_anchor = '''        sa.CheckConstraint(\n            "resolution_actor_kind IS NULL OR resolution_actor_kind IN ('HUMAN','SYSTEM')",\n            name="ck_pilot_resolution_actor",\n        ),\n'''
+          resolution_new = resolution_anchor + '''        sa.CheckConstraint(\n            "resolved_at IS NULL OR (resolution_actor IS NOT NULL "\n            "AND length(trim(resolution_actor))>0 AND resolution_actor_kind IS NOT NULL "\n            "AND resolution_reason IS NOT NULL AND length(trim(resolution_reason))>0)",\n            name="ck_pilot_resolution_complete",\n        ),\n        sa.CheckConstraint(\n            "severity!='BLOCKING' OR resolved_at IS NULL OR resolution_actor_kind='HUMAN'",\n            name="ck_pilot_blocking_resolution_human",\n        ),\n'''
+          if 'ck_pilot_blocking_resolution_human' not in text:
+              if resolution_anchor not in text:
+                  raise SystemExit('pilot resolution DB anchor missing')
+              text = text.replace(resolution_anchor, resolution_new, 1)
+          migration.write_text(text)
+
+          pilot = Path('services/local-core/src/book_os_core/pilot.py')
+          text = pilot.read_text()
+          view_anchor = '''class OpenAIPreflightView(BaseModel):\n    provider: str = "openai"\n    credential_state: Literal["AVAILABLE", "NOT_AVAILABLE"]\n'''
+          view_new = '''class OpenAIPreflightView(BaseModel):\n    provider: str = "openai"\n    book_id: str\n    pilot_id: str\n    credential_state: Literal["AVAILABLE", "NOT_AVAILABLE"]\n'''
+          if view_anchor not in text:
+              raise SystemExit('preflight view identity anchor missing')
+          text = text.replace(view_anchor, view_new, 1)
+
+          signature_anchor = '''        secrets: SecretStore,\n        *,\n        writer_model: str,\n'''
+          signature_new = '''        secrets: SecretStore,\n        *,\n        book_id: str,\n        pilot_id: str,\n        writer_model: str,\n'''
+          if signature_anchor not in text:
+              raise SystemExit('preflight signature anchor missing')
+          text = text.replace(signature_anchor, signature_new, 1)
+          text = text.replace(
+              '        max_cost_usd: float | None = None,\n',
+              '        max_cost_usd: float,\n',
+              1,
+          )
+          validation_anchor = '''        if not writer_model.strip() or not evaluator_model.strip() or not editor_lane.strip():\n            raise PilotGateError("OpenAI preflight requires explicit model/config identities")\n'''
+          validation_new = '''        if not book_id.strip() or not pilot_id.strip():\n            raise PilotGateError("OpenAI preflight requires exact book/pilot identity")\n        if not writer_model.strip() or not evaluator_model.strip() or not editor_lane.strip():\n            raise PilotGateError("OpenAI preflight requires explicit model/config identities")\n'''
+          if validation_anchor not in text:
+              raise SystemExit('preflight validation anchor missing')
+          text = text.replace(validation_anchor, validation_new, 1)
+          text = text.replace(
+              '''        if max_cost_usd is not None and max_cost_usd < 0:\n            raise PilotGateError("OpenAI preflight cost bound cannot be negative")\n''',
+              '''        if max_cost_usd <= 0:\n            raise PilotGateError("OpenAI preflight requires a positive cost cap")\n''',
+              1,
+          )
+          plan_anchor = '''        plan = {\n            "provider": "openai",\n'''
+          plan_new = '''        plan = {\n            "provider": "openai",\n            "book_id": book_id.strip(),\n            "pilot_id": pilot_id.strip(),\n'''
+          if plan_anchor not in text:
+              raise SystemExit('preflight plan anchor missing')
+          text = text.replace(plan_anchor, plan_new, 1)
+          pilot.write_text(text)
+
+          api = Path('services/local-core/src/book_os_core/pilot_api.py')
+          text = api.read_text()
+          text = text.replace(
+              '    max_cost_usd: float | None = Field(default=None, ge=0)\n',
+              '    max_cost_usd: float = Field(gt=0)\n',
+              1,
+          )
+          call_anchor = '''                MacOSKeychainSecretStore(),\n                writer_model=payload.writer_model,\n'''
+          call_new = '''                MacOSKeychainSecretStore(),\n                book_id=book_id,\n                pilot_id=pilot_id,\n                writer_model=payload.writer_model,\n'''
+          if call_anchor not in text:
+              raise SystemExit('pilot API preflight identity anchor missing')
+          api.write_text(text.replace(call_anchor, call_new, 1))
+
+          panel = Path('apps/desktop/src/PilotPanel.tsx')
+          text = panel.read_text()
+          text = text.replace(
+              '  provider: string;\n  credential_state:',
+              '  provider: string;\n  book_id: string;\n  pilot_id: string;\n  credential_state:',
+              1,
+          )
+          text = text.replace(
+              '  max_cost_usd: number | null;\n',
+              '  max_cost_usd: number;\n',
+              1,
+          )
+          text = text.replace(
+              '    const cost = maxCostUsd.trim() ? Number(maxCostUsd) : null;\n',
+              '    const cost = Number(maxCostUsd);\n',
+              1,
+          )
+          text = text.replace(
+              '''      (cost !== null && (!Number.isFinite(cost) || cost < 0))\n''',
+              '''      !Number.isFinite(cost) ||\n      cost <= 0\n''',
+              1,
+          )
+          text = text.replace(
+              '                  <span>Max cost USD (optional)</span>\n',
+              '                  <span>Max cost USD</span>\n',
+              1,
+          )
+          disabled_old = 'disabled={busy || !writerModel.trim() || !evaluatorModel.trim() || !maxRequests.trim() || !maxInputTokens.trim() || !maxOutputTokens.trim()}'
+          disabled_new = 'disabled={busy || !writerModel.trim() || !evaluatorModel.trim() || !maxRequests.trim() || !maxInputTokens.trim() || !maxOutputTokens.trim() || !maxCostUsd.trim()}'
+          text = text.replace(disabled_old, disabled_new, 1)
+          text = text.replace(
+              ' · cost cap {preflight.max_cost_usd ?? "unset"} ·',
+              ' · cost cap ${preflight.max_cost_usd} ·',
+              1,
+          )
+          panel.write_text(text)
+
+          pilot_test = Path('services/local-core/tests/test_pilot.py')
+          text = pilot_test.read_text()
+          text = text.replace(
+              '''        DictSecretStore({"openai_api_key": secret}),\n        writer_model="writer-model",\n''',
+              '''        DictSecretStore({"openai_api_key": secret}),\n        book_id="BOOK1",\n        pilot_id="PILOT1",\n        writer_model="writer-model",\n''',
+              1,
+          )
+          text = text.replace(
+              '''        DictSecretStore({}),\n        writer_model="writer-model",\n''',
+              '''        DictSecretStore({}),\n        book_id="BOOK1",\n        pilot_id="PILOT1",\n        writer_model="writer-model",\n''',
+              1,
+          )
+          if 'def test_db_rejects_nonhuman_review_and_incomplete_final_decision' not in text:
+              text += '''\n\ndef test_db_rejects_nonhuman_review_and_incomplete_final_decision(tmp_path: Path) -> None:\n    data_dir = tmp_path / "data"\n    book_id = _project(data_dir)\n    service = PilotService(data_dir)\n    pilot = service.start(book_id, human_actor="Elena")\n    database = data_dir / "projects" / book_id / "project.sqlite"\n    engine = create_database(database)\n    try:\n        with pytest.raises(DatabaseError):\n            with engine.begin() as connection:\n                connection.execute(\n                    text(\n                        "INSERT INTO pilot_stage_events("\n                        "event_id,pilot_id,stage,event_kind,actor,actor_kind,outcome,metadata_json,created_at) "\n                        "VALUES (:event_id,:pilot_id,'FINAL_REVIEW','LITERARY_QUALITY_JUDGMENT',"\n                        "'AI','AI','SUCCESS','{\\"judgment\\":\\"invalid\\"}',:created_at)"\n                    ),\n                    {"event_id": "E" * 26, "pilot_id": pilot.pilot_id, "created_at": "9999-01-01T00:00:00Z"},\n                )\n        with pytest.raises(DatabaseError):\n            with engine.begin() as connection:\n                connection.execute(\n                    text(\n                        "UPDATE pilot_runs SET final_decision='GO',decision_actor='Elena',"\n                        "decision_actor_kind='HUMAN' WHERE pilot_id=:pilot_id"\n                    ),\n                    {"pilot_id": pilot.pilot_id},\n                )\n    finally:\n        engine.dispose()\n\n\ndef test_db_rejects_system_resolution_of_blocking_observation(tmp_path: Path) -> None:\n    data_dir = tmp_path / "data"\n    book_id = _project(data_dir)\n    service = PilotService(data_dir)\n    pilot = service.start(book_id, human_actor="Elena")\n    observation = service.add_observation(\n        book_id,\n        pilot.pilot_id,\n        PilotObservationRequest(\n            stage="IDEA",\n            category="PRODUCT_DEFECT",\n            severity="BLOCKING",\n            actor="Elena",\n            actor_kind="HUMAN",\n            description="Synthetic blocking fixture",\n        ),\n    )\n    database = data_dir / "projects" / book_id / "project.sqlite"\n    engine = create_database(database)\n    try:\n        with pytest.raises(DatabaseError):\n            with engine.begin() as connection:\n                connection.execute(\n                    text(\n                        "UPDATE pilot_observations SET resolved_at='9999-01-01T00:00:00Z',"\n                        "resolution_actor='system',resolution_actor_kind='SYSTEM',"\n                        "resolution_reason='invalid' WHERE observation_id=:observation_id"\n                    ),\n                    {"observation_id": observation.observation_id},\n                )\n    finally:\n        engine.dispose()\n'''
+          pilot_test.write_text(text)
+
+          api_test = Path('services/local-core/tests/test_pilot_api.py')
+          text = api_test.read_text()
+          keys_anchor = '''        "provider",\n        "credential_state",\n'''
+          keys_new = '''        "provider",\n        "book_id",\n        "pilot_id",\n        "credential_state",\n'''
+          if keys_anchor not in text:
+              raise SystemExit('pilot API preflight key identity anchor missing')
+          api_test.write_text(text.replace(keys_anchor, keys_new, 1))
+
+          desktop_test = Path('apps/desktop/src/PilotPanel.test.tsx')
+          text = desktop_test.read_text()
+          preflight_body = '''        provider: "openai",\n        credential_state: "AVAILABLE",\n'''
+          preflight_body_new = '''        provider: "openai",\n        book_id: "B",\n        pilot_id: "P1",\n        credential_state: "AVAILABLE",\n'''
+          if preflight_body not in text:
+              raise SystemExit('desktop preflight mock identity anchor missing')
+          text = text.replace(preflight_body, preflight_body_new, 1)
+          text = text.replace(
+              '''        editor_lane: "deterministic-m6-current",\n        external_calls: 0,\n''',
+              '''        editor_lane: "deterministic-m6-current",\n        max_requests: 3,\n        max_input_tokens: 1000,\n        max_output_tokens: 500,\n        max_cost_usd: 1.25,\n        plan_hash: "a".repeat(64),\n        external_calls: 0,\n''',
+              1,
+          )
+          input_anchor = '''  fireEvent.change(screen.getByLabelText("Evaluator model"), {\n    target: { value: "evaluator-model" },\n  });\n'''
+          input_new = input_anchor + '''  fireEvent.change(screen.getByLabelText("Max requests"), { target: { value: "3" } });\n  fireEvent.change(screen.getByLabelText("Max input tokens"), { target: { value: "1000" } });\n  fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "500" } });\n  fireEvent.change(screen.getByLabelText("Max cost USD"), { target: { value: "1.25" } });\n'''
+          if input_anchor not in text:
+              raise SystemExit('desktop preflight input test anchor missing')
+          desktop_test.write_text(text.replace(input_anchor, input_new, 1))
+          PY
+      - run: pip install ruff==0.12.11
+      - run: |
+          ruff format services/local-core/alembic/versions/0010_real_book_pilot.py \
+            services/local-core/src/book_os_core/pilot.py \
+            services/local-core/src/book_os_core/pilot_api.py \
+            services/local-core/tests/test_pilot.py \
+            services/local-core/tests/test_pilot_api.py
+      - run: |
+          git config user.name 'BOOK OS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/pilot-db-plan-hardening.yml
+          git add services/local-core apps/desktop/src/PilotPanel.tsx apps/desktop/src/PilotPanel.test.tsx
+          git commit -m 'Pilot: harden DB authority and bind OpenAI plan to pilot'
+          git push origin HEAD:brain/task-011-real-book-pilot
