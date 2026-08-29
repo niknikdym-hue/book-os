@@ -210,18 +210,20 @@ class PilotService:
             human_actor=str(row["human_actor"]),
             started_at=str(row["started_at"]),
             completed_at=str(row["completed_at"]) if row["completed_at"] is not None else None,
-            final_decision=str(row["final_decision"]) if row["final_decision"] is not None else None,
+            final_decision=str(row["final_decision"])
+            if row["final_decision"] is not None
+            else None,
             final_reason=str(row["final_reason"]) if row["final_reason"] is not None else None,
-            decision_actor=str(row["decision_actor"]) if row["decision_actor"] is not None else None,
+            decision_actor=str(row["decision_actor"])
+            if row["decision_actor"] is not None
+            else None,
         )
 
     @staticmethod
     def _pilot_row(connection: Any, book_id: str, pilot_id: str) -> Any:
         row = (
             connection.execute(
-                text(
-                    "SELECT * FROM pilot_runs WHERE book_id=:book_id AND pilot_id=:pilot_id"
-                ),
+                text("SELECT * FROM pilot_runs WHERE book_id=:book_id AND pilot_id=:pilot_id"),
                 {"book_id": book_id, "pilot_id": pilot_id},
             )
             .mappings()
@@ -239,7 +241,9 @@ class PilotService:
         try:
             with engine.begin() as connection:
                 active = connection.execute(
-                    text("SELECT pilot_id FROM pilot_runs WHERE book_id=:book_id AND status='ACTIVE'"),
+                    text(
+                        "SELECT pilot_id FROM pilot_runs WHERE book_id=:book_id AND status='ACTIVE'"
+                    ),
                     {"book_id": book_id},
                 ).scalar_one_or_none()
                 if active is not None:
@@ -452,7 +456,9 @@ class PilotService:
                 )
                 updated = (
                     connection.execute(
-                        text("SELECT * FROM pilot_observations WHERE observation_id=:observation_id"),
+                        text(
+                            "SELECT * FROM pilot_observations WHERE observation_id=:observation_id"
+                        ),
                         {"observation_id": observation_id},
                     )
                     .mappings()
@@ -640,9 +646,7 @@ class PilotService:
                     ).mappings()
                 )
                 open_severity = Counter(
-                    str(row["severity"])
-                    for row in observation_rows
-                    if row["resolved_at"] is None
+                    str(row["severity"]) for row in observation_rows if row["resolved_at"] is None
                 )
                 categories = Counter(str(row["category"]) for row in observation_rows)
                 open_blocking = int(open_severity.get("BLOCKING", 0))
@@ -661,7 +665,9 @@ class PilotService:
                 )
 
                 blockers: list[str] = []
-                missing_stages = [stage for stage in MANDATORY_STAGES if stage_counts.get(stage, 0) == 0]
+                missing_stages = [
+                    stage for stage in MANDATORY_STAGES if stage_counts.get(stage, 0) == 0
+                ]
                 if missing_stages:
                     blockers.append("MISSING_STAGES:" + ",".join(missing_stages))
                 if master_id is None:

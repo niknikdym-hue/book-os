@@ -20,9 +20,13 @@ from book_os_core.secrets import DictSecretStore
 
 
 def _project(data_dir: Path) -> str:
-    return ProjectService(data_dir).create_project(
-        NewBookRequest(working_title="Private Pilot Book", primary_subtype="Strategy")
-    ).book_id
+    return (
+        ProjectService(data_dir)
+        .create_project(
+            NewBookRequest(working_title="Private Pilot Book", primary_subtype="Strategy")
+        )
+        .book_id
+    )
 
 
 def test_fresh_project_migrates_to_0010_and_only_one_active_pilot(tmp_path: Path) -> None:
@@ -32,7 +36,10 @@ def test_fresh_project_migrates_to_0010_and_only_one_active_pilot(tmp_path: Path
     engine = create_database(database)
     try:
         with engine.connect() as connection:
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0010"
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == "0010"
+            )
     finally:
         engine.dispose()
 
@@ -55,7 +62,9 @@ def test_pilot_events_and_observations_do_not_mutate_authority(tmp_path: Path) -
     engine = create_database(database)
     try:
         with engine.connect() as connection:
-            revisions_before = connection.execute(text("SELECT COUNT(*) FROM revisions")).scalar_one()
+            revisions_before = connection.execute(
+                text("SELECT COUNT(*) FROM revisions")
+            ).scalar_one()
     finally:
         engine.dispose()
 
@@ -125,7 +134,9 @@ def test_pilot_events_and_observations_do_not_mutate_authority(tmp_path: Path) -
     engine = create_database(database)
     try:
         with engine.connect() as connection:
-            revisions_after = connection.execute(text("SELECT COUNT(*) FROM revisions")).scalar_one()
+            revisions_after = connection.execute(
+                text("SELECT COUNT(*) FROM revisions")
+            ).scalar_one()
     finally:
         engine.dispose()
     assert revisions_after == revisions_before
@@ -212,9 +223,7 @@ def test_final_decision_requires_ready_evidence_and_is_human_and_immutable(
         with pytest.raises(DatabaseError):
             with engine.begin() as connection:
                 connection.execute(
-                    text(
-                        "UPDATE pilot_runs SET final_decision='GO' WHERE pilot_id=:pilot_id"
-                    ),
+                    text("UPDATE pilot_runs SET final_decision='GO' WHERE pilot_id=:pilot_id"),
                     {"pilot_id": pilot.pilot_id},
                 )
     finally:

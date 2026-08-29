@@ -98,9 +98,7 @@ def build_pilot_router(data_dir: Path, require_token: Callable[..., None]) -> AP
             raise_http(exc)
         raise AssertionError("unreachable")
 
-    @router.post(
-        "/api/projects/{book_id}/pilots/{pilot_id}/observations/{observation_id}/resolve"
-    )
+    @router.post("/api/projects/{book_id}/pilots/{pilot_id}/observations/{observation_id}/resolve")
     def resolve_observation(
         book_id: str,
         pilot_id: str,
