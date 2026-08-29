@@ -1,0 +1,109 @@
+name: M8 readiness semantics once
+
+on:
+  push:
+    branches:
+      - brain/task-009-russia-provider-lane
+    paths:
+      - .github/workflows/m8-readiness-semantics-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-009-russia-provider-lane
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Patch readiness semantics and remove helper
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('services/local-core/src/book_os_core/app.py')
+          text = path.read_text()
+          old = '''    @app.get("/api/provider-lane/readiness")
+    def provider_readiness(_: None = Depends(require_token)) -> dict[str, object]:
+        roles: dict[str, dict[str, object]] = {}
+        for role in ("WRITER", "EDITOR", "EVALUATOR"):
+            decision = (
+                provider_lane.route(role)
+                if provider_lane
+                else RussiaPolicy().route(seed_capabilities(), role=role)
+            )
+            roles[role] = {
+                "available": decision.available,
+                "reason": decision.reason,
+                "provider": decision.capability.provider if decision.capability else None,
+                "model": decision.capability.model if decision.capability else None,
+            }
+        return {
+            "region": "RU",
+            "ready": all(bool(value["available"]) for value in roles.values()),
+            "implementation_ready": True,
+            "live_promotion_required": True,
+            "credentials": credential_availability(provider_secrets),
+            "roles": roles,
+        }
+'''
+          new = '''    @app.get("/api/provider-lane/readiness")
+    def provider_readiness(_: None = Depends(require_token)) -> dict[str, object]:
+        required_launch_roles = ("WRITER", "EDITOR")
+        roles: dict[str, dict[str, object]] = {}
+        for role in (*required_launch_roles, "EVALUATOR"):
+            decision = (
+                provider_lane.route(role)
+                if provider_lane
+                else RussiaPolicy().route(seed_capabilities(), role=role)
+            )
+            roles[role] = {
+                "available": decision.available,
+                "reason": decision.reason,
+                "provider": decision.capability.provider if decision.capability else None,
+                "model": decision.capability.model if decision.capability else None,
+            }
+        routes_ready = all(bool(roles[role]["available"]) for role in required_launch_roles)
+        credentials = credential_availability(provider_secrets)
+        selected_providers = {
+            str(roles[role]["provider"])
+            for role in required_launch_roles
+            if roles[role]["available"] and roles[role]["provider"] is not None
+        }
+        credentials_ready = routes_ready and all(
+            credentials.get(provider) == "AVAILABLE" for provider in selected_providers
+        )
+        return {
+            "region": "RU",
+            "ready": routes_ready,
+            "routes_ready": routes_ready,
+            "production_ready": routes_ready and credentials_ready,
+            "implementation_ready": True,
+            "live_promotion_required": not routes_ready,
+            "credentials_ready": credentials_ready,
+            "credentials": credentials,
+            "required_launch_roles": list(required_launch_roles),
+            "evaluation_role": roles["EVALUATOR"],
+            "roles": roles,
+        }
+'''
+          if old not in text:
+              raise SystemExit('provider readiness target not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python -m pip install ruff==0.12.11
+          cd services/local-core
+          ruff format src/book_os_core/app.py tests/test_provider_readiness.py
+          ruff check src/book_os_core/app.py tests/test_provider_readiness.py
+          cd ../..
+          rm .github/workflows/m8-readiness-semantics-once.yml
+          git config user.name "BOOK OS Central Brain"
+          git config user.email "actions@users.noreply.github.com"
+          git add services/local-core/src/book_os_core/app.py services/local-core/tests/test_provider_readiness.py .github/workflows/m8-readiness-semantics-once.yml
+          git commit -m "M8: clarify runtime and evaluator readiness semantics"
+          git push origin HEAD:brain/task-009-russia-provider-lane
