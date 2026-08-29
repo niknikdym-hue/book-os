@@ -28,6 +28,7 @@ type PilotSummary = {
   model_identities: string[];
   claims_by_state: Record<string, number>;
   material_claims_without_evidence: number;
+  material_claims_not_supported: number;
   editorial_by_status: Record<string, number>;
   latest_bookbench_snapshot_id: string | null;
   bookbench_blocking_count: number;
@@ -38,6 +39,23 @@ type PilotSummary = {
   human_literary_quality_judgment: boolean;
   bookbench_defect_reviewed_by_human: boolean;
   go_no_go: GoNoGoReadiness;
+};
+
+type PilotObservation = {
+  observation_id: string;
+  pilot_id: string;
+  stage: string;
+  category: string;
+  severity: string;
+  actor: string;
+  actor_kind: string;
+  description: string;
+  artifact_ref: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  resolution_actor: string | null;
+  resolution_actor_kind: string | null;
+  resolution_reason: string | null;
 };
 
 type OpenAIPreflight = {
@@ -72,6 +90,19 @@ const stages = [
   "LITERARY_MASTER",
 ] as const;
 
+const observationCategories = [
+  "PRODUCT_DEFECT",
+  "WORKFLOW_FRICTION",
+  "MISSED_ERROR",
+  "BOOKBENCH_FALSE_POSITIVE",
+  "BOOKBENCH_FALSE_NEGATIVE",
+  "MODEL_QUALITY_FAILURE",
+  "VOICE_FAILURE",
+  "RESEARCH_TRACEABILITY_FAILURE",
+  "HUMAN_DECISION_REASON",
+  "OTHER",
+] as const;
+
 export function PilotPanel({ project }: { project: ProjectView }) {
   const [pilot, setPilot] = useState<PilotRun | null>(null);
   const [summary, setSummary] = useState<PilotSummary | null>(null);
@@ -80,6 +111,11 @@ export function PilotPanel({ project }: { project: ProjectView }) {
   const [stageHumanMinutes, setStageHumanMinutes] = useState("");
   const [observationText, setObservationText] = useState("");
   const [observationSeverity, setObservationSeverity] = useState("ATTENTION");
+  const [observationCategory, setObservationCategory] = useState<(typeof observationCategories)[number]>(
+    "WORKFLOW_FRICTION",
+  );
+  const [openObservations, setOpenObservations] = useState<PilotObservation[]>([]);
+  const [resolutionReason, setResolutionReason] = useState("");
   const [writerModel, setWriterModel] = useState("");
   const [evaluatorModel, setEvaluatorModel] = useState("");
   const [maxRequests, setMaxRequests] = useState("");
@@ -100,14 +136,21 @@ export function PilotPanel({ project }: { project: ProjectView }) {
     );
     setPilot(active);
     if (active) {
-      setSummary(
-        await coreApi<PilotSummary>(
+      const [nextSummary, observations] = await Promise.all([
+        coreApi<PilotSummary>(
           "GET",
           `/api/projects/${project.book_id}/pilots/${active.pilot_id}/summary`,
         ),
-      );
+        coreApi<PilotObservation[]>(
+          "GET",
+          `/api/projects/${project.book_id}/pilots/${active.pilot_id}/observations?open_only=true`,
+        ),
+      ]);
+      setSummary(nextSummary);
+      setOpenObservations(observations);
     } else {
       setSummary(null);
+      setOpenObservations([]);
     }
   }, [project.book_id]);
 
@@ -176,7 +219,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
         `/api/projects/${project.book_id}/pilots/${pilot.pilot_id}/observations`,
         {
           stage,
-          category: "WORKFLOW_FRICTION",
+          category: observationCategory,
           severity: observationSeverity,
           actor: humanActor.trim(),
           actor_kind: "HUMAN",
@@ -184,6 +227,29 @@ export function PilotPanel({ project }: { project: ProjectView }) {
         },
       );
       setObservationText("");
+      await refresh();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resolveObservation(observationId: string) {
+    if (!pilot || !humanActor.trim() || !resolutionReason.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi(
+        "POST",
+        `/api/projects/${project.book_id}/pilots/${pilot.pilot_id}/observations/${observationId}/resolve`,
+        {
+          actor: humanActor.trim(),
+          actor_kind: "HUMAN",
+          reason: resolutionReason.trim(),
+        },
+      );
+      setResolutionReason("");
       await refresh();
     } catch (reason) {
       setError(String(reason));
@@ -393,6 +459,19 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                   />
                 </label>
                 <label className="field">
+                  <span>Observation category</span>
+                  <select
+                    value={observationCategory}
+                    onChange={(event) =>
+                      setObservationCategory(event.target.value as (typeof observationCategories)[number])
+                    }
+                  >
+                    {observationCategories.map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
                   <span>Severity</span>
                   <select
                     value={observationSeverity}
@@ -413,6 +492,33 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                   </button>
                 </div>
               </div>
+
+              {openObservations.length > 0 && (
+                <div aria-label="Open pilot observations">
+                  <strong>Open pilot observations</strong>
+                  <label className="field">
+                    <span>Human resolution reason</span>
+                    <input
+                      value={resolutionReason}
+                      onChange={(event) => setResolutionReason(event.target.value)}
+                    />
+                  </label>
+                  <ul>
+                    {openObservations.map((item) => (
+                      <li key={item.observation_id}>
+                        <code>{item.severity}</code> · {item.category} · {item.description}{" "}
+                        <button
+                          className="secondary"
+                          onClick={() => void resolveObservation(item.observation_id)}
+                          disabled={busy || !humanActor.trim() || !resolutionReason.trim()}
+                        >
+                          Resolve as HUMAN
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="form-grid" aria-label="Human pilot reviews">
                 <label className="field">

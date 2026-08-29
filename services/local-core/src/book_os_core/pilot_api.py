@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .pilot import (
@@ -88,6 +88,19 @@ def build_pilot_router(data_dir: Path, require_token: Callable[..., None]) -> AP
     ) -> dict[str, object]:
         try:
             return service.record_stage_event(book_id, pilot_id, payload).model_dump(mode="json")
+        except PilotError as exc:
+            raise_http(exc)
+        raise AssertionError("unreachable")
+
+    @router.get("/api/projects/{book_id}/pilots/{pilot_id}/observations")
+    def list_observations(
+        book_id: str, pilot_id: str, open_only: bool = Query(default=False)
+    ) -> list[dict[str, object]]:
+        try:
+            return [
+                item.model_dump(mode="json")
+                for item in service.list_observations(book_id, pilot_id, open_only=open_only)
+            ]
         except PilotError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")

@@ -50,6 +50,7 @@ function summary(ready = false) {
     model_identities: ready ? ["openai:writer-model"] : [],
     claims_by_state: {},
     material_claims_without_evidence: 0,
+    material_claims_not_supported: 0,
     editorial_by_status: {},
     latest_bookbench_snapshot_id: ready ? "S1" : null,
     bookbench_blocking_count: 0,
@@ -76,6 +77,8 @@ test("starts a pilot only with an explicit human owner", async () => {
       return pilot as never;
     }
     if (method === "GET" && path.endsWith("/summary")) return summary(false) as never;
+    if (method === "GET" && path.includes("/observations?open_only=true")) return [] as never;
+    if (method === "GET" && path.includes("/observations?open_only=true")) return [] as never;
     throw new Error(`unexpected API call ${method} ${path}`);
   });
 
@@ -135,6 +138,7 @@ test("shows final decision only when evidence is ready and records a HUMAN decis
   vi.mocked(coreApi).mockImplementation(async (method, path, body) => {
     if (method === "GET" && path.endsWith("/pilots/active")) return pilot as never;
     if (method === "GET" && path.endsWith("/summary")) return summary(true) as never;
+    if (method === "GET" && path.includes("/observations?open_only=true")) return [] as never;
     if (method === "POST" && path.endsWith("/final-decision")) {
       expect(body).toEqual({
         decision: "GO",
@@ -166,4 +170,54 @@ test("shows final decision only when evidence is ready and records a HUMAN decis
       },
     ),
   );
+});
+
+
+test("resolves an open categorized observation as HUMAN", async () => {
+  let resolved = false;
+  vi.mocked(coreApi).mockImplementation(async (method, path, body) => {
+    if (method === "GET" && path.endsWith("/pilots/active")) return pilot as never;
+    if (method === "GET" && path.endsWith("/summary")) return summary(false) as never;
+    if (method === "GET" && path.includes("/observations?open_only=true")) {
+      return (resolved
+        ? []
+        : [
+            {
+              observation_id: "O1",
+              pilot_id: "P1",
+              stage: "BOOKBENCH",
+              category: "BOOKBENCH_FALSE_POSITIVE",
+              severity: "ATTENTION",
+              actor: "Elena",
+              actor_kind: "HUMAN",
+              description: "Synthetic false positive",
+              artifact_ref: null,
+              created_at: "2026-08-29T00:00:00Z",
+              resolved_at: null,
+              resolution_actor: null,
+              resolution_actor_kind: null,
+              resolution_reason: null,
+            },
+          ]) as never;
+    }
+    if (method === "POST" && path.endsWith("/observations/O1/resolve")) {
+      expect(body).toEqual({
+        actor: "Elena",
+        actor_kind: "HUMAN",
+        reason: "Reviewed and dismissed.",
+      });
+      resolved = true;
+      return {} as never;
+    }
+    throw new Error(`unexpected API call ${method} ${path}`);
+  });
+
+  render(<PilotPanel project={project} />);
+  expect(await screen.findByText(/BOOKBENCH_FALSE_POSITIVE/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Human actor"), { target: { value: "Elena" } });
+  fireEvent.change(screen.getByLabelText("Human resolution reason"), {
+    target: { value: "Reviewed and dismissed." },
+  });
+  fireEvent.click(screen.getByText("Resolve as HUMAN"));
+  await waitFor(() => expect(screen.queryByText(/Synthetic false positive/)).not.toBeInTheDocument());
 });

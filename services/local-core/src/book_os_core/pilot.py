@@ -193,6 +193,7 @@ class PilotSummary(BaseModel):
     model_identities: list[str]
     claims_by_state: dict[str, int]
     material_claims_without_evidence: int
+    material_claims_not_supported: int
     editorial_by_status: dict[str, int]
     latest_bookbench_snapshot_id: str | None
     bookbench_blocking_count: int
@@ -436,6 +437,28 @@ class PilotService:
         finally:
             engine.dispose()
 
+    def list_observations(
+        self, book_id: str, pilot_id: str, *, open_only: bool = False
+    ) -> list[PilotObservationView]:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                self._pilot_row(connection, book_id, pilot_id)
+                clause = " AND resolved_at IS NULL" if open_only else ""
+                rows = list(
+                    connection.execute(
+                        text(
+                            "SELECT * FROM pilot_observations WHERE pilot_id=:pilot_id"
+                            + clause
+                            + " ORDER BY created_at,observation_id"
+                        ),
+                        {"pilot_id": pilot_id},
+                    ).mappings()
+                )
+            return [PilotObservationView(**dict(row)) for row in rows]
+        finally:
+            engine.dispose()
+
     def resolve_observation(
         self,
         book_id: str,
@@ -651,6 +674,16 @@ class PilotService:
                         {"book_id": book_id},
                     ).scalar_one()
                 )
+                material_not_supported = int(
+                    connection.execute(
+                        text(
+                            "SELECT COUNT(*) FROM claims c WHERE c.book_id=:book_id "
+                            "AND c.materiality IN ('HIGH','CRITICAL') AND c.claim_type!='AUTHORIAL' "
+                            "AND c.verification_state NOT IN ('SUPPORTED','PARTIALLY_SUPPORTED')"
+                        ),
+                        {"book_id": book_id},
+                    ).scalar_one()
+                )
 
                 editorial_rows = list(
                     connection.execute(
@@ -755,6 +788,8 @@ class PilotService:
                     blockers.append(
                         f"MATERIAL_RESEARCH_TRACEABILITY_GAPS:{material_without_evidence}"
                     )
+                if material_not_supported:
+                    blockers.append(f"MATERIAL_RESEARCH_NOT_SUPPORTED:{material_not_supported}")
                 if snapshot_id is None:
                     blockers.append("BOOKBENCH_SNAPSHOT_MISSING")
                 elif bookbench_blocking:
@@ -779,6 +814,7 @@ class PilotService:
                 model_identities=sorted(identities),
                 claims_by_state=claims_by_state,
                 material_claims_without_evidence=material_without_evidence,
+                material_claims_not_supported=material_not_supported,
                 editorial_by_status=editorial_by_status,
                 latest_bookbench_snapshot_id=snapshot_id,
                 bookbench_blocking_count=bookbench_blocking,

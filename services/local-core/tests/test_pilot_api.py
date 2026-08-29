@@ -100,6 +100,13 @@ def test_pilot_api_records_stage_observation_and_zero_call_openai_preflight(tmp_
     assert observation.status_code == 200
     observation_id = observation.json()["observation_id"]
 
+    listed = client.get(
+        f"/api/projects/{book_id}/pilots/{pilot_id}/observations?open_only=true",
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert [item["observation_id"] for item in listed.json()] == [observation_id]
+
     resolved = client.post(
         f"/api/projects/{book_id}/pilots/{pilot_id}/observations/{observation_id}/resolve",
         headers=headers,

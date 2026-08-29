@@ -121,6 +121,11 @@ def test_pilot_events_and_observations_do_not_mutate_authority(tmp_path: Path) -
         )
     assert "PILOT_BLOCKING_OBSERVATIONS:1" in summary.go_no_go.blockers
 
+    all_observations = service.list_observations(book_id, pilot.pilot_id)
+    open_observations = service.list_observations(book_id, pilot.pilot_id, open_only=True)
+    assert [item.observation_id for item in all_observations] == [observation.observation_id]
+    assert [item.observation_id for item in open_observations] == [observation.observation_id]
+
     resolved = service.resolve_observation(
         book_id,
         pilot.pilot_id,
@@ -130,6 +135,7 @@ def test_pilot_events_and_observations_do_not_mutate_authority(tmp_path: Path) -
         reason="Synthetic resolution fixture.",
     )
     assert resolved.resolved_at is not None
+    assert service.list_observations(book_id, pilot.pilot_id, open_only=True) == []
     with pytest.raises(PilotGateError, match="already resolved"):
         service.resolve_observation(
             book_id,
@@ -378,3 +384,35 @@ def test_db_rejects_system_resolution_of_blocking_observation(tmp_path: Path) ->
                 )
     finally:
         engine.dispose()
+
+
+def test_material_claim_must_be_positively_supported_for_go_readiness(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _project(data_dir)
+    service = PilotService(data_dir)
+    pilot = service.start(book_id, human_actor="Elena")
+    database = data_dir / "projects" / book_id / "project.sqlite"
+    engine = create_database(database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO claims("
+                    "claim_id,book_id,chapter_id,unit_id,manuscript_revision_id,manuscript_revision_hash,"
+                    "normalized_text,claim_type,materiality,required_evidence_level,verification_state,"
+                    "created_at,updated_at) VALUES "
+                    "(:claim_id,:book_id,'C','U','R',:revision_hash,'Material fact','EMPIRICAL','HIGH',"
+                    "'TRACEABLE_SOURCE','UNREVIEWED',:now,:now)"
+                ),
+                {
+                    "claim_id": "Q" * 26,
+                    "book_id": book_id,
+                    "revision_hash": "a" * 64,
+                    "now": "9999-01-01T00:00:00Z",
+                },
+            )
+    finally:
+        engine.dispose()
+    summary = service.summary(book_id, pilot.pilot_id)
+    assert summary.material_claims_not_supported == 1
+    assert "MATERIAL_RESEARCH_NOT_SUPPORTED:1" in summary.go_no_go.blockers
