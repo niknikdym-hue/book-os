@@ -13,7 +13,7 @@ import hashlib
 import json
 from pathlib import Path
 import time
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -38,50 +38,57 @@ from .stage_b import (
 )
 
 STAGE_B_FIXTURE_VERSION = "m8-stage-b-synthetic-v1"
+_WORKING_TITLE = "BOOK OS M8 Synthetic Provider Evaluation"
+_PRIMARY_SUBTYPE = "Strategy"
 
-_STAGE_B_FIXTURE = {
-    "version": STAGE_B_FIXTURE_VERSION,
-    "working_title": "BOOK OS M8 Synthetic Provider Evaluation",
-    "primary_subtype": "Strategy",
-    "book_contract": {
-        "reader": "Business leaders building a repeatable decision system",
-        "reader_problem": "Teams collect advice but cannot distinguish a repeatable operating mechanism from generic prose",
-        "central_promise": "A concrete decision loop that can be inspected, tested and improved",
-        "central_thesis": "Explicit decision rules and feedback evidence outperform disconnected best-practice lists",
-        "unique_angle": "Treat management guidance as a falsifiable operating mechanism rather than inspiration",
-        "reader_trajectory": "From generic recommendations to an explicit decision loop with observable evidence",
-        "explicit_exclusions": [
-            "No bestseller prediction",
-            "No invented research claims",
-            "No motivational filler",
-        ],
-        "evidence_policy": "Do not invent external facts; label assumptions and use only supplied synthetic facts",
-        "voice_genre_constraints": "Precise Russian-language business nonfiction; concrete, calm, non-promotional",
-        "readiness_criteria": [
-            "Each chapter advances the central mechanism",
-            "Claims are bounded by supplied evidence",
-            "No hidden authority approval",
-        ],
-    },
-    "chapters": [
-        {
-            "title": "Decision Loop",
-            "purpose": "Explain how a team turns an ambiguous operational signal into one bounded decision",
-            "new_contribution": "A four-step signal-to-decision mechanism",
-            "objective": "Write a bounded section explaining a four-step signal-to-decision loop. Use one concrete synthetic example: a software team sees support tickets rise from 20 to 35 per day after a release. Do not invent outside statistics. End with one measurable next decision.",
-        },
-        {
-            "title": "Feedback Evidence",
-            "purpose": "Show how the team tests whether the chosen decision improved the operating system",
-            "new_contribution": "A feedback rule that separates observation from interpretation",
-            "objective": "Write a bounded section showing how the same synthetic team evaluates the decision one week later. Distinguish observed ticket counts from interpretation, avoid invented causes, and specify what evidence would trigger a revision of the decision.",
-        },
+_BOOK_CONTRACT: dict[str, object] = {
+    "reader": "Business leaders building a repeatable decision system",
+    "reader_problem": "Teams collect advice but cannot distinguish a repeatable operating mechanism from generic prose",
+    "central_promise": "A concrete decision loop that can be inspected, tested and improved",
+    "central_thesis": "Explicit decision rules and feedback evidence outperform disconnected best-practice lists",
+    "unique_angle": "Treat management guidance as a falsifiable operating mechanism rather than inspiration",
+    "reader_trajectory": "From generic recommendations to an explicit decision loop with observable evidence",
+    "explicit_exclusions": [
+        "No bestseller prediction",
+        "No invented research claims",
+        "No motivational filler",
     ],
+    "evidence_policy": "Do not invent external facts; label assumptions and use only supplied synthetic facts",
+    "voice_genre_constraints": "Precise Russian-language business nonfiction; concrete, calm, non-promotional",
+    "readiness_criteria": [
+        "Each chapter advances the central mechanism",
+        "Claims are bounded by supplied evidence",
+        "No hidden authority approval",
+    ],
+}
+
+_CHAPTERS: tuple[dict[str, str], ...] = (
+    {
+        "title": "Decision Loop",
+        "purpose": "Explain how a team turns an ambiguous operational signal into one bounded decision",
+        "new_contribution": "A four-step signal-to-decision mechanism",
+        "objective": "Write a bounded section explaining a four-step signal-to-decision loop. Use one concrete synthetic example: a software team sees support tickets rise from 20 to 35 per day after a release. Do not invent outside statistics. End with one measurable next decision.",
+    },
+    {
+        "title": "Feedback Evidence",
+        "purpose": "Show how the team tests whether the chosen decision improved the operating system",
+        "new_contribution": "A feedback rule that separates observation from interpretation",
+        "objective": "Write a bounded section showing how the same synthetic team evaluates the decision one week later. Distinguish observed ticket counts from interpretation, avoid invented causes, and specify what evidence would trigger a revision of the decision.",
+    },
+)
+
+_STAGE_B_FIXTURE: dict[str, object] = {
+    "version": STAGE_B_FIXTURE_VERSION,
+    "working_title": _WORKING_TITLE,
+    "primary_subtype": _PRIMARY_SUBTYPE,
+    "book_contract": _BOOK_CONTRACT,
+    "chapters": list(_CHAPTERS),
 }
 
 
 def fixture_payload() -> dict[str, Any]:
-    return json.loads(json.dumps(_STAGE_B_FIXTURE, ensure_ascii=False))
+    payload = json.loads(json.dumps(_STAGE_B_FIXTURE, ensure_ascii=False))
+    return cast(dict[str, Any], payload)
 
 
 def fixture_hash() -> str:
@@ -141,20 +148,20 @@ class StageBBookBenchEvidence:
 
 
 def _book_contract() -> BookContractPayload:
-    return BookContractPayload.model_validate(_STAGE_B_FIXTURE["book_contract"])
+    return BookContractPayload.model_validate(_BOOK_CONTRACT)
 
 
 def _architecture() -> BookArchitecturePayload:
-    chapters = [
+    chapters: list[dict[str, object]] = [
         {
             "chapter_id": None,
-            "title": str(item["title"]),
-            "purpose": str(item["purpose"]),
-            "new_contribution": str(item["new_contribution"]),
+            "title": item["title"],
+            "purpose": item["purpose"],
+            "new_contribution": item["new_contribution"],
             "dependencies": [],
             "transition": "Carry the decision mechanism into the next evidence question",
         }
-        for item in _STAGE_B_FIXTURE["chapters"]
+        for item in _CHAPTERS
     ]
     return BookArchitecturePayload.model_validate(
         {
@@ -173,10 +180,10 @@ def _architecture() -> BookArchitecturePayload:
     )
 
 
-def _chapter_contract(item: dict[str, object]) -> ChapterContractPayload:
+def _chapter_contract(item: dict[str, str]) -> ChapterContractPayload:
     return ChapterContractPayload(
-        chapter_purpose=str(item["purpose"]),
-        new_contribution=str(item["new_contribution"]),
+        chapter_purpose=item["purpose"],
+        new_contribution=item["new_contribution"],
         reader_prior_state="Reader has generic advice but no inspectable decision rule",
         reader_after_state="Reader can execute and test one bounded operating rule",
         required_claims=["Separate observed synthetic facts from interpretation"],
@@ -193,8 +200,8 @@ def prepare_synthetic_project(data_dir: Path) -> StageBSyntheticProject:
     projects = ProjectService(data_dir)
     project = projects.create_project(
         NewBookRequest(
-            working_title=str(_STAGE_B_FIXTURE["working_title"]),
-            primary_subtype=str(_STAGE_B_FIXTURE["primary_subtype"]),
+            working_title=_WORKING_TITLE,
+            primary_subtype=_PRIMARY_SUBTYPE,
         )
     )
     projects.save_book_contract(project.book_id, _book_contract())
@@ -202,7 +209,7 @@ def prepare_synthetic_project(data_dir: Path) -> StageBSyntheticProject:
     projects.save_architecture(project.book_id, _architecture())
     project = projects.approve_architecture(project.book_id)
     chapter_ids: list[str] = []
-    for chapter, item in zip(project.chapters, _STAGE_B_FIXTURE["chapters"], strict=True):
+    for chapter, item in zip(project.chapters, _CHAPTERS, strict=True):
         projects.save_chapter_contract(
             project.book_id,
             chapter.chapter_id,
@@ -252,7 +259,7 @@ def execute_writer_bookbench_fixture(
         drafting = DraftingService(data_dir, gateway)
         for chapter_id, item in zip(
             project.chapter_ids,
-            _STAGE_B_FIXTURE["chapters"],
+            _CHAPTERS,
             strict=True,
         ):
             started = time.perf_counter()
@@ -260,7 +267,7 @@ def execute_writer_bookbench_fixture(
                 project.book_id,
                 chapter_id,
                 DraftSectionRequest(
-                    section_objective=str(item["objective"]),
+                    section_objective=item["objective"],
                     provider=plan.candidate.provider,
                     model=plan.candidate.model,
                     max_output_tokens=1200,
