@@ -195,6 +195,38 @@ def _build_release_fixture(
                 "now": now,
             },
         )
+        deterministic_runs = (
+            ("deterministic.repetition", "IDEA_REPETITION"),
+            ("deterministic.statistics", "THOUGHT_DENSITY"),
+            ("deterministic.specificity", "SPECIFICITY_GENERICNESS"),
+            ("deterministic.evidence", "EVIDENCE_UNSUPPORTED_CLAIMS"),
+            ("deterministic.contract_structure", "CHAPTER_CONTRACT_FULFILLMENT"),
+            ("deterministic.ai_prose_pathology", "AI_PROSE_PATHOLOGY"),
+            ("deterministic.opening_ending_transition", "OPENING_ENDING_TRANSITION"),
+        )
+        for check_id, dimension in deterministic_runs:
+            connection.execute(
+                text(
+                    "INSERT INTO evaluation_runs("
+                    "evaluation_id,book_id,snapshot_id,check_id,check_version,registry_hash,dimension,"
+                    "evaluator_class,evaluator_id,evaluator_version,independence_state,input_hash,"
+                    "output_json,usage_json,latency_ms,status,created_at,completed_at) VALUES "
+                    "(:evaluation_id,:book_id,:snapshot_id,:check_id,'1.0.0',:registry_hash,:dimension,"
+                    "'DETERMINISTIC',:check_id,'1.0.0','NOT_APPLICABLE',:input_hash,"
+                    "'{}','{}',0,'SUCCEEDED',:now,:now)"
+                ),
+                {
+                    "evaluation_id": new_ulid(),
+                    "book_id": book_id,
+                    "snapshot_id": snapshot_id,
+                    "check_id": check_id,
+                    "registry_hash": "b" * 64,
+                    "dimension": dimension,
+                    "input_hash": "d" * 64,
+                    "now": now,
+                },
+            )
+
         if bookbench_blocking:
             connection.execute(
                 text(

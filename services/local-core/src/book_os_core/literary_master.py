@@ -97,6 +97,15 @@ def _canonical_bytes(value: object) -> bytes:
 class LiteraryMasterService:
     MANIFEST_VERSION = "literary-master.v1"
     HANDOFF_VERSION = "book-os-audiobook-handoff.v1"
+    REQUIRED_DETERMINISTIC_CHECK_IDS = (
+        "deterministic.repetition",
+        "deterministic.statistics",
+        "deterministic.specificity",
+        "deterministic.evidence",
+        "deterministic.contract_structure",
+        "deterministic.ai_prose_pathology",
+        "deterministic.opening_ending_transition",
+    )
 
     def __init__(self, data_dir: Path):
         self._projects = ProjectService(data_dir)
@@ -325,15 +334,30 @@ class LiteraryMasterService:
                     detail=f"Open {finding['severity']} editorial finding {finding['finding_id']}",
                 )
             )
-        waived_count = int(
+        waived_count = 0
+        waived_editorial = list(
             connection.execute(
                 text(
-                    "SELECT COUNT(*) FROM editorial_findings "
-                    "WHERE book_id=:book_id AND status='WAIVED' AND severity IN ('MAJOR','CRITICAL')"
+                    "SELECT f.finding_id,f.severity,"
+                    "(SELECT h.actor_kind FROM editorial_finding_state_history h "
+                    "WHERE h.finding_id=f.finding_id AND h.new_state='WAIVED' "
+                    "ORDER BY h.created_at DESC,h.state_event_id DESC LIMIT 1) AS waiver_actor_kind "
+                    "FROM editorial_findings f WHERE f.book_id=:book_id "
+                    "AND f.status='WAIVED' AND f.severity IN ('MAJOR','CRITICAL')"
                 ),
                 {"book_id": book_id},
-            ).scalar_one()
+            ).mappings()
         )
+        for finding in waived_editorial:
+            if str(finding["waiver_actor_kind"]) != "HUMAN":
+                blockers.append(
+                    ReleaseBlocker(
+                        code="EDITORIAL_WAIVER_NOT_HUMAN",
+                        detail=f"Material waiver {finding['finding_id']} lacks human decision evidence",
+                    )
+                )
+            else:
+                waived_count += 1
 
         snapshot = (
             connection.execute(
@@ -377,20 +401,27 @@ class LiteraryMasterService:
                         detail="Latest BookBench snapshot does not match exact release revisions",
                     )
                 )
-            succeeded = int(
-                connection.execute(
+            succeeded_check_ids = {
+                str(value)
+                for value in connection.execute(
                     text(
-                        "SELECT COUNT(*) FROM evaluation_runs "
+                        "SELECT DISTINCT check_id FROM evaluation_runs "
                         "WHERE snapshot_id=:snapshot_id AND status='SUCCEEDED'"
                     ),
                     {"snapshot_id": snapshot_id},
-                ).scalar_one()
-            )
-            if succeeded == 0:
+                ).scalars()
+            }
+            missing_checks = [
+                check_id
+                for check_id in self.REQUIRED_DETERMINISTIC_CHECK_IDS
+                if check_id not in succeeded_check_ids
+            ]
+            if missing_checks:
                 blockers.append(
                     ReleaseBlocker(
-                        code="BOOKBENCH_EVIDENCE_MISSING",
-                        detail="Latest BookBench snapshot has no successful evaluations",
+                        code="BOOKBENCH_REQUIRED_CHECKS_MISSING",
+                        detail="Required deterministic BookBench checks missing: "
+                        + ", ".join(missing_checks),
                     )
                 )
             blocking = list(

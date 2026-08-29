@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
 import type { ProjectView } from "./types";
 
@@ -47,7 +47,7 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
 
   const latestMaster = useMemo(() => masters.at(-1) ?? null, [masters]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const [nextReadiness, nextMasters] = await Promise.all([
       coreApi<ReleaseReadiness>(
         "GET",
@@ -57,14 +57,14 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
     ]);
     setReadiness(nextReadiness);
     setMasters(nextMasters);
-  }
+  }, [project.book_id]);
 
   useEffect(() => {
     setError(null);
     setExportEvidence(null);
     setHandoffEvidence(null);
     void refresh().catch((reason: unknown) => setError(String(reason)));
-  }, [project.book_id]);
+  }, [refresh]);
 
   async function createMaster() {
     if (!readiness?.ready || !humanActor.trim()) return;
