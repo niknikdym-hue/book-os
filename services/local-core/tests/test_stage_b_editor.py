@@ -119,6 +119,8 @@ def test_editor_fixture_preserves_human_authority_and_supports_independent_bookb
     proposal = editorial.get_proposal(source_book_id, editor.finding_id, editor.proposal_id)
     assert finding.status == "OPEN"
     assert finding.actor_kind == "AI"
+    assert finding.base_revision_id == before_units[0].revision_id
+    assert finding.base_revision_hash == before_units[0].revision_hash
     assert proposal.status == "OPEN"
     assert not proposal.stale
 
@@ -188,7 +190,7 @@ def test_editor_fixture_preserves_human_authority_and_supports_independent_bookb
             "model": editor.configured_model,
             "config_id": editor.config_id,
         },
-        dimensions=("EDITOR_DIAGNOSIS_QUALITY", "EDITOR_AUTHORITY_PRESERVATION"),
+        dimensions=("EVIDENCE_UNSUPPORTED_CLAIMS", "CONTRADICTION_INCONSISTENCY"),
         preflight=judge_preflight,
         plan=judge_plan,
         authorized_plan_hash=judge_plan.plan_hash,
@@ -197,6 +199,7 @@ def test_editor_fixture_preserves_human_authority_and_supports_independent_bookb
         transport=httpx.MockTransport(judge_handler),
     )
     assert judged.independence_state == "INDEPENDENT"
+    assert judged.dimensions == ("EVIDENCE_UNSUPPORTED_CLAIMS", "CONTRADICTION_INCONSISTENCY")
     assert len(judged.evaluation_ids) == 2
     assert len(judged.provider_probe_ids) == 2
     assert judged.budget_usage["auth_requests_used"] == 1
@@ -210,6 +213,10 @@ def test_editor_fixture_preserves_human_authority_and_supports_independent_bookb
     )
     assert finding_after_judge.status == "OPEN"
     assert proposal_after_judge.status == "OPEN"
+    final_snapshot = BookBenchService(tmp_path).create_snapshot(source_book_id, scope="BOOK")
+    final_units = [t for t in final_snapshot.targets if t.target_kind == "MANUSCRIPT_UNIT"]
+    assert final_units[0].revision_id == before_units[0].revision_id
+    assert final_units[0].revision_hash == before_units[0].revision_hash
     assert lane.promotion_evidence() == []
 
     public_dump = json.dumps(
