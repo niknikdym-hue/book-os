@@ -5,6 +5,7 @@ import { BookBenchPanel } from "./BookBenchPanel";
 import { BookMemoryPanel } from "./BookMemoryPanel";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
+import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
 import { ResearchPanel } from "./ResearchPanel";
 import type {
   ArchitectureChapter,
@@ -702,6 +703,7 @@ export function App() {
               <BookMemoryPanel project={project} chapter={selectedChapter} />
               <EditorialPanel project={project} chapter={selectedChapter} />
               <BookBenchPanel project={project} />
+              <LiteraryMasterPanel project={project} />
             </>
           )}
         </section>
