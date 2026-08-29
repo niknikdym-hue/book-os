@@ -95,10 +95,17 @@ test("shows fail-closed blockers and zero-call OpenAI preflight", async () => {
     if (method === "POST" && path.endsWith("/openai-preflight")) {
       return {
         provider: "openai",
+        book_id: "B",
+        pilot_id: "P1",
         credential_state: "AVAILABLE",
         writer_model: "writer-model",
         evaluator_model: "evaluator-model",
         editor_lane: "deterministic-m6-current",
+        max_requests: 3,
+        max_input_tokens: 1000,
+        max_output_tokens: 500,
+        max_cost_usd: 1.25,
+        plan_hash: "a".repeat(64),
         external_calls: 0,
         paid_calls: 0,
       } as never;
@@ -114,6 +121,10 @@ test("shows fail-closed blockers and zero-call OpenAI preflight", async () => {
   fireEvent.change(screen.getByLabelText("Evaluator model"), {
     target: { value: "evaluator-model" },
   });
+  fireEvent.change(screen.getByLabelText("Max requests"), { target: { value: "3" } });
+  fireEvent.change(screen.getByLabelText("Max input tokens"), { target: { value: "1000" } });
+  fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "500" } });
+  fireEvent.change(screen.getByLabelText("Max cost USD"), { target: { value: "1.25" } });
   fireEvent.click(screen.getByText("Check OpenAI readiness — zero calls"));
   expect(await screen.findByText(/OpenAI credential:/)).toHaveTextContent("AVAILABLE");
   expect(screen.getByText(/OpenAI credential:/)).toHaveTextContent("external calls: 0");

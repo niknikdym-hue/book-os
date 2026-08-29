@@ -155,6 +155,8 @@ def test_openai_preflight_is_zero_call_and_secret_safe() -> None:
     secret = "SENTINEL_OPENAI_SECRET_DO_NOT_LEAK"
     available = PilotService.openai_preflight(
         DictSecretStore({"openai_api_key": secret}),
+        book_id="BOOK1",
+        pilot_id="PILOT1",
         writer_model="writer-model",
         evaluator_model="evaluator-model",
         max_requests=3,
@@ -164,6 +166,8 @@ def test_openai_preflight_is_zero_call_and_secret_safe() -> None:
     )
     missing = PilotService.openai_preflight(
         DictSecretStore({}),
+        book_id="BOOK1",
+        pilot_id="PILOT1",
         writer_model="writer-model",
         evaluator_model="evaluator-model",
         max_requests=3,
@@ -304,3 +308,73 @@ def test_human_review_event_kinds_require_human_and_detail(tmp_path: Path) -> No
                 metadata={},
             ),
         )
+
+
+def test_db_rejects_nonhuman_review_and_incomplete_final_decision(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _project(data_dir)
+    service = PilotService(data_dir)
+    pilot = service.start(book_id, human_actor="Elena")
+    database = data_dir / "projects" / book_id / "project.sqlite"
+    engine = create_database(database)
+    try:
+        with pytest.raises(DatabaseError):
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "INSERT INTO pilot_stage_events("
+                        "event_id,pilot_id,stage,event_kind,actor,actor_kind,outcome,metadata_json,created_at) "
+                        "VALUES (:event_id,:pilot_id,'FINAL_REVIEW','LITERARY_QUALITY_JUDGMENT',"
+                        "'AI','AI','SUCCESS','{\"judgment\":\"invalid\"}',:created_at)"
+                    ),
+                    {
+                        "event_id": "E" * 26,
+                        "pilot_id": pilot.pilot_id,
+                        "created_at": "9999-01-01T00:00:00Z",
+                    },
+                )
+        with pytest.raises(DatabaseError):
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE pilot_runs SET final_decision='GO',decision_actor='Elena',"
+                        "decision_actor_kind='HUMAN' WHERE pilot_id=:pilot_id"
+                    ),
+                    {"pilot_id": pilot.pilot_id},
+                )
+    finally:
+        engine.dispose()
+
+
+def test_db_rejects_system_resolution_of_blocking_observation(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _project(data_dir)
+    service = PilotService(data_dir)
+    pilot = service.start(book_id, human_actor="Elena")
+    observation = service.add_observation(
+        book_id,
+        pilot.pilot_id,
+        PilotObservationRequest(
+            stage="IDEA",
+            category="PRODUCT_DEFECT",
+            severity="BLOCKING",
+            actor="Elena",
+            actor_kind="HUMAN",
+            description="Synthetic blocking fixture",
+        ),
+    )
+    database = data_dir / "projects" / book_id / "project.sqlite"
+    engine = create_database(database)
+    try:
+        with pytest.raises(DatabaseError):
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE pilot_observations SET resolved_at='9999-01-01T00:00:00Z',"
+                        "resolution_actor='system',resolution_actor_kind='SYSTEM',"
+                        "resolution_reason='invalid' WHERE observation_id=:observation_id"
+                    ),
+                    {"observation_id": observation.observation_id},
+                )
+    finally:
+        engine.dispose()

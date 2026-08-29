@@ -42,6 +42,8 @@ type PilotSummary = {
 
 type OpenAIPreflight = {
   provider: string;
+  book_id: string;
+  pilot_id: string;
   credential_state: "AVAILABLE" | "NOT_AVAILABLE";
   writer_model: string;
   evaluator_model: string;
@@ -49,7 +51,7 @@ type OpenAIPreflight = {
   max_requests: number;
   max_input_tokens: number;
   max_output_tokens: number;
-  max_cost_usd: number | null;
+  max_cost_usd: number;
   plan_hash: string;
   external_calls: number;
   paid_calls: number;
@@ -194,7 +196,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
     const requests = Number(maxRequests);
     const inputTokens = Number(maxInputTokens);
     const outputTokens = Number(maxOutputTokens);
-    const cost = maxCostUsd.trim() ? Number(maxCostUsd) : null;
+    const cost = Number(maxCostUsd);
     if (
       !pilot ||
       !writerModel.trim() ||
@@ -205,7 +207,8 @@ export function PilotPanel({ project }: { project: ProjectView }) {
       inputTokens <= 0 ||
       !Number.isInteger(outputTokens) ||
       outputTokens <= 0 ||
-      (cost !== null && (!Number.isFinite(cost) || cost < 0))
+      !Number.isFinite(cost) ||
+      cost <= 0
     )
       return;
     setBusy(true);
@@ -448,21 +451,21 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                   <input inputMode="numeric" value={maxOutputTokens} onChange={(event) => setMaxOutputTokens(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>Max cost USD (optional)</span>
+                  <span>Max cost USD</span>
                   <input inputMode="decimal" value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} />
                 </label>
                 <div className="actions">
                   <button
                     className="secondary"
                     onClick={() => void checkOpenAI()}
-                    disabled={busy || !writerModel.trim() || !evaluatorModel.trim() || !maxRequests.trim() || !maxInputTokens.trim() || !maxOutputTokens.trim()}
+                    disabled={busy || !writerModel.trim() || !evaluatorModel.trim() || !maxRequests.trim() || !maxInputTokens.trim() || !maxOutputTokens.trim() || !maxCostUsd.trim()}
                   >
                     Check OpenAI readiness — zero calls
                   </button>
                 </div>
                 {preflight && (
                   <p>
-                    OpenAI credential: <strong>{preflight.credential_state}</strong> · plan {preflight.plan_hash.slice(0, 16)}… · requests ≤ {preflight.max_requests} · input tokens ≤ {preflight.max_input_tokens} · output tokens ≤ {preflight.max_output_tokens} · cost cap {preflight.max_cost_usd ?? "unset"} · external calls: {preflight.external_calls} · paid calls: {preflight.paid_calls}
+                    OpenAI credential: <strong>{preflight.credential_state}</strong> · plan {preflight.plan_hash.slice(0, 16)}… · requests ≤ {preflight.max_requests} · input tokens ≤ {preflight.max_input_tokens} · output tokens ≤ {preflight.max_output_tokens} · cost cap ${preflight.max_cost_usd} · external calls: {preflight.external_calls} · paid calls: {preflight.paid_calls}
                   </p>
                 )}
               </div>

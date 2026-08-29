@@ -36,7 +36,7 @@ class OpenAIPreflightRequest(BaseModel):
     max_requests: int = Field(gt=0)
     max_input_tokens: int = Field(gt=0)
     max_output_tokens: int = Field(gt=0)
-    max_cost_usd: float | None = Field(default=None, ge=0)
+    max_cost_usd: float = Field(gt=0)
 
 
 class PilotFinalDecisionRequest(BaseModel):
@@ -138,6 +138,8 @@ def build_pilot_router(data_dir: Path, require_token: Callable[..., None]) -> AP
             service.get(book_id, pilot_id)
             return service.openai_preflight(
                 MacOSKeychainSecretStore(),
+                book_id=book_id,
+                pilot_id=pilot_id,
                 writer_model=payload.writer_model,
                 evaluator_model=payload.evaluator_model,
                 editor_lane=payload.editor_lane,

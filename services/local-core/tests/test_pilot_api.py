@@ -128,6 +128,8 @@ def test_pilot_api_records_stage_observation_and_zero_call_openai_preflight(tmp_
     assert preflight_payload["paid_calls"] == 0
     assert set(preflight_payload) == {
         "provider",
+        "book_id",
+        "pilot_id",
         "credential_state",
         "writer_model",
         "evaluator_model",

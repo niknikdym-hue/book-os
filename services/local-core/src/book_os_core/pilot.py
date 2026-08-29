@@ -162,6 +162,8 @@ class PilotObservationView(BaseModel):
 
 class OpenAIPreflightView(BaseModel):
     provider: str = "openai"
+    book_id: str
+    pilot_id: str
     credential_state: Literal["AVAILABLE", "NOT_AVAILABLE"]
     writer_model: str
     evaluator_model: str
@@ -502,20 +504,24 @@ class PilotService:
     def openai_preflight(
         secrets: SecretStore,
         *,
+        book_id: str,
+        pilot_id: str,
         writer_model: str,
         evaluator_model: str,
         editor_lane: str = "deterministic-m6-current",
         max_requests: int,
         max_input_tokens: int,
         max_output_tokens: int,
-        max_cost_usd: float | None = None,
+        max_cost_usd: float,
     ) -> OpenAIPreflightView:
+        if not book_id.strip() or not pilot_id.strip():
+            raise PilotGateError("OpenAI preflight requires exact book/pilot identity")
         if not writer_model.strip() or not evaluator_model.strip() or not editor_lane.strip():
             raise PilotGateError("OpenAI preflight requires explicit model/config identities")
         if min(max_requests, max_input_tokens, max_output_tokens) <= 0:
             raise PilotGateError("OpenAI preflight requires positive request/token bounds")
-        if max_cost_usd is not None and max_cost_usd < 0:
-            raise PilotGateError("OpenAI preflight cost bound cannot be negative")
+        if max_cost_usd <= 0:
+            raise PilotGateError("OpenAI preflight requires a positive cost cap")
         try:
             secrets.get_secret("openai_api_key")
         except Exception:
@@ -524,6 +530,8 @@ class PilotService:
             credential_state = "AVAILABLE"
         plan = {
             "provider": "openai",
+            "book_id": book_id.strip(),
+            "pilot_id": pilot_id.strip(),
             "writer_model": writer_model.strip(),
             "evaluator_model": evaluator_model.strip(),
             "editor_lane": editor_lane.strip(),

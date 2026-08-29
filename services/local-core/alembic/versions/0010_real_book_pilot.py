@@ -57,6 +57,13 @@ def upgrade() -> None:
             "decision_actor_kind IS NULL OR decision_actor_kind='HUMAN'",
             name="ck_pilot_decision_human",
         ),
+        sa.CheckConstraint(
+            "final_decision IS NULL OR (status='COMPLETED' AND completed_at IS NOT NULL "
+            "AND final_reason IS NOT NULL AND length(trim(final_reason))>0 "
+            "AND decision_actor IS NOT NULL AND length(trim(decision_actor))>0 "
+            "AND decision_actor_kind='HUMAN')",
+            name="ck_pilot_final_decision_complete",
+        ),
     )
     op.create_index("ix_pilot_runs_book_started", "pilot_runs", ["book_id", "started_at"])
     op.execute(
@@ -82,6 +89,11 @@ def upgrade() -> None:
         sa.CheckConstraint(f"stage IN ({PILOT_STAGES})", name="ck_pilot_stage"),
         sa.CheckConstraint(f"event_kind IN ({EVENT_KINDS})", name="ck_pilot_event_kind"),
         sa.CheckConstraint("actor_kind IN ('HUMAN','AI','SYSTEM')", name="ck_pilot_event_actor"),
+        sa.CheckConstraint(
+            "event_kind NOT IN ('HUMAN_REVIEW','LITERARY_QUALITY_JUDGMENT','DEFECT_REVIEW') "
+            "OR actor_kind='HUMAN'",
+            name="ck_pilot_human_review_actor",
+        ),
         sa.CheckConstraint(
             "outcome IN ('SUCCESS','ATTENTION','BLOCKED','NOT_APPLICABLE')",
             name="ck_pilot_event_outcome",
@@ -136,6 +148,16 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "resolution_actor_kind IS NULL OR resolution_actor_kind IN ('HUMAN','SYSTEM')",
             name="ck_pilot_resolution_actor",
+        ),
+        sa.CheckConstraint(
+            "resolved_at IS NULL OR (resolution_actor IS NOT NULL "
+            "AND length(trim(resolution_actor))>0 AND resolution_actor_kind IS NOT NULL "
+            "AND resolution_reason IS NOT NULL AND length(trim(resolution_reason))>0)",
+            name="ck_pilot_resolution_complete",
+        ),
+        sa.CheckConstraint(
+            "severity!='BLOCKING' OR resolved_at IS NULL OR resolution_actor_kind='HUMAN'",
+            name="ck_pilot_blocking_resolution_human",
         ),
     )
     op.create_index(
