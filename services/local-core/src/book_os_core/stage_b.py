@@ -420,9 +420,7 @@ def production_route(
     now: datetime | None = None,
     live_health_ttl: timedelta = timedelta(hours=24),
 ) -> Any:
-    candidates = production_capabilities(
-        lane, role=role, now=now, live_health_ttl=live_health_ttl
-    )
+    candidates = production_capabilities(lane, role=role, now=now, live_health_ttl=live_health_ttl)
     promoted = tuple(item for item in candidates if item.promotion == "PROMOTED")
     return RussiaPolicy().route(
         promoted if promoted else candidates,
@@ -507,9 +505,7 @@ def role_evidence_from_report(
     states = {item.dimension: item.state for item in report.dimensions}
     missing = tuple(dimension for dimension in required_dimensions if dimension not in states)
     blocking = tuple(
-        dimension
-        for dimension in required_dimensions
-        if states.get(dimension) == "BLOCKING"
+        dimension for dimension in required_dimensions if states.get(dimension) == "BLOCKING"
     )
     if require_independence and independence_state != "INDEPENDENT":
         blocking = tuple(dict.fromkeys((*blocking, "EVALUATOR_INDEPENDENCE")))

@@ -57,7 +57,9 @@ def _service(tmp_path: Path) -> ProviderLaneService:
     return ProviderLaneService(create_database(tmp_path / "stage-b.sqlite"))
 
 
-def _promote_writer(service: ProviderLaneService, provider: str, model: str, config_id: str) -> None:
+def _promote_writer(
+    service: ProviderLaneService, provider: str, model: str, config_id: str
+) -> None:
     service.record_promotion(
         provider=provider,
         model=model,
@@ -114,7 +116,9 @@ def test_preflight_is_secret_safe_deterministic_and_fail_closed(tmp_path: Path) 
     assert "PROVIDER_NOT_SUPPORTED_FOR_RU_STAGE_B" in blocked.blockers
 
 
-def test_budgeted_gigachat_transport_counts_auth_and_generation_before_calls(tmp_path: Path) -> None:
+def test_budgeted_gigachat_transport_counts_auth_and_generation_before_calls(
+    tmp_path: Path,
+) -> None:
     service = _service(tmp_path)
     preflight = StageBPreflightService(
         service,
@@ -142,9 +146,7 @@ def test_budgeted_gigachat_transport_counts_auth_and_generation_before_calls(tmp
                 "model": "GigaChat-2-Pro:live-candidate",
                 "choices": [
                     {
-                        "message": {
-                            "content": json.dumps({"text": "Synthetic", "notes": []})
-                        },
+                        "message": {"content": json.dumps({"text": "Synthetic", "notes": []})},
                         "finish_reason": "stop",
                     }
                 ],
@@ -194,7 +196,9 @@ def test_mock_probe_never_changes_production_health_and_live_probe_is_exact(
         probe_type="MOCK",
     )
     yandex = next(
-        item for item in production_capabilities(service, role="WRITER") if item.provider == "yandex"
+        item
+        for item in production_capabilities(service, role="WRITER")
+        if item.provider == "yandex"
     )
     assert yandex.health == "UNKNOWN"
     assert not production_route(service, role="WRITER").available
@@ -306,19 +310,13 @@ def test_authorized_execution_boundary_requires_flag_exact_hash_and_current_plan
 
     monkeypatch.delenv("BOOK_OS_ALLOW_LIVE_PROVIDER", raising=False)
     with pytest.raises(StageBGateError, match="BOOK_OS_ALLOW_LIVE_PROVIDER"):
-        require_authorized_execution(
-            preflight, plan, authorized_plan_hash=plan.plan_hash
-        )
+        require_authorized_execution(preflight, plan, authorized_plan_hash=plan.plan_hash)
 
     monkeypatch.setenv("BOOK_OS_ALLOW_LIVE_PROVIDER", "1")
     with pytest.raises(StageBPlanMismatch):
-        require_authorized_execution(
-            preflight, plan, authorized_plan_hash="0" * 64
-        )
+        require_authorized_execution(preflight, plan, authorized_plan_hash="0" * 64)
 
-    require_authorized_execution(
-        preflight, plan, authorized_plan_hash=plan.plan_hash
-    )
+    require_authorized_execution(preflight, plan, authorized_plan_hash=plan.plan_hash)
 
 
 def test_bookbench_role_gate_preserves_blocking_missing_and_independence() -> None:
