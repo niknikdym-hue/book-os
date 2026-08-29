@@ -111,7 +111,7 @@ test("requires human actor then creates master and exposes deterministic exports
   expect(button).toBeEnabled();
   fireEvent.click(button);
 
-  expect(await screen.findByText(/Master:/)).toHaveTextContent("MASTER1");
+  expect(await screen.findByText("MASTER1")).toBeInTheDocument();
   await waitFor(() =>
     expect(vi.mocked(coreApi)).toHaveBeenCalledWith(
       "POST",

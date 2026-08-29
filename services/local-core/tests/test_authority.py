@@ -60,7 +60,7 @@ def test_fresh_and_m0_upgrade_preserve_fk_and_wal(tmp_path: Path) -> None:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
     command.upgrade(config, "head")
     with sqlite3.connect(upgraded) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0009",)
         names = {
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
