@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 from fastapi.testclient import TestClient
 import pytest
+from sqlalchemy import text
 
 from book_os_core.app import create_app
 from book_os_core.db import create_database
@@ -359,12 +360,52 @@ def test_persisted_role_promotion_probe_overlay_and_gateway_execution(tmp_path: 
             region="RU",
             role="WRITER",
             decision="PROMOTED",
-            dataset_hash=dataset,
+            dataset_hash="d" * 64,
             scorecard_ref="scorecard:giga",
             quality_floor_passed=False,
             reason="blocked",
             actor="CENTRAL_BRAIN_TEST",
         )
+
+
+def test_only_fresh_exact_live_probe_evidence_changes_production_health(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    service = ProviderLaneService(create_database(tmp_path / "health.sqlite"))
+    identity = {
+        "provider": "yandex",
+        "model": "yandexgpt",
+        "config_id": "latest-discovery",
+        "region": "RU",
+    }
+    service.record_probe(**identity, capability="generation", outcome="SUCCESS")
+    assert (
+        next(item for item in service.capabilities() if item.provider == "yandex").health
+        == "UNKNOWN"
+    )
+    service.record_probe(**identity, capability="generation", outcome="UNAVAILABLE")
+    assert (
+        next(item for item in service.capabilities() if item.provider == "yandex").health
+        == "UNKNOWN"
+    )
+
+    monkeypatch.setenv("BOOK_OS_ALLOW_LIVE_PROVIDER", "1")
+    service.record_probe(**identity, capability="generation", outcome="SUCCESS", probe_type="LIVE")
+    assert (
+        next(item for item in service.capabilities() if item.provider == "yandex").health
+        == "HEALTHY"
+    )
+    with service.engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE provider_probe_runs SET created_at='2000-01-01T00:00:00+00:00' "
+                "WHERE provider='yandex' AND probe_type='LIVE'"
+            )
+        )
+    assert (
+        next(item for item in service.capabilities() if item.provider == "yandex").health
+        == "UNKNOWN"
+    )
     with pytest.raises(ValueError, match="region/legal/commercial"):
         service.record_promotion(
             provider="openai",
@@ -373,7 +414,7 @@ def test_persisted_role_promotion_probe_overlay_and_gateway_execution(tmp_path: 
             region="RU",
             role="WRITER",
             decision="PROMOTED",
-            dataset_hash=dataset,
+            dataset_hash="d" * 64,
             scorecard_ref="scorecard:openai",
             quality_floor_passed=True,
             reason="not permitted",
@@ -399,6 +440,9 @@ def test_provider_lane_api_is_authenticated_secret_safe_and_structured(tmp_path:
     assert readiness.status_code == 200
     assert readiness.json()["region"] == "RU"
     assert readiness.json()["ready"] is False
+    assert readiness.json()["implementation_ready"] is True
+    assert readiness.json()["live_promotion_required"] is True
+    assert readiness.json()["credentials"]["yandex"] in {"AVAILABLE", "NOT AVAILABLE"}
     assert client.get("/api/provider-lane/promotions", headers=headers).status_code == 200
     assert client.get("/api/provider-lane/probes", headers=headers).status_code == 200
     serialized = json.dumps(
