@@ -83,7 +83,9 @@ def _budget(args: argparse.Namespace) -> StageBBudget:
     )
 
 
-def _candidate(args: argparse.Namespace, roles: tuple[str, ...], *, embeddings: bool = False) -> StageBCandidate:
+def _candidate(
+    args: argparse.Namespace, roles: tuple[str, ...], *, embeddings: bool = False
+) -> StageBCandidate:
     return StageBCandidate(
         provider=args.provider,
         model=args.model,
@@ -94,7 +96,9 @@ def _candidate(args: argparse.Namespace, roles: tuple[str, ...], *, embeddings: 
     )
 
 
-def _context(args: argparse.Namespace, secrets: SecretStore) -> tuple[Path, ProviderLaneService, StageBPreflightService]:
+def _context(
+    args: argparse.Namespace, secrets: SecretStore
+) -> tuple[Path, ProviderLaneService, StageBPreflightService]:
     data_dir = Path(args.data_dir).expanduser().resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
     lane = ProviderLaneService(create_database(data_dir / "provider-lane.sqlite"))

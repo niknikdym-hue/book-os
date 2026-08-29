@@ -41,7 +41,9 @@ def test_cli_preflight_is_zero_live_and_secret_safe(tmp_path, capsys, monkeypatc
     assert sentinel not in output
 
 
-def test_cli_execute_stays_blocked_without_explicit_live_flag(tmp_path, capsys, monkeypatch) -> None:
+def test_cli_execute_stays_blocked_without_explicit_live_flag(
+    tmp_path, capsys, monkeypatch
+) -> None:
     sentinel = "CLI-STAGE-B-BLOCKED-SECRET"
     secrets = DictSecretStore({"yandex_ai_studio_api_key": sentinel})
     monkeypatch.delenv("BOOK_OS_ALLOW_LIVE_PROVIDER", raising=False)
@@ -69,7 +71,9 @@ def test_cli_execute_stays_blocked_without_explicit_live_flag(tmp_path, capsys, 
     assert captured.out == ""
 
 
-def test_cli_preflight_reports_missing_credential_without_secret_or_network(tmp_path, capsys) -> None:
+def test_cli_preflight_reports_missing_credential_without_secret_or_network(
+    tmp_path, capsys
+) -> None:
     status = run(
         ["preflight", *_base_args(tmp_path), "--roles", "WRITER"],
         secrets=DictSecretStore({}),
