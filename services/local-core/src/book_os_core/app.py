@@ -62,10 +62,12 @@ from .projects import (
 from .provider_lane import (
     GigaChatAdapter,
     GigaChatEmbeddingAdapter,
+    LiveProbeBudget,
     ProviderLaneService,
     RussiaPolicy,
     YandexAdapter,
     YandexEmbeddingAdapter,
+    build_live_probe_preflight,
     credential_availability,
     seed_capabilities,
 )
@@ -150,6 +152,20 @@ class HandoffRequest(BaseModel):
 class ProviderRouteRequest(BaseModel):
     role: str = Field(min_length=1, max_length=64)
     embeddings: bool = False
+
+
+class ProviderPreflightRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=128)
+    config_id: str = Field(min_length=1, max_length=128)
+    region: str = "RU"
+    roles: list[str] = Field(min_length=1)
+    max_generation_requests: int = Field(ge=0)
+    max_embedding_requests: int = Field(ge=0)
+    max_authentication_requests: int = Field(default=0, ge=0)
+    max_total_requests: int = Field(gt=0)
+    max_estimated_cost: float | None = Field(default=None, ge=0)
+    estimated_cost: float | None = Field(default=None, ge=0)
 
 
 def create_app(
@@ -468,6 +484,39 @@ def create_app(
             "credentials": credential_availability(provider_secrets),
             "roles": roles,
         }
+
+    @app.post("/api/provider-lane/preflight")
+    def provider_preflight(
+        payload: ProviderPreflightRequest, _: None = Depends(require_token)
+    ) -> dict[str, object]:
+        if provider_lane is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="BOOK_OS_DATA_DIR is required for provider preflight",
+            )
+        try:
+            preflight = build_live_probe_preflight(
+                provider_lane,
+                provider_secrets,
+                provider=payload.provider,
+                model=payload.model,
+                config_id=payload.config_id,
+                region=payload.region,
+                roles=tuple(payload.roles),
+                budget=LiveProbeBudget(
+                    payload.max_generation_requests,
+                    payload.max_embedding_requests,
+                    payload.max_total_requests,
+                    payload.max_estimated_cost,
+                    payload.max_authentication_requests,
+                ),
+                estimated_cost=payload.estimated_cost,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
+        return {**preflight.public_plan(), "plan_hash": preflight.plan_hash}
 
     @app.get("/api/projects")
     def list_projects(

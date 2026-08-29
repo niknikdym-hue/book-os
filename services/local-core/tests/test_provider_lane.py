@@ -443,6 +443,22 @@ def test_provider_lane_api_is_authenticated_secret_safe_and_structured(tmp_path:
     assert readiness.json()["implementation_ready"] is True
     assert readiness.json()["live_promotion_required"] is True
     assert readiness.json()["credentials"]["yandex"] in {"AVAILABLE", "NOT AVAILABLE"}
+    preflight = client.post(
+        "/api/provider-lane/preflight",
+        headers=headers,
+        json={
+            "provider": "yandex",
+            "model": "yandexgpt",
+            "config_id": "latest-discovery",
+            "roles": ["WRITER"],
+            "max_generation_requests": 1,
+            "max_embedding_requests": 0,
+            "max_total_requests": 1,
+        },
+    )
+    assert preflight.status_code == 200
+    assert preflight.json()["state"] == "LIVE_PROMOTION_REQUIRED"
+    assert len(preflight.json()["plan_hash"]) == 64
     assert client.get("/api/provider-lane/promotions", headers=headers).status_code == 200
     assert client.get("/api/provider-lane/probes", headers=headers).status_code == 200
     serialized = json.dumps(
