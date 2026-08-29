@@ -25,26 +25,13 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           stage = Path('services/local-core/src/book_os_core/stage_b.py')
           text = stage.read_text()
-          text = text.replace('from datetime import datetime, timedelta, timezone\n', '')
-          text = text.replace('from sqlalchemy import text\n', '')
-          text = text.replace('HealthState = Literal["HEALTHY", "UNAVAILABLE", "UNKNOWN"]\n', '')
-          start = text.index('def _parse_timestamp(')
+          start = text.index('def production_capabilities(')
           end = text.index('\n\ndef production_route(', start)
-          replacement = '''def production_capabilities(\n    lane: ProviderLaneService,\n    *,\n    role: str,\n) -> tuple[ProviderCapability, ...]:\n    \"\"\"Use ProviderLaneService as the single production-health authority.\n\n    It already enforces LIVE-only evidence, exact current matrix_hash, exact\n    provider/model/config/region identity and freshness. Stage B must not\n    reimplement or weaken those semantics.\n    \"\"\"\n\n    return lane.capabilities(role=role)\n'''
-          text = text[:start] + replacement + text[end:]
-          text = re.sub(
-              r'def production_route\(\n    lane: ProviderLaneService,\n    \*,\n    role: str,\n    embeddings: bool = False,\n    now: datetime \| None = None,\n    live_health_ttl: timedelta = timedelta\(hours=24\),\n\) -> Any:\n    candidates = production_capabilities\(\n        lane, role=role, now=now, live_health_ttl=live_health_ttl\n    \)',
-              'def production_route(\n    lane: ProviderLaneService,\n    *,\n    role: str,\n    embeddings: bool = False,\n) -> Any:\n    candidates = production_capabilities(lane, role=role)',
-              text,
-          )
-          text = text.replace('    now: datetime | None = None,\n', '')
-          text = text.replace('    for item in production_capabilities(lane, role=role, now=now):\n', '    for item in production_capabilities(lane, role=role):\n')
-          text = text.replace('            production_capabilities(lane, role=role, now=now),\n', '            production_capabilities(lane, role=role),\n')
-          stage.write_text(text)
+          replacement = '''def production_capabilities(\n    lane: ProviderLaneService,\n    *,\n    role: str,\n    now: datetime | None = None,\n    live_health_ttl: timedelta = timedelta(hours=24),\n) -> tuple[ProviderCapability, ...]:\n    \"\"\"Delegate production health to the canonical ProviderLaneService.\n\n    ProviderLaneService already enforces LIVE-only evidence, exact current\n    matrix_hash, exact provider/model/config/region identity and freshness.\n    Stage B must not reimplement or weaken those semantics. The optional time\n    arguments remain for API compatibility only.\n    \"\"\"\n\n    _ = (now, live_health_ttl)\n    return lane.capabilities(role=role)\n'''
+          stage.write_text(text[:start] + replacement + text[end:])
 
           drafting = Path('services/local-core/src/book_os_core/drafting.py')
           dtext = drafting.read_text()
@@ -53,25 +40,15 @@ jobs:
           if old not in dtext:
               raise SystemExit('drafting model_version target not found')
           drafting.write_text(dtext.replace(old, new, 1))
-
-          test_stage = Path('services/local-core/tests/test_stage_b.py')
-          t = test_stage.read_text()
-          t = t.replace('from datetime import datetime, timedelta, timezone\n', '')
-          t = re.sub(
-              r'    stale = production_capabilities\(\n        service,\n        role="WRITER",\n        now=datetime\.now\(timezone\.utc\),\n        live_health_ttl=timedelta\(hours=24\),\n    \)\n',
-              '    stale = production_capabilities(service, role="WRITER")\n',
-              t,
-          )
-          test_stage.write_text(t)
           PY
           python -m pip install ruff==0.12.11
           cd services/local-core
-          ruff format src/book_os_core/stage_b.py src/book_os_core/drafting.py tests/test_stage_b.py
-          ruff check src/book_os_core/stage_b.py src/book_os_core/drafting.py tests/test_stage_b.py
+          ruff format src/book_os_core/stage_b.py src/book_os_core/drafting.py
+          ruff check src/book_os_core/stage_b.py src/book_os_core/drafting.py
           cd ../..
           rm .github/workflows/m8-stage-b-hardening-once.yml
           git config user.name "BOOK OS Central Brain"
           git config user.email "actions@users.noreply.github.com"
-          git add services/local-core/src/book_os_core/stage_b.py services/local-core/src/book_os_core/drafting.py services/local-core/tests/test_stage_b.py .github/workflows/m8-stage-b-hardening-once.yml
+          git add services/local-core/src/book_os_core/stage_b.py services/local-core/src/book_os_core/drafting.py .github/workflows/m8-stage-b-hardening-once.yml
           git commit -m "M8: preserve exact live health and model provenance"
           git push origin HEAD:brain/task-009-russia-provider-lane
