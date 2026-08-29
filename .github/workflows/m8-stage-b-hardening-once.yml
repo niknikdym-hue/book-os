@@ -31,7 +31,9 @@ jobs:
           start = text.index('def production_capabilities(')
           end = text.index('\n\ndef production_route(', start)
           replacement = '''def production_capabilities(\n    lane: ProviderLaneService,\n    *,\n    role: str,\n    now: datetime | None = None,\n    live_health_ttl: timedelta = timedelta(hours=24),\n) -> tuple[ProviderCapability, ...]:\n    \"\"\"Delegate production health to the canonical ProviderLaneService.\n\n    ProviderLaneService already enforces LIVE-only evidence, exact current\n    matrix_hash, exact provider/model/config/region identity and freshness.\n    Stage B must not reimplement or weaken those semantics. The optional time\n    arguments remain for API compatibility only.\n    \"\"\"\n\n    _ = (now, live_health_ttl)\n    return lane.capabilities(role=role)\n'''
-          stage.write_text(text[:start] + replacement + text[end:])
+          text = text[:start] + replacement + text[end:]
+          text = text.replace('from sqlalchemy import text\n', '')
+          stage.write_text(text)
 
           drafting = Path('services/local-core/src/book_os_core/drafting.py')
           dtext = drafting.read_text()
