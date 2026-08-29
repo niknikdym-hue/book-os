@@ -247,7 +247,7 @@ class LiteraryMasterService:
                             detail=f"Chapter {row['ordinal']} contract status is {contract_head.status}",
                         )
                     )
-                expected_snapshot[("CHAPTER_CONTRACT", contract_head.entity_id)] = (
+                expected_snapshot[("CHAPTER_CONTRACT", chapter_id)] = (
                     contract_head.revision_id,
                     contract_head.revision_hash,
                 )

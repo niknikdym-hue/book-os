@@ -138,7 +138,7 @@ def _build_release_fixture(
             ),
             (
                 "CHAPTER_CONTRACT",
-                chapter_contract.entity_id,
+                chapter_id,
                 chapter_id,
                 None,
                 chapter_contract.revision_id,
