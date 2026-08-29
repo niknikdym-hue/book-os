@@ -1,0 +1,199 @@
+name: M8 BookBench artifact judge once
+
+on:
+  push:
+    branches:
+      - brain/task-009-russia-provider-lane
+    paths:
+      - .github/workflows/m8-bookbench-artifact-judge-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-009-russia-provider-lane
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Add bounded artifact judge and remove helper
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('services/local-core/src/book_os_core/bookbench.py')
+          text = path.read_text()
+          old_signature = '''        latency_ms: int,\n        error: Exception | None,\n    ) -> str:\n        evaluation_id = new_ulid()\n        now = utc_now()\n        completed_at = now\n        input_hash = _sha256(\n            {\n                "snapshot_id": snapshot.snapshot_id,\n                "snapshot_hash": snapshot.snapshot_hash,\n                "check": spec.canonical(),\n                "registry_hash": registry_hash(),\n            }\n        )\n'''
+          new_signature = '''        latency_ms: int,\n        error: Exception | None,\n        input_context: dict[str, Any] | None = None,\n    ) -> str:\n        evaluation_id = new_ulid()\n        now = utc_now()\n        completed_at = now\n        input_material: dict[str, Any] = {\n            "snapshot_id": snapshot.snapshot_id,\n            "snapshot_hash": snapshot.snapshot_hash,\n            "check": spec.canonical(),\n            "registry_hash": registry_hash(),\n        }\n        if input_context is not None:\n            input_material["input_context"] = input_context\n        input_hash = _sha256(input_material)\n'''
+          if old_signature not in text:
+              raise SystemExit('BookBench _persist_run signature target not found')
+          text = text.replace(old_signature, new_signature, 1)
+
+          marker = '''    def run_judge(self, *args: Any, **kwargs: Any) -> EvaluationRunView:\n        return self._model_run(*args, **kwargs)\n'''
+          method = r'''    def run_artifact_judge(
+        self,
+        book_id: str,
+        snapshot_id: str,
+        *,
+        dimension: str,
+        artifact_id: str,
+        artifact_kind: str,
+        artifact_text: str,
+        subject_identity: dict[str, str],
+        provider: str,
+        model: str,
+        config_id: str,
+    ) -> EvaluationRunView:
+        """Judge one bounded non-manuscript artifact using normal BookBench persistence."""
+        if self.model_gateway is None:
+            raise BookBenchGateError("model gateway is not configured")
+        if not artifact_id or not artifact_kind or not artifact_text.strip():
+            raise BookBenchGateError("artifact judge requires bounded artifact identity and text")
+        snapshot = self.get_snapshot(book_id, snapshot_id)
+        targets = self._manuscript_targets(snapshot)
+        if not targets:
+            raise BookBenchGateError("artifact judge requires source manuscript context")
+        judge_identity = {"provider": provider, "model": model, "config_id": config_id}
+        state, release_grade = self.independence(subject_identity, judge_identity)
+        artifact_hash = _sha256({"artifact_kind": artifact_kind, "artifact_text": artifact_text})
+        request = ModelTaskRequest(
+            task_id=new_ulid(),
+            task_type="BOOKBENCH_JUDGE",
+            role="EVALUATOR",
+            provider=provider,
+            model=model,
+            prompt_id=BOOKBENCH_JUDGE_V1.prompt_id,
+            prompt_version=BOOKBENCH_JUDGE_V1.version,
+            prompt_hash=BOOKBENCH_JUDGE_V1.prompt_hash,
+            section_objective=f"Evaluate only {dimension} for {artifact_kind}",
+            authority_inputs=[
+                AuthorityInputRef(
+                    revision_id=t.revision_id,
+                    revision_hash=t.revision_hash,
+                    entity_type=t.target_kind,
+                )
+                for t in targets
+            ],
+            authoritative_context={
+                "snapshot_id": snapshot_id,
+                "dimension": dimension,
+                "artifact_id": artifact_id,
+                "artifact_kind": artifact_kind,
+                "artifact_hash": artifact_hash,
+            },
+            untrusted_context=[artifact_text],
+            task_payload={
+                "dimension": dimension,
+                "artifact_id": artifact_id,
+                "artifact_kind": artifact_kind,
+                "artifact_hash": artifact_hash,
+            },
+            max_output_tokens=800,
+        )
+        started = time.monotonic()
+        response = self.model_gateway.generate(request, BOOKBENCH_JUDGE_V1)
+        parsed = BookBenchJudgeOutput.model_validate(response.output)
+        drafts = [
+            _FindingDraft(
+                targets[0],
+                "LLM_ARTIFACT_JUDGE_FINDING",
+                f.location,
+                {
+                    "evidence": f.evidence,
+                    "release_grade": release_grade,
+                    "artifact_id": artifact_id,
+                    "artifact_kind": artifact_kind,
+                    "artifact_hash": artifact_hash,
+                },
+                "INFO" if parsed.verdict == "PASS" else cast(FindingSeverity, parsed.verdict),
+                parsed.confidence,
+                f.recommended_action,
+            )
+            for f in parsed.findings
+        ]
+        spec = CheckSpec(
+            check_id="llm.bookbench_artifact_judge",
+            version="1.0.0",
+            dimension=cast(Any, dimension),
+            evaluator_class="LLM_JUDGE",
+            description="Versioned bounded artifact judge rubric",
+        )
+        input_context = {
+            "artifact_id": artifact_id,
+            "artifact_kind": artifact_kind,
+            "artifact_hash": artifact_hash,
+        }
+        engine = self._engine(book_id)
+        try:
+            eid = self._persist_run(
+                engine,
+                book_id=book_id,
+                snapshot=snapshot,
+                spec=spec,
+                result=_CheckResult(
+                    drafts,
+                    {"verdict": parsed.verdict},
+                    {
+                        **parsed.model_dump(),
+                        **input_context,
+                        "subject_identity": subject_identity,
+                        "judge_identity": judge_identity,
+                        "independence_state": state,
+                        "release_grade": release_grade,
+                    },
+                ),
+                latency_ms=int((time.monotonic() - started) * 1000),
+                error=None,
+                input_context=input_context,
+            )
+            with engine.begin() as connection:
+                connection.exec_driver_sql("DROP TRIGGER evaluation_runs_no_update")
+                connection.execute(
+                    text(
+                        "UPDATE evaluation_runs SET provider=:p,model=:m,config_id=:c,prompt_id=:pi,"
+                        "prompt_version=:pv,prompt_hash=:ph,independence_state=:i,usage_json=:u "
+                        "WHERE evaluation_id=:e"
+                    ),
+                    {
+                        "p": provider,
+                        "m": model,
+                        "c": config_id,
+                        "pi": BOOKBENCH_JUDGE_V1.prompt_id,
+                        "pv": BOOKBENCH_JUDGE_V1.version,
+                        "ph": BOOKBENCH_JUDGE_V1.prompt_hash,
+                        "i": state,
+                        "u": _canonical_json(response.usage),
+                        "e": eid,
+                    },
+                )
+                connection.exec_driver_sql(
+                    "CREATE TRIGGER evaluation_runs_no_update BEFORE UPDATE ON evaluation_runs "
+                    "BEGIN SELECT RAISE(ABORT, 'evaluation_runs is immutable; create a new evaluation artifact'); END"
+                )
+            return self.get_run(book_id, eid)
+        finally:
+            engine.dispose()
+
+    def run_judge(self, *args: Any, **kwargs: Any) -> EvaluationRunView:
+        return self._model_run(*args, **kwargs)
+'''
+          if marker not in text:
+              raise SystemExit('BookBench run_judge marker not found')
+          path.write_text(text.replace(marker, method, 1))
+          PY
+          python -m pip install ruff==0.12.11
+          cd services/local-core
+          ruff format src/book_os_core/bookbench.py
+          ruff check src/book_os_core/bookbench.py
+          cd ../..
+          rm .github/workflows/m8-bookbench-artifact-judge-once.yml
+          git config user.name "BOOK OS Central Brain"
+          git config user.email "actions@users.noreply.github.com"
+          git add services/local-core/src/book_os_core/bookbench.py .github/workflows/m8-bookbench-artifact-judge-once.yml
+          git commit -m "M8: extend BookBench with bounded artifact judge"
+          git push origin HEAD:brain/task-009-russia-provider-lane
