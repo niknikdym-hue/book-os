@@ -1,0 +1,41 @@
+name: Pilot Vitest diagnostic once
+on:
+  push:
+    branches: [brain/task-011-real-book-pilot]
+    paths:
+      - '.github/workflows/pilot-vitest-diagnostic.yml'
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-011-real-book-pilot
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - run: |
+          cd apps/desktop
+          pnpm install --frozen-lockfile --prod=false
+          set +e
+          pnpm exec vitest run src/PilotPanel.test.tsx --reporter verbose > ../../pilot-vitest-diagnostic.txt 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> ../../pilot-vitest-diagnostic.txt
+      - run: |
+          mkdir -p docs/diagnostics
+          mv pilot-vitest-diagnostic.txt docs/diagnostics/pilot-vitest.txt
+          git config user.name 'BOOK OS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/pilot-vitest-diagnostic.yml
+          git add docs/diagnostics/pilot-vitest.txt
+          git commit -m 'ci: capture remaining PilotPanel Vitest diagnostic'
+          git push origin HEAD:brain/task-011-real-book-pilot
