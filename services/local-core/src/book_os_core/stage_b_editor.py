@@ -227,7 +227,7 @@ def execute_editor_fixture(
                 risks="Synthetic fixture only; proposal remains OPEN and must not be auto-accepted.",
                 actor=f"model:{plan.candidate.provider}",
                 actor_kind="AI",
-                run_id=result.provider_run_id,
+                run_id=None,
             ),
         )
         proposal = editorial.create_manuscript_proposal(
