@@ -171,7 +171,7 @@ class OpenAIPreflightView(BaseModel):
     max_requests: int
     max_input_tokens: int
     max_output_tokens: int
-    max_cost_usd: float | None
+    max_cost_usd: float
     plan_hash: str
     external_calls: int = 0
     paid_calls: int = 0
@@ -544,9 +544,17 @@ class PilotService:
             json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return OpenAIPreflightView(
+            book_id=book_id.strip(),
+            pilot_id=pilot_id.strip(),
             credential_state=credential_state,
+            writer_model=writer_model.strip(),
+            evaluator_model=evaluator_model.strip(),
+            editor_lane=editor_lane.strip(),
+            max_requests=max_requests,
+            max_input_tokens=max_input_tokens,
+            max_output_tokens=max_output_tokens,
+            max_cost_usd=max_cost_usd,
             plan_hash=plan_hash,
-            **plan,
         )
 
     def summary(self, book_id: str, pilot_id: str) -> PilotSummary:
