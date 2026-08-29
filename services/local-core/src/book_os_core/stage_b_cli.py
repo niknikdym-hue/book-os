@@ -11,7 +11,13 @@ from typing import Sequence
 from .db import create_database
 from .provider_lane import ProviderLaneService
 from .secrets import MacOSKeychainSecretStore, SecretStore
-from .stage_b import StageBBudget, StageBCandidate, StageBError, StageBPreflightService
+from .stage_b import (
+    StageBBudget,
+    StageBCandidate,
+    StageBError,
+    StageBPlan,
+    StageBPreflightService,
+)
 from .stage_b_bookbench import execute_writer_bookbench_fixture
 from .stage_b_editor import execute_editor_fixture
 from .stage_b_judge import execute_independent_judges
@@ -111,7 +117,7 @@ def _plan(
     roles: tuple[str, ...],
     *,
     embeddings: bool = False,
-):
+) -> StageBPlan:
     return preflight.build_plan(
         _candidate(args, roles, embeddings=embeddings),
         _budget(args),
@@ -137,7 +143,7 @@ def run(argv: Sequence[str] | None = None, *, secrets: SecretStore | None = None
 
         if args.command == "writer":
             plan = _plan(args, preflight, ("WRITER",), embeddings=bool(args.semantic))
-            evidence = execute_writer_bookbench_fixture(
+            writer_evidence = execute_writer_bookbench_fixture(
                 data_dir=data_dir,
                 preflight=preflight,
                 plan=plan,
@@ -146,12 +152,14 @@ def run(argv: Sequence[str] | None = None, *, secrets: SecretStore | None = None
                 secrets=secret_store,
                 run_semantic=bool(args.semantic),
             )
-            print(json.dumps(evidence.public_dict(), ensure_ascii=False, sort_keys=True))
+            print(
+                json.dumps(writer_evidence.public_dict(), ensure_ascii=False, sort_keys=True)
+            )
             return 0
 
         if args.command == "editor":
             plan = _plan(args, preflight, ("EDITOR",))
-            evidence = execute_editor_fixture(
+            editor_evidence = execute_editor_fixture(
                 data_dir=data_dir,
                 source_book_id=args.source_book_id,
                 preflight=preflight,
@@ -160,11 +168,13 @@ def run(argv: Sequence[str] | None = None, *, secrets: SecretStore | None = None
                 lane=lane,
                 secrets=secret_store,
             )
-            print(json.dumps(evidence.public_dict(), ensure_ascii=False, sort_keys=True))
+            print(
+                json.dumps(editor_evidence.public_dict(), ensure_ascii=False, sort_keys=True)
+            )
             return 0
 
         plan = _plan(args, preflight, ("EVALUATOR",))
-        evidence = execute_independent_judges(
+        judge_evidence = execute_independent_judges(
             data_dir=data_dir,
             book_id=args.book_id,
             snapshot_id=args.snapshot_id,
@@ -180,7 +190,7 @@ def run(argv: Sequence[str] | None = None, *, secrets: SecretStore | None = None
             lane=lane,
             secrets=secret_store,
         )
-        print(json.dumps(evidence.public_dict(), ensure_ascii=False, sort_keys=True))
+        print(json.dumps(judge_evidence.public_dict(), ensure_ascii=False, sort_keys=True))
         return 0
     except (StageBError, ValueError, RuntimeError) as exc:
         print(
