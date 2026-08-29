@@ -1,0 +1,43 @@
+name: Pilot material claim fixture fix once
+on:
+  push:
+    branches: [brain/task-011-real-book-pilot]
+    paths:
+      - '.github/workflows/pilot-material-claim-test-fix.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-011-real-book-pilot
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('services/local-core/tests/test_pilot.py')
+          text = path.read_text()
+          if 'from book_os_core.authority import AuthorityService, new_ulid\n' not in text:
+              text = text.replace(
+                  'from book_os_core.db import create_database\n',
+                  'from book_os_core.authority import AuthorityService, new_ulid\nfrom book_os_core.authority_types import utc_now\nfrom book_os_core.db import create_database\n',
+                  1,
+              )
+          start = text.index('def test_material_claim_must_be_positively_supported_for_go_readiness')
+          replacement = '''def test_material_claim_must_be_positively_supported_for_go_readiness(tmp_path: Path) -> None:\n    data_dir = tmp_path / "data"\n    book_id = _project(data_dir)\n    service = PilotService(data_dir)\n    pilot = service.start(book_id, human_actor="Elena")\n    database = data_dir / "projects" / book_id / "project.sqlite"\n    engine = create_database(database)\n    authority = AuthorityService(engine)\n    manuscript = authority.register_entity(\n        entity_type="manuscript.unit",\n        payload={"text": "Synthetic claim source text."},\n        schema_name="manuscript.unit.section.v0.1",\n        schema_version="1",\n        actor="Owner",\n        initial_status="DRAFT",\n    )\n    chapter_id = new_ulid()\n    unit_id = new_ulid()\n    now = utc_now()\n    try:\n        with engine.begin() as connection:\n            connection.execute(\n                text(\n                    "INSERT INTO chapters("\n                    "chapter_id,book_id,ordinal,working_title,architecture_role,workflow_state,"\n                    "created_at,updated_at) VALUES "\n                    "(:chapter_id,:book_id,1,'Synthetic Chapter','Evidence fixture','CURRENT',:now,:now)"\n                ),\n                {"chapter_id": chapter_id, "book_id": book_id, "now": now},\n            )\n            connection.execute(\n                text(\n                    "INSERT INTO manuscript_units("\n                    "unit_id,book_id,chapter_id,unit_type,ordinal,authority_entity_id,created_at,updated_at) "\n                    "VALUES (:unit_id,:book_id,:chapter_id,'SECTION',1,:entity_id,:now,:now)"\n                ),\n                {\n                    "unit_id": unit_id,\n                    "book_id": book_id,\n                    "chapter_id": chapter_id,\n                    "entity_id": manuscript.entity_id,\n                    "now": now,\n                },\n            )\n            connection.execute(\n                text(\n                    "INSERT INTO claims("\n                    "claim_id,book_id,chapter_id,unit_id,manuscript_revision_id,manuscript_revision_hash,"\n                    "normalized_text,claim_type,materiality,required_evidence_level,verification_state,"\n                    "created_at,updated_at) VALUES "\n                    "(:claim_id,:book_id,:chapter_id,:unit_id,:revision_id,:revision_hash,"\n                    "'Material fact','EMPIRICAL','HIGH','TRACEABLE_SOURCE','UNREVIEWED',:now,:now)"\n                ),\n                {\n                    "claim_id": new_ulid(),\n                    "book_id": book_id,\n                    "chapter_id": chapter_id,\n                    "unit_id": unit_id,\n                    "revision_id": manuscript.revision_id,\n                    "revision_hash": manuscript.revision_hash,\n                    "now": now,\n                },\n            )\n    finally:\n        engine.dispose()\n    summary = service.summary(book_id, pilot.pilot_id)\n    assert summary.material_claims_not_supported == 1\n    assert "MATERIAL_RESEARCH_NOT_SUPPORTED:1" in summary.go_no_go.blockers\n'''
+          path.write_text(text[:start] + replacement)
+          PY
+      - run: pip install ruff==0.12.11
+      - run: ruff format services/local-core/tests/test_pilot.py
+      - run: |
+          git config user.name 'BOOK OS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/pilot-material-claim-test-fix.yml
+          git add services/local-core/tests/test_pilot.py
+          git commit -m 'test: use valid authority fixture for material pilot claim'
+          git push origin HEAD:brain/task-011-real-book-pilot
