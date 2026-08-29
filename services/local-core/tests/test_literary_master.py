@@ -11,6 +11,7 @@ from book_os_core.authority import AuthorityService, new_ulid
 from book_os_core.authority_types import utc_now
 from book_os_core.backup import create_backup
 from book_os_core.bookbench import BookBenchService
+from book_os_core.bookbench_registry import registry_hash
 from book_os_core.db import create_database
 from book_os_core.literary_master import LiteraryMasterGateError, LiteraryMasterService
 
@@ -111,15 +112,17 @@ def _build_release_fixture(
 
         snapshot_id = new_ulid()
         snapshot_hash = "a" * 64
+        snapshot_json = json.dumps({"registry_hash": registry_hash()}, sort_keys=True)
         connection.execute(
             text(
                 "INSERT INTO evaluation_snapshots("
                 "snapshot_id,book_id,scope,snapshot_json,snapshot_hash,created_at) VALUES "
-                "(:snapshot_id,:book_id,'BOOK','{}',:snapshot_hash,:now)"
+                "(:snapshot_id,:book_id,'BOOK',:snapshot_json,:snapshot_hash,:now)"
             ),
             {
                 "snapshot_id": snapshot_id,
                 "book_id": book_id,
+                "snapshot_json": snapshot_json,
                 "snapshot_hash": snapshot_hash,
                 "now": now,
             },
@@ -386,3 +389,35 @@ def test_material_editorial_waiver_requires_human_state_evidence(tmp_path: Path)
     readiness = LiteraryMasterService(data_dir).readiness(book_id)
     assert readiness.ready is False
     assert "EDITORIAL_WAIVER_NOT_HUMAN" in {item.code for item in readiness.blockers}
+
+
+def test_release_gate_rejects_stale_bookbench_registry(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    book_id = _build_release_fixture(data_dir)
+    database = data_dir / "projects" / book_id / "project.sqlite"
+    engine = create_database(database)
+    try:
+        with engine.begin() as connection:
+            snapshot_id = connection.execute(
+                text(
+                    "SELECT snapshot_id FROM evaluation_snapshots "
+                    "WHERE book_id=:book_id ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"book_id": book_id},
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "UPDATE evaluation_snapshots SET snapshot_json=:snapshot_json "
+                    "WHERE snapshot_id=:snapshot_id"
+                ),
+                {
+                    "snapshot_id": snapshot_id,
+                    "snapshot_json": json.dumps({"registry_hash": "superseded-registry"}),
+                },
+            )
+    finally:
+        engine.dispose()
+
+    readiness = LiteraryMasterService(data_dir).readiness(book_id)
+    assert readiness.ready is False
+    assert "BOOKBENCH_REGISTRY_STALE" in {item.code for item in readiness.blockers}

@@ -12,6 +12,7 @@ from sqlalchemy.engine import Engine
 
 from .authority import canonical_json
 from .authority_types import utc_now
+from .bookbench_registry import registry_hash
 from .db import create_database
 from .projects import ProjectService
 
@@ -362,7 +363,7 @@ class LiteraryMasterService:
         snapshot = (
             connection.execute(
                 text(
-                    "SELECT snapshot_id,snapshot_hash,created_at FROM evaluation_snapshots "
+                    "SELECT snapshot_id,snapshot_hash,snapshot_json,created_at FROM evaluation_snapshots "
                     "WHERE book_id=:book_id AND scope='BOOK' ORDER BY created_at DESC,snapshot_id DESC LIMIT 1"
                 ),
                 {"book_id": book_id},
@@ -381,6 +382,14 @@ class LiteraryMasterService:
         else:
             snapshot_id = str(snapshot["snapshot_id"])
             snapshot_hash = str(snapshot["snapshot_hash"])
+            snapshot_manifest = json.loads(str(snapshot["snapshot_json"]))
+            if snapshot_manifest.get("registry_hash") != registry_hash():
+                blockers.append(
+                    ReleaseBlocker(
+                        code="BOOKBENCH_REGISTRY_STALE",
+                        detail="Latest BookBench snapshot uses a superseded check registry",
+                    )
+                )
             actual_snapshot: dict[tuple[str, str], tuple[str, str]] = {}
             for target in connection.execute(
                 text(
