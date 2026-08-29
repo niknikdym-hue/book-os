@@ -8,6 +8,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError
 
+from book_os_core.authority import AuthorityService, new_ulid
+from book_os_core.authority_types import utc_now
 from book_os_core.db import create_database
 from book_os_core.pilot import (
     PilotGateError,
@@ -393,22 +395,60 @@ def test_material_claim_must_be_positively_supported_for_go_readiness(tmp_path: 
     pilot = service.start(book_id, human_actor="Elena")
     database = data_dir / "projects" / book_id / "project.sqlite"
     engine = create_database(database)
+    authority = AuthorityService(engine)
+    manuscript = authority.register_entity(
+        entity_type="manuscript.unit",
+        payload={"text": "Synthetic claim source text."},
+        schema_name="manuscript.unit.section.v0.1",
+        schema_version="1",
+        actor="Owner",
+        initial_status="DRAFT",
+    )
+    chapter_id = new_ulid()
+    unit_id = new_ulid()
+    now = utc_now()
     try:
         with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO chapters("
+                    "chapter_id,book_id,ordinal,working_title,architecture_role,workflow_state,"
+                    "created_at,updated_at) VALUES "
+                    "(:chapter_id,:book_id,1,'Synthetic Chapter','Evidence fixture','CURRENT',:now,:now)"
+                ),
+                {"chapter_id": chapter_id, "book_id": book_id, "now": now},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO manuscript_units("
+                    "unit_id,book_id,chapter_id,unit_type,ordinal,authority_entity_id,created_at,updated_at) "
+                    "VALUES (:unit_id,:book_id,:chapter_id,'SECTION',1,:entity_id,:now,:now)"
+                ),
+                {
+                    "unit_id": unit_id,
+                    "book_id": book_id,
+                    "chapter_id": chapter_id,
+                    "entity_id": manuscript.entity_id,
+                    "now": now,
+                },
+            )
             connection.execute(
                 text(
                     "INSERT INTO claims("
                     "claim_id,book_id,chapter_id,unit_id,manuscript_revision_id,manuscript_revision_hash,"
                     "normalized_text,claim_type,materiality,required_evidence_level,verification_state,"
                     "created_at,updated_at) VALUES "
-                    "(:claim_id,:book_id,'C','U','R',:revision_hash,'Material fact','EMPIRICAL','HIGH',"
-                    "'TRACEABLE_SOURCE','UNREVIEWED',:now,:now)"
+                    "(:claim_id,:book_id,:chapter_id,:unit_id,:revision_id,:revision_hash,"
+                    "'Material fact','EMPIRICAL','HIGH','TRACEABLE_SOURCE','UNREVIEWED',:now,:now)"
                 ),
                 {
-                    "claim_id": "Q" * 26,
+                    "claim_id": new_ulid(),
                     "book_id": book_id,
-                    "revision_hash": "a" * 64,
-                    "now": "9999-01-01T00:00:00Z",
+                    "chapter_id": chapter_id,
+                    "unit_id": unit_id,
+                    "revision_id": manuscript.revision_id,
+                    "revision_hash": manuscript.revision_hash,
+                    "now": now,
                 },
             )
     finally:
