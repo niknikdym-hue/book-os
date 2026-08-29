@@ -4,7 +4,7 @@
 
 Final implementation head before this control-only commit:
 
-`84e7b1f52c0381324af7251d2c9d32f0be13d072`
+`f73869ce6c808ca0450f020589d074890db6fce4`
 
 The offline pilot tooling now includes:
 
@@ -14,11 +14,13 @@ The offline pilot tooling now includes:
 - post-pilot-start BookBench/Literary Master evidence windows;
 - binding between the Literary Master and its exact BookBench snapshot;
 - aggregate model/cost/research/editorial/BookBench/Literary Master evidence;
+- material HIGH/CRITICAL non-AUTHORIAL claims must be positively `SUPPORTED` or `PARTIALLY_SUPPORTED` and have traceable evidence;
 - fail-closed GO/NO-GO readiness;
-- HUMAN-only final GO/CONDITIONAL_GO/NO_GO decision;
+- HUMAN-only final GO/CONDITIONAL_GO/NO_GO decision enforced by service and DB constraints;
 - HUMAN-only meaningful BookBench defect review and literary-quality judgment evidence;
-- HUMAN-only resolution of BLOCKING pilot observations;
-- zero-call OpenAI preflight with explicit writer/evaluator identities, request/token/cost bounds and deterministic secret-safe `plan_hash`;
+- HUMAN-only resolution of BLOCKING pilot observations, enforced by service and DB;
+- full categorized observation workflow including false positives, false negatives, missed errors, model/voice/research failures, list/open/resolve API and desktop controls;
+- zero-call OpenAI preflight bound to exact `book_id + pilot_id`, explicit writer/evaluator identities, positive request/token/cost caps and deterministic secret-safe `plan_hash`;
 - authenticated Local Core API;
 - desktop Real-book Pilot workspace;
 - synthetic backend/API/desktop/temporal-evidence regressions;
