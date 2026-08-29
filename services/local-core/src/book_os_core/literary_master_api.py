@@ -43,9 +43,9 @@ def build_literary_master_router(
     @router.post("/api/projects/{book_id}/literary-masters")
     def create_master(book_id: str, payload: LiteraryMasterCreateRequest) -> dict[str, object]:
         try:
-            return service.create_master(
-                book_id, human_actor=payload.human_actor
-            ).model_dump(mode="json")
+            return service.create_master(book_id, human_actor=payload.human_actor).model_dump(
+                mode="json"
+            )
         except LiteraryMasterError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")

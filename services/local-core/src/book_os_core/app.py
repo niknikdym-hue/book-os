@@ -28,6 +28,7 @@ from .editorial import (
     ProposalCreateRequest,
 )
 from .editorial_diagnostics import EditorialDiagnostics
+from .literary_master_api import build_literary_master_router
 from .memory import (
     BookMemoryService,
     MemoryError,
@@ -201,6 +202,9 @@ def create_app(
             or not hmac.compare_digest(authorization[7:], expected)
         ):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
+
+    if configured_data_dir is not None:
+        app.include_router(build_literary_master_router(configured_data_dir, require_token))
 
     def project_service(_: None = Depends(require_token)) -> ProjectService:
         if projects is None:
