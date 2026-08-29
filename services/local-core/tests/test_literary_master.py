@@ -396,28 +396,27 @@ def test_release_gate_rejects_stale_bookbench_registry(tmp_path: Path) -> None:
     book_id = _build_release_fixture(data_dir)
     database = data_dir / "projects" / book_id / "project.sqlite"
     engine = create_database(database)
+    stale_snapshot_id = new_ulid()
     try:
         with engine.begin() as connection:
-            snapshot_id = connection.execute(
-                text(
-                    "SELECT snapshot_id FROM evaluation_snapshots "
-                    "WHERE book_id=:book_id ORDER BY created_at DESC LIMIT 1"
-                ),
-                {"book_id": book_id},
-            ).scalar_one()
             connection.execute(
                 text(
-                    "UPDATE evaluation_snapshots SET snapshot_json=:snapshot_json "
-                    "WHERE snapshot_id=:snapshot_id"
+                    "INSERT INTO evaluation_snapshots("
+                    "snapshot_id,book_id,scope,snapshot_json,snapshot_hash,created_at) VALUES "
+                    "(:snapshot_id,:book_id,'BOOK',:snapshot_json,:snapshot_hash,:created_at)"
                 ),
                 {
-                    "snapshot_id": snapshot_id,
+                    "snapshot_id": stale_snapshot_id,
+                    "book_id": book_id,
                     "snapshot_json": json.dumps({"registry_hash": "superseded-registry"}),
+                    "snapshot_hash": "f" * 64,
+                    "created_at": "9999-12-31T23:59:59.999999Z",
                 },
             )
     finally:
         engine.dispose()
 
     readiness = LiteraryMasterService(data_dir).readiness(book_id)
+    assert readiness.snapshot_id == stale_snapshot_id
     assert readiness.ready is False
     assert "BOOKBENCH_REGISTRY_STALE" in {item.code for item in readiness.blockers}
