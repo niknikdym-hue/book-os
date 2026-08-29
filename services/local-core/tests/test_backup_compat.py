@@ -10,7 +10,7 @@ from book_os_core.backup import create_backup, restore_backup
 from book_os_core.db import alembic_config, create_database
 
 
-def test_m1_backup_restores_then_migrates_forward_to_m2(tmp_path: Path) -> None:
+def test_m1_backup_restores_then_migrates_forward_to_current(tmp_path: Path) -> None:
     source_path = tmp_path / "m1.sqlite"
     command.upgrade(alembic_config(source_path), "0002")
     engine = create_engine(f"sqlite:///{source_path}")
@@ -25,7 +25,7 @@ def test_m1_backup_restores_then_migrates_forward_to_m2(tmp_path: Path) -> None:
     service = AuthorityService(engine)
     original = service.register_entity(
         entity_type="compat.contract",
-        payload={"title": "M1 authority survives M2"},
+        payload={"title": "M1 authority survives forward migrations"},
         schema_name="compat.contract",
         schema_version="1",
         actor="owner",
@@ -49,6 +49,6 @@ def test_m1_backup_restores_then_migrates_forward_to_m2(tmp_path: Path) -> None:
     with upgraded.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0008"
+            == "0009"
         )
     assert AuthorityService(upgraded).get_head(original.entity_id) == original
