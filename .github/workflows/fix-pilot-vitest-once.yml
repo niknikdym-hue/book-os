@@ -1,0 +1,45 @@
+name: Fix PilotPanel Vitest once
+on:
+  push:
+    branches: [brain/task-011-real-book-pilot]
+    paths:
+      - '.github/workflows/fix-pilot-vitest-once.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-011-real-book-pilot
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop/src/PilotPanel.test.tsx')
+          text = path.read_text()
+          old = 'expect(await screen.findByText(/BOOKBENCH_FALSE_POSITIVE/)).toBeInTheDocument();'
+          new = 'expect(await screen.findByText(/Synthetic false positive/)).toBeInTheDocument();'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one selector to replace, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+          cd apps/desktop
+          pnpm install --frozen-lockfile --prod=false
+          pnpm test
+      - run: |
+          git config user.name 'BOOK OS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/fix-pilot-vitest-once.yml
+          git add apps/desktop/src/PilotPanel.test.tsx
+          git commit -m 'test: disambiguate pilot observation selector'
+          git push origin HEAD:brain/task-011-real-book-pilot
