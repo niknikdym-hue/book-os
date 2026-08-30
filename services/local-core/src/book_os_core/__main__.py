@@ -6,6 +6,16 @@ import uvicorn
 from .app import create_app
 
 
+class ReadyServer(uvicorn.Server):
+    def __init__(self, config: uvicorn.Config, port: int) -> None:
+        super().__init__(config)
+        self._ready_port = port
+
+    async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        await super().startup(sockets=sockets)
+        print(json.dumps({"port": self._ready_port}), flush=True)
+
+
 def main() -> None:
     token = os.environ.get("BOOK_OS_SESSION_TOKEN")
     if not token:
@@ -19,10 +29,11 @@ def main() -> None:
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     listener.listen()
-    print(json.dumps({"port": listener.getsockname()[1]}), flush=True)
-    uvicorn.Server(
-        uvicorn.Config(create_app(token, data_dir), access_log=False, log_level="warning")
-    ).run(sockets=[listener])
+    server = ReadyServer(
+        uvicorn.Config(create_app(token, data_dir), access_log=False, log_level="warning"),
+        listener.getsockname()[1],
+    )
+    server.run(sockets=[listener])
 
 
 if __name__ == "__main__":
