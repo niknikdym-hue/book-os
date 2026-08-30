@@ -16,12 +16,14 @@ def main() -> None:
     data_dir = Path(raw_data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    application = create_app(token, data_dir)
+
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     listener.listen()
     print(json.dumps({"port": listener.getsockname()[1]}), flush=True)
     uvicorn.Server(
-        uvicorn.Config(create_app(token, data_dir), access_log=False, log_level="warning")
+        uvicorn.Config(application, access_log=False, log_level="warning")
     ).run(sockets=[listener])
 
 
