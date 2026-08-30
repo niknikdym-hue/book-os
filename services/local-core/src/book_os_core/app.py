@@ -29,6 +29,7 @@ from .editorial import (
 )
 from .editorial_diagnostics import EditorialDiagnostics
 from .literary_master_api import build_literary_master_router
+from .pilot_api import build_pilot_router
 from .memory import (
     BookMemoryService,
     MemoryError,
@@ -205,6 +206,7 @@ def create_app(
 
     if configured_data_dir is not None:
         app.include_router(build_literary_master_router(configured_data_dir, require_token))
+        app.include_router(build_pilot_router(configured_data_dir, require_token))
 
     def project_service(_: None = Depends(require_token)) -> ProjectService:
         if projects is None:

@@ -49,6 +49,6 @@ def test_m1_backup_restores_then_migrates_forward_to_current(tmp_path: Path) -> 
     with upgraded.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0009"
+            == "0010"
         )
     assert AuthorityService(upgraded).get_head(original.entity_id) == original
