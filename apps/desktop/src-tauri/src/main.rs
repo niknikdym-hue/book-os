@@ -6,6 +6,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 struct Core {
@@ -26,6 +27,25 @@ impl Core {
 impl Drop for Core {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+#[derive(Default)]
+struct CoreState {
+    core: Mutex<Option<Core>>,
+    error: Mutex<Option<String>>,
+}
+impl CoreState {
+    fn error_message(&self) -> Option<String> {
+        self.error.lock().ok().and_then(|error| error.clone())
+    }
+
+    fn stop(&self) {
+        if let Ok(core) = self.core.lock() {
+            if let Some(core) = core.as_ref() {
+                core.stop();
+            }
+        }
     }
 }
 
@@ -117,8 +137,7 @@ fn json_request_body(body: Option<Value>) -> Result<String, String> {
     serde_json::to_string(&body.unwrap_or(Value::Null)).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn core_health(core: tauri::State<'_, Core>) -> Result<Value, String> {
+fn request_core_health(core: &Core) -> Result<Value, String> {
     let url = format!("http://127.0.0.1:{}/health", core.port);
     let response = ureq::get(&url)
         .header("Authorization", &format!("Bearer {}", core.token))
@@ -128,9 +147,42 @@ fn core_health(core: tauri::State<'_, Core>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn core_api(request: CoreApiRequest, core: tauri::State<'_, Core>) -> Result<Value, String> {
+async fn core_health(state: tauri::State<'_, CoreState>) -> Result<Value, String> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        if let Some(error) = state.error_message() {
+            return Err(format!("local core failed to start: {error}"));
+        }
+        {
+            let core = state
+                .core
+                .lock()
+                .map_err(|_| "local core state lock poisoned".to_string())?;
+            if let Some(core) = core.as_ref() {
+                return request_core_health(core);
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err("local core startup timed out after 30 seconds".into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[tauri::command]
+fn core_api(request: CoreApiRequest, state: tauri::State<'_, CoreState>) -> Result<Value, String> {
     let method = request.method.to_ascii_uppercase();
     validate_core_api_request(&method, &request.path)?;
+    let core = state
+        .core
+        .lock()
+        .map_err(|_| "local core state lock poisoned".to_string())?;
+    let core = core.as_ref().ok_or_else(|| {
+        state
+            .error_message()
+            .map(|error| format!("local core failed to start: {error}"))
+            .unwrap_or_else(|| "local core is still starting".to_string())
+    })?;
     let url = format!("http://127.0.0.1:{}{}", core.port, request.path);
     let authorization = format!("Bearer {}", core.token);
     let response = match method.as_str() {
@@ -156,14 +208,32 @@ fn main() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            app.manage(launch(&data_dir).map_err(std::io::Error::other)?);
+            app.manage(CoreState::default());
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let result = launch(&data_dir);
+                if let Some(state) = app_handle.try_state::<CoreState>() {
+                    match result {
+                        Ok(core) => {
+                            if let Ok(mut managed_core) = state.core.lock() {
+                                *managed_core = Some(core);
+                            }
+                        }
+                        Err(error) => {
+                            if let Ok(mut managed_error) = state.error.lock() {
+                                *managed_error = Some(error);
+                            }
+                        }
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![core_health, core_api])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                if let Some(core) = window.app_handle().try_state::<Core>() {
-                    core.stop();
+                if let Some(state) = window.app_handle().try_state::<CoreState>() {
+                    state.stop();
                 }
             }
         })
@@ -175,8 +245,8 @@ fn main() {
             event,
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
         ) {
-            if let Some(core) = app_handle.try_state::<Core>() {
-                core.stop();
+            if let Some(state) = app_handle.try_state::<CoreState>() {
+                state.stop();
             }
         }
     });
