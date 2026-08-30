@@ -213,7 +213,7 @@ test("resolves an open categorized observation as HUMAN", async () => {
   });
 
   render(<PilotPanel project={project} />);
-  expect(await screen.findByText(/BOOKBENCH_FALSE_POSITIVE/)).toBeInTheDocument();
+  expect(await screen.findByText(/Synthetic false positive/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Human actor"), { target: { value: "Elena" } });
   fireEvent.change(screen.getByLabelText("Human resolution reason"), {
     target: { value: "Reviewed and dismissed." },
