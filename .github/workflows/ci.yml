@@ -36,6 +36,56 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --locked
       - run: cargo check --locked
+  macos-native-launch:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/desktop/pnpm-lock.yaml }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare local Python Core
+        run: |
+          python3.12 -m venv services/local-core/.venv
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
+      - name: Build production frontend
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile --prod=false
+          pnpm build
+      - name: Build native release binary
+        working-directory: apps/desktop/src-tauri
+        run: cargo build --release --locked
+      - name: Launch production app and verify Desktop bundle
+        working-directory: apps/desktop/src-tauri
+        env:
+          RUST_BACKTRACE: '1'
+        run: |
+          LOG="$RUNNER_TEMP/book-os-native-launch.log"
+          target/release/book-os-desktop >"$LOG" 2>&1 &
+          PID=$!
+          cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          for _ in {1..40}; do
+            if [ -x "$HOME/Desktop/BOOK OS.app/Contents/MacOS/BOOK OS" ]; then
+              break
+            fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              cat "$LOG"
+              echo "BOOK OS exited before installing the Desktop app"
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          test -x "$HOME/Desktop/BOOK OS.app/Contents/MacOS/BOOK OS"
+          /usr/bin/codesign --verify --deep --strict "$HOME/Desktop/BOOK OS.app"
+          /usr/bin/plutil -lint "$HOME/Desktop/BOOK OS.app/Contents/Info.plist"
+          grep -F "BOOK OS desktop app ready:" "$LOG"
   secret-scan:
     runs-on: ubuntu-latest
     permissions:
