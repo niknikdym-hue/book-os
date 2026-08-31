@@ -7,8 +7,6 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-# Import installs the deterministic prose anti-junk extension into the existing BookBenchService.
-from . import bookbench_anti_junk as _bookbench_anti_junk  # noqa: F401
 from .anti_junk import AntiJunkService
 from .launch_api import build_launch_router
 from .model_gateway import ModelGateway, OpenAIResponsesAdapter

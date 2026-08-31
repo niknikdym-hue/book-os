@@ -250,4 +250,4 @@ class AntiJunkService:
                         "match": match.group(0),
                     }
                 )
-        return sorted(findings, key=lambda item: (int(item["start"]), str(item["entry_id"])))
+        return sorted(findings, key=lambda item: (int(str(item["start"])), str(item["entry_id"])))

@@ -346,27 +346,29 @@ class PlanningService:
         )
         try:
             proposal = BookArchitectureProposalOutput.model_validate(raw)
-            payload = BookArchitecturePayload(
-                parts=[
-                    {
-                        "title": part.title,
-                        "purpose": part.purpose,
-                        "chapters": [
-                            {
-                                **ArchitectureChapterProposalOutput.model_validate(
-                                    chapter
-                                ).model_dump(mode="json"),
-                                "chapter_id": None,
-                            }
-                            for chapter in part.chapters
-                        ],
-                    }
-                    for part in proposal.parts
-                ],
-                intellectual_progression=proposal.intellectual_progression,
-                concept_allocation=proposal.concept_allocation,
-                promise_thesis_coverage=proposal.promise_thesis_coverage,
-                major_transitions=proposal.major_transitions,
+            payload = BookArchitecturePayload.model_validate(
+                {
+                    "parts": [
+                        {
+                            "title": part.title,
+                            "purpose": part.purpose,
+                            "chapters": [
+                                {
+                                    **ArchitectureChapterProposalOutput.model_validate(
+                                        chapter
+                                    ).model_dump(mode="json"),
+                                    "chapter_id": None,
+                                }
+                                for chapter in part.chapters
+                            ],
+                        }
+                        for part in proposal.parts
+                    ],
+                    "intellectual_progression": proposal.intellectual_progression,
+                    "concept_allocation": proposal.concept_allocation,
+                    "promise_thesis_coverage": proposal.promise_thesis_coverage,
+                    "major_transitions": proposal.major_transitions,
+                }
             )
         except ValidationError as exc:
             raise ModelOutputError(
