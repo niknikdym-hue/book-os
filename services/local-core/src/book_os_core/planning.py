@@ -282,7 +282,9 @@ class PlanningService:
             proposal = BookContractProposalOutput.model_validate(raw)
             payload = BookContractPayload.model_validate(proposal.model_dump(mode="json"))
         except ValidationError as exc:
-            raise ModelOutputError("Book Contract proposal failed project schema validation") from exc
+            raise ModelOutputError(
+                "Book Contract proposal failed project schema validation"
+            ) from exc
         updated = self.projects.save_book_contract(book_id, payload)
         return PlanningProposalView(
             run_id=run_id,
@@ -309,7 +311,9 @@ class PlanningService:
         authority_inputs = [
             AuthorityInputRef(
                 revision_id=contract.authority_revision_id,
-                revision_hash=contract.revision_id and contract.revision_id and contract.revision_id,
+                revision_hash=contract.revision_id
+                and contract.revision_id
+                and contract.revision_id,
                 entity_type="book.contract",
             )
         ]
@@ -354,9 +358,9 @@ class PlanningService:
                         "purpose": part.purpose,
                         "chapters": [
                             {
-                                **ArchitectureChapterProposalOutput.model_validate(chapter).model_dump(
-                                    mode="json"
-                                ),
+                                **ArchitectureChapterProposalOutput.model_validate(
+                                    chapter
+                                ).model_dump(mode="json"),
                                 "chapter_id": None,
                             }
                             for chapter in part.chapters
@@ -370,7 +374,9 @@ class PlanningService:
                 major_transitions=proposal.major_transitions,
             )
         except ValidationError as exc:
-            raise ModelOutputError("Architecture proposal failed project schema validation") from exc
+            raise ModelOutputError(
+                "Architecture proposal failed project schema validation"
+            ) from exc
         updated = self.projects.save_architecture(book_id, payload)
         return PlanningProposalView(
             run_id=run_id,
@@ -393,9 +399,13 @@ class PlanningService:
         contract = project.book_contract
         architecture = project.architecture
         if contract is None or contract.authority_status not in {"APPROVED", "LOCKED"}:
-            raise PlanningGateError("Book Contract must be approved before Chapter Contract planning")
+            raise PlanningGateError(
+                "Book Contract must be approved before Chapter Contract planning"
+            )
         if architecture is None or architecture.authority_status not in {"APPROVED", "LOCKED"}:
-            raise PlanningGateError("Architecture must be approved before Chapter Contract planning")
+            raise PlanningGateError(
+                "Architecture must be approved before Chapter Contract planning"
+            )
         chapter = next((item for item in project.chapters if item.chapter_id == chapter_id), None)
         if chapter is None:
             raise PlanningGateError("chapter is not in the current approved architecture")
@@ -451,7 +461,9 @@ class PlanningService:
             proposal = ChapterContractProposalOutput.model_validate(raw)
             payload = ChapterContractPayload.model_validate(proposal.model_dump(mode="json"))
         except ValidationError as exc:
-            raise ModelOutputError("Chapter Contract proposal failed project schema validation") from exc
+            raise ModelOutputError(
+                "Chapter Contract proposal failed project schema validation"
+            ) from exc
         updated = self.projects.save_chapter_contract(book_id, chapter_id, payload)
         return PlanningProposalView(
             run_id=run_id,

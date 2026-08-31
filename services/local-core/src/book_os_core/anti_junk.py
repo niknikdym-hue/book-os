@@ -169,7 +169,9 @@ class AntiJunkService:
         if not normalized:
             raise AntiJunkError("anti-junk entry must not be blank")
         existing = self.list_entries()
-        duplicate = next((entry for entry in existing if _normalize(entry.value) == normalized), None)
+        duplicate = next(
+            (entry for entry in existing if _normalize(entry.value) == normalized), None
+        )
         if duplicate is not None:
             return duplicate
         entry = AntiJunkEntry(

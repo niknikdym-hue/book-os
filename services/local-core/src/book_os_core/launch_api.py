@@ -55,7 +55,9 @@ def build_launch_router(
             keychain.set_secret("openai_api_key", payload.api_key)
             keychain.get_secret("openai_api_key")
         except (SecretWriteError, SecretNotFound) as exc:
-            raise HTTPException(status_code=503, detail="Не удалось сохранить ключ в macOS Keychain") from exc
+            raise HTTPException(
+                status_code=503, detail="Не удалось сохранить ключ в macOS Keychain"
+            ) from exc
         return {
             "openai_credential_state": "AVAILABLE",
             "secret_returned": False,

@@ -85,9 +85,7 @@ def install_anti_junk_bookbench_extension() -> None:
             return _check_prose_anti_junk(self, snapshot)
         return original_execute(self, spec, snapshot)
 
-    def suite(
-        self: BookBenchService, book_id: str, snapshot_id: str
-    ) -> list[EvaluationRunView]:
+    def suite(self: BookBenchService, book_id: str, snapshot_id: str) -> list[EvaluationRunView]:
         runs = original_suite(self, book_id, snapshot_id)
         runs.append(self.run_check(book_id, snapshot_id, "deterministic.prose_anti_junk"))
         return runs
