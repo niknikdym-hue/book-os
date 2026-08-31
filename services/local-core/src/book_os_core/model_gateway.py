@@ -34,6 +34,55 @@ class SectionDraftOutput(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class BookContractProposalOutput(BaseModel):
+    reader: str = Field(min_length=1)
+    reader_problem: str = Field(min_length=1)
+    central_promise: str = Field(min_length=1)
+    central_thesis: str = Field(min_length=1)
+    unique_angle: str = Field(min_length=1)
+    reader_trajectory: str = Field(min_length=1)
+    explicit_exclusions: list[str] = Field(min_length=1)
+    evidence_policy: str = Field(min_length=1)
+    voice_genre_constraints: str = Field(min_length=1)
+    readiness_criteria: list[str] = Field(min_length=1)
+
+
+class ArchitectureChapterProposalOutput(BaseModel):
+    title: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    new_contribution: str = Field(min_length=1)
+    dependencies: list[str] = Field(default_factory=list)
+    transition: str = ""
+
+
+class ArchitecturePartProposalOutput(BaseModel):
+    title: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    chapters: list[ArchitectureChapterProposalOutput] = Field(min_length=1)
+
+
+class BookArchitectureProposalOutput(BaseModel):
+    parts: list[ArchitecturePartProposalOutput] = Field(min_length=1)
+    intellectual_progression: str = Field(min_length=1)
+    concept_allocation: str = Field(min_length=1)
+    promise_thesis_coverage: str = Field(min_length=1)
+    major_transitions: str = Field(min_length=1)
+
+
+class ChapterContractProposalOutput(BaseModel):
+    chapter_purpose: str = Field(min_length=1)
+    new_contribution: str = Field(min_length=1)
+    reader_prior_state: str = Field(min_length=1)
+    reader_after_state: str = Field(min_length=1)
+    required_claims: list[str] = Field(min_length=1)
+    required_or_permitted_research: list[str] = Field(min_length=1)
+    required_scenes_examples: list[str] = Field(min_length=1)
+    reserved_elsewhere: list[str] = Field(default_factory=list)
+    opening_requirements: str = Field(min_length=1)
+    ending_requirements: str = Field(min_length=1)
+    transition_requirements: str = Field(min_length=1)
+
+
 class JudgeFindingOutput(BaseModel):
     location: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
@@ -57,15 +106,22 @@ class BookBenchPairwiseOutput(BaseModel):
 
 class ModelTaskRequest(BaseModel):
     task_id: str
-    task_type: Literal["SECTION_DRAFT", "BOOKBENCH_JUDGE", "BOOKBENCH_PAIRWISE"]
-    role: Literal["WRITER", "EVALUATOR"]
+    task_type: Literal[
+        "SECTION_DRAFT",
+        "BOOK_CONTRACT_PROPOSAL",
+        "ARCHITECTURE_PROPOSAL",
+        "CHAPTER_CONTRACT_PROPOSAL",
+        "BOOKBENCH_JUDGE",
+        "BOOKBENCH_PAIRWISE",
+    ]
+    role: Literal["WRITER", "PLANNER", "EVALUATOR"]
     provider: str
     model: str
     prompt_id: str
     prompt_version: str
     prompt_hash: str
     section_objective: str = Field(min_length=1, max_length=4000)
-    authority_inputs: list[AuthorityInputRef] = Field(min_length=1)
+    authority_inputs: list[AuthorityInputRef] = Field(default_factory=list)
     authoritative_context: dict[str, Any]
     untrusted_context: list[str] = Field(default_factory=list)
     task_payload: dict[str, Any] = Field(default_factory=dict)
@@ -120,6 +176,74 @@ class DeterministicFakeAdapter:
                 provider_run_id="fake-malformed",
                 output={"notes": ["missing required text"]},
                 usage={"input_tokens": 10, "output_tokens": 2},
+            )
+        if request.task_type == "BOOK_CONTRACT_PROPOSAL":
+            return ModelAdapterResult(
+                provider_run_id="fake-book-contract",
+                output={
+                    "reader": "Владелец растущей компании",
+                    "reader_problem": "Компания зависит от постоянных решений владельца",
+                    "central_promise": "Понять и перестроить критические зависимости управления",
+                    "central_thesis": "Качество управления растёт, когда права решений и контроль становятся явной системой",
+                    "unique_angle": "Разбирать зависимость бизнеса от владельца как архитектурную проблему",
+                    "reader_trajectory": "От личного контроля к управляемой системе решений",
+                    "explicit_exclusions": ["Не тайм-менеджмент", "Не мотивационная книга"],
+                    "evidence_policy": "Материальные утверждения требуют проверяемых источников",
+                    "voice_genre_constraints": "Точный деловой нон-фикшен без рекламных клише",
+                    "readiness_criteria": ["Читатель может диагностировать зависимости", "Рекомендации привязаны к механизмам"],
+                },
+                usage={"input_tokens": 120, "output_tokens": 180},
+            )
+        if request.task_type == "ARCHITECTURE_PROPOSAL":
+            return ModelAdapterResult(
+                provider_run_id="fake-architecture",
+                output={
+                    "parts": [
+                        {
+                            "title": "Часть I",
+                            "purpose": "Диагностировать механизм зависимости",
+                            "chapters": [
+                                {
+                                    "title": "Где застревают решения",
+                                    "purpose": "Показать реальную точку ограничения",
+                                    "new_contribution": "Карта возврата решений к владельцу",
+                                    "dependencies": [],
+                                    "transition": "От симптомов к устройству контроля",
+                                },
+                                {
+                                    "title": "Как устроить права решений",
+                                    "purpose": "Перенести часть контроля в систему",
+                                    "new_contribution": "Практическая модель прав решений",
+                                    "dependencies": [],
+                                    "transition": "От модели к внедрению",
+                                },
+                            ],
+                        }
+                    ],
+                    "intellectual_progression": "Диагностика → механизм → перестройка → проверка",
+                    "concept_allocation": "Каждая глава владеет отдельным механизмом",
+                    "promise_thesis_coverage": "Архитектура последовательно выполняет обещание контракта",
+                    "major_transitions": "Каждый переход закрывает один вопрос и открывает следующий",
+                },
+                usage={"input_tokens": 180, "output_tokens": 260},
+            )
+        if request.task_type == "CHAPTER_CONTRACT_PROPOSAL":
+            return ModelAdapterResult(
+                provider_run_id="fake-chapter-contract",
+                output={
+                    "chapter_purpose": "Выполнить уникальную функцию выбранной главы",
+                    "new_contribution": "Добавить один новый механизм, не повторяя другие главы",
+                    "reader_prior_state": "Читатель видит симптомы, но не умеет диагностировать механизм",
+                    "reader_after_state": "Читатель может применить механизм к своей компании",
+                    "required_claims": ["Ключевой механизм главы должен быть сформулирован и проверяем"],
+                    "required_or_permitted_research": ["Проверить материальные организационные утверждения"],
+                    "required_scenes_examples": ["Один конкретный управленческий эпизод или кейс"],
+                    "reserved_elsewhere": ["Не повторять материал соседних глав"],
+                    "opening_requirements": "Начать с конкретной наблюдаемой ситуации",
+                    "ending_requirements": "Закончить изменившейся моделью читателя",
+                    "transition_requirements": "Передать следующий нерешённый вопрос следующей главе",
+                },
+                usage={"input_tokens": 160, "output_tokens": 220},
             )
         if request.task_type == "BOOKBENCH_JUDGE":
             return ModelAdapterResult(
@@ -178,19 +302,17 @@ class OpenAIResponsesAdapter:
 
     @staticmethod
     def output_schema(task_type: str = "SECTION_DRAFT") -> dict[str, Any]:
+        if task_type == "BOOK_CONTRACT_PROPOSAL":
+            return BookContractProposalOutput.model_json_schema()
+        if task_type == "ARCHITECTURE_PROPOSAL":
+            return BookArchitectureProposalOutput.model_json_schema()
+        if task_type == "CHAPTER_CONTRACT_PROPOSAL":
+            return ChapterContractProposalOutput.model_json_schema()
         if task_type == "BOOKBENCH_JUDGE":
             return BookBenchJudgeOutput.model_json_schema()
         if task_type == "BOOKBENCH_PAIRWISE":
             return BookBenchPairwiseOutput.model_json_schema()
-        return {
-            "type": "object",
-            "properties": {
-                "text": {"type": "string", "minLength": 1},
-                "notes": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["text", "notes"],
-            "additionalProperties": False,
-        }
+        return SectionDraftOutput.model_json_schema()
 
     def _body(self, request: ModelTaskRequest, prompt: PromptTemplate) -> dict[str, Any]:
         user_payload = {
@@ -267,7 +389,13 @@ class OpenAIResponsesAdapter:
             raise ModelOutputError("OpenAI structured output must be an object")
         try:
             output_type: type[BaseModel] = SectionDraftOutput
-            if request.task_type == "BOOKBENCH_JUDGE":
+            if request.task_type == "BOOK_CONTRACT_PROPOSAL":
+                output_type = BookContractProposalOutput
+            elif request.task_type == "ARCHITECTURE_PROPOSAL":
+                output_type = BookArchitectureProposalOutput
+            elif request.task_type == "CHAPTER_CONTRACT_PROPOSAL":
+                output_type = ChapterContractProposalOutput
+            elif request.task_type == "BOOKBENCH_JUDGE":
                 output_type = BookBenchJudgeOutput
             elif request.task_type == "BOOKBENCH_PAIRWISE":
                 output_type = BookBenchPairwiseOutput
