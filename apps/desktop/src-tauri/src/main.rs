@@ -93,6 +93,10 @@ fn resolve_python(value: &str, manifest_dir: &Path) -> PathBuf {
     }
 }
 
+fn default_python(manifest_dir: &Path) -> PathBuf {
+    resolve_python("../../services/local-core/.venv/bin/python", manifest_dir)
+}
+
 fn validate_core_api_request(method: &str, path: &str) -> Result<(), String> {
     if !matches!(method, "GET" | "POST" | "PUT") {
         return Err("unsupported local-core API method".into());
@@ -108,20 +112,95 @@ fn validate_core_api_request(method: &str, path: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn desktop_app_bundle() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME").ok_or("HOME is unavailable")?;
+    Ok(PathBuf::from(home).join("Desktop").join("BOOK OS.app"))
+}
+
+#[cfg(target_os = "macos")]
+fn install_desktop_app() -> Result<Option<PathBuf>, String> {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    if cfg!(debug_assertions) {
+        return Ok(None);
+    }
+
+    let app_dir = desktop_app_bundle()?;
+    let contents_dir = app_dir.join("Contents");
+    let macos_dir = contents_dir.join("MacOS");
+    let resources_dir = contents_dir.join("Resources");
+    let installed_executable = macos_dir.join("BOOK OS");
+    let current_executable = std::env::current_exe().map_err(|error| error.to_string())?;
+
+    if current_executable == installed_executable {
+        return Ok(Some(app_dir));
+    }
+
+    fs::create_dir_all(&macos_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&resources_dir).map_err(|error| error.to_string())?;
+    fs::copy(&current_executable, &installed_executable).map_err(|error| error.to_string())?;
+
+    let mut permissions = fs::metadata(&installed_executable)
+        .map_err(|error| error.to_string())?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&installed_executable, permissions).map_err(|error| error.to_string())?;
+
+    let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key><string>BOOK OS</string>
+  <key>CFBundleExecutable</key><string>BOOK OS</string>
+  <key>CFBundleIdentifier</key><string>com.bookos.desktop</string>
+  <key>CFBundleName</key><string>BOOK OS</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+"#;
+    fs::write(contents_dir.join("Info.plist"), plist).map_err(|error| error.to_string())?;
+    fs::write(contents_dir.join("PkgInfo"), "APPL????\n").map_err(|error| error.to_string())?;
+
+    let _ = Command::new("/usr/bin/xattr")
+        .args(["-dr", "com.apple.quarantine"])
+        .arg(&app_dir)
+        .status();
+
+    let status = Command::new("/usr/bin/codesign")
+        .args(["--force", "--deep", "--sign", "-"])
+        .arg(&app_dir)
+        .status()
+        .map_err(|error| format!("unable to invoke codesign: {error}"))?;
+    if !status.success() {
+        return Err(format!("ad-hoc codesign failed with status {status}"));
+    }
+
+    Ok(Some(app_dir))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn install_desktop_app() -> Result<Option<PathBuf>, String> {
+    Ok(None)
+}
+
 fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>), String> {
     let token: String = rng()
         .sample_iter(&Alphanumeric)
         .take(48)
         .map(char::from)
         .collect();
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let python = std::env::var("BOOK_OS_PYTHON")
-        .map(|value| resolve_python(&value, Path::new(env!("CARGO_MANIFEST_DIR"))))
-        .unwrap_or_else(|_| PathBuf::from("python3"));
+        .map(|value| resolve_python(&value, manifest_dir))
+        .unwrap_or_else(|_| default_python(manifest_dir));
     let source_path = std::env::var("BOOK_OS_CORE_PYTHONPATH").unwrap_or_else(|_| {
-        format!(
-            "{}/../../../services/local-core/src",
-            env!("CARGO_MANIFEST_DIR")
-        )
+        format!("{}/../../../services/local-core/src", env!("CARGO_MANIFEST_DIR"))
     });
     let mut child = Command::new(python)
         .args(["-m", "book_os_core"])
@@ -231,6 +310,12 @@ fn core_api(request: CoreApiRequest, state: tauri::State<'_, CoreState>) -> Resu
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
+            match install_desktop_app() {
+                Ok(Some(path)) => println!("BOOK OS desktop app ready: {}", path.display()),
+                Ok(None) => {}
+                Err(error) => eprintln!("BOOK OS desktop app installation failed: {error}"),
+            }
+
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(CoreState::default());
@@ -282,7 +367,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{json_request_body, resolve_python, validate_core_api_request};
+    use super::{default_python, json_request_body, resolve_python, validate_core_api_request};
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -292,6 +377,18 @@ mod tests {
 
         assert_eq!(
             resolve_python("../../services/local-core/.venv/bin/python", manifest_dir),
+            PathBuf::from(
+                "/checkout/book-os/apps/desktop/../../services/local-core/.venv/bin/python"
+            )
+        );
+    }
+
+    #[test]
+    fn defaults_to_the_project_local_python_environment() {
+        let manifest_dir = Path::new("/checkout/book-os/apps/desktop/src-tauri");
+
+        assert_eq!(
+            default_python(manifest_dir),
             PathBuf::from(
                 "/checkout/book-os/apps/desktop/../../services/local-core/.venv/bin/python"
             )
