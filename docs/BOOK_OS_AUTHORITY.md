@@ -1,8 +1,8 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.3.0  
-**Date:** 2026-08-22  
+**Version:** 0.4.0  
+**Date:** 2026-08-31  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -14,7 +14,15 @@ Chats are disposable working sessions and may contain drafts, hypotheses, reject
 
 Accepted decisions are not silently overwritten. A changed decision is versioned and/or explicitly superseded; Git history and decision records preserve prior state.
 
-This v0.3 consolidation supersedes the formatting/order of earlier authority-file versions while preserving their accepted product decisions.
+This v0.4 consolidation preserves accepted product decisions while incorporating later explicit Owner decisions and accepted implementation state.
+
+### Current supersession rule
+
+The approved Owner decision `docs/decisions/2026-08-29-global-openai-first.md` explicitly SUPERSEDES all prior requirements that BOOK OS must prove a Russia/no-VPN runtime lane, Yandex/GigaChat production promotion, or Russia-specific provider availability before the current MVP/pilot GO/NO-GO.
+
+Therefore any older authority/spec/task text that still describes that regional lane as a current gate is historical only and must not be used to restart former M8 / PR #12.
+
+`docs/PROJECT_STATE.md` is the authority for the exact accepted checkpoint and next permitted action.
 
 ## 1. Product identity — ACCEPTED
 
@@ -136,13 +144,15 @@ AI roles may research, draft, diagnose, critique, evaluate and propose. They do 
 
 ## 9. Model principle — ACCEPTED
 
-BOOK OS is model-agnostic.
+BOOK OS is model-agnostic at the architecture level.
 
-`Model Gateway` assigns providers/models to roles according to internal BOOK OS evals plus region, privacy, capability, cost, latency and availability constraints.
+`Model Gateway` assigns providers/models to roles according to internal BOOK OS evals plus privacy, capability, cost, latency, availability and any applicable contractual constraints.
 
 OpenAI, Anthropic, Google, Yandex, GigaChat, open-weight/self-hosted or future providers are replaceable execution resources. Model brand/version is never architectural authority.
 
-Critical workflows should avoid a single self-validating loop in which one model writes, judges and approves its own work.
+For the **current MVP and first real-book pilot**, OpenAI is the primary intelligence lane under the approved 2026-08-29 Owner decision. No backup provider and no Yandex/GigaChat promotion are required before that pilot.
+
+Critical workflows should avoid a single self-validating loop in which one model writes, judges and approves its own work. Human authority remains mandatory regardless of provider.
 
 ## 10. Book Contract — ACCEPTED
 
@@ -263,29 +273,35 @@ Accepted technical baseline is in `TECHNICAL_ARCHITECTURE_v0.1.md`:
 - provider/research adapters;
 - no heavy distributed infrastructure in v0.1 without measured need.
 
+Current accepted runtime also includes macOS launch hardening from Task 012: Local Core startup may not block first window rendering; the Python child remains owned through startup/shutdown; readiness is emitted only after Uvicorn startup.
+
 ## 20. No-chat dependency — ACCEPTED
 
 Project development: GitHub `main` + authority/spec/state/tasks/tests/evals is recoverable without chat history.
 
 Product: durable book state, tasks, outputs, decisions and authority are first-class local objects. A conversational interface may exist, but conversation transcript is never required hidden state.
 
-A successor must be able to recover from `README → PROJECT_STATE → DESIGN_INDEX → active task/HEAD`.
+A successor must be able to recover from `README → PROJECT_STATE → DESIGN_INDEX → current decision/task/HEAD`.
 
-## 21. Regional access / Russia — ACCEPTED
+## 21. Regional access / Russia — SUPERSEDED HISTORICAL REQUIREMENT
 
-Core BOOK OS use for a user in Russia must not require:
+Earlier BOOK OS authority required a Russia/no-VPN runtime path and prohibited mandatory dependence on providers unavailable for Russian production use. That requirement led to former M8 / Task 009 and PR #12.
 
-- VPN;
-- a personal ChatGPT/Claude/Gemini subscription;
-- a personal foreign AI vendor API key.
+**This requirement is no longer current product authority.**
 
-BOOK OS must not circumvent provider regional/contractual restrictions.
+The Owner decision dated 2026-08-29 (`docs/decisions/2026-08-29-global-openai-first.md`) explicitly SUPERSEDES the Russia/no-VPN runtime milestone and removes it from the current product program rather than deferring it.
 
-Provider Gateway selects only permitted paths for the relevant region. At least one region-compliant provider/self-hosted route must meet BOOK OS minimum quality before product can be declared Russia-ready.
+Current consequences:
 
-As of 2026-08-22 Russia is absent from OpenAI's official supported-country list, whose policy states access/offering access outside the listed countries may lead to blocking/suspension. Therefore OpenAI may be Owner development/international benchmark capability, but cannot be mandatory Russian runtime dependency under current policy.
+- BOOK OS is a global system;
+- OpenAI is the primary provider lane for the current MVP/real-book pilot;
+- provider-neutral ModelGateway/EmbeddingGateway remain mandatory;
+- no Yandex/GigaChat live promotion is required;
+- no regional provider lane blocks Literary Master, the real-book pilot, or product-quality GO/NO-GO;
+- PR #12 is CLOSED, NOT MERGED and retained only as historical/salvage evidence;
+- older text describing Russia-ready provider proof as a current acceptance gate must not be followed.
 
-Yandex Cloud AI Studio and GigaChat are initial Russian-lane candidates and must pass the same BOOK OS role evals.
+The superseded requirement remains recoverable through Git history and the explicit decision record; it is not silently erased.
 
 ## 22. End-user API/subscription model — ACCEPTED DIRECTION
 
@@ -336,8 +352,34 @@ Under `BOOKOS-DEC-0002`, Central Brain may finalize internal v0.1 technical/edit
 
 ## 27. Implementation baseline — CURRENT AUTHORITY
 
-Design baseline is complete and indexed by `DESIGN_INDEX.md`.
+The implementation baseline is no longer M0/Task 001.
 
-Current next permitted action is the active task recorded in `PROJECT_STATE.md`, beginning with `docs/tasks/CODEX_TASK_001_BOOTSTRAP.md`.
+Accepted and merged capability now includes:
 
-Codex must not skip milestones or broaden scope without new authority.
+- M0–M7 / Tasks 001–008;
+- Task 010 Literary Master + exports;
+- Task 011 real-book pilot instrumentation;
+- Task 012 macOS launch hardening.
+
+Canonical schema is Alembic `0010`.
+
+Exact accepted SHAs, CI runs, transfer notes and the current `main` checkpoint are recorded in `docs/PROJECT_STATE.md`.
+
+Codex or any other executor must not resume Task 001 or former M8 merely because older historical files exist.
+
+## 28. Current pilot execution — CURRENT AUTHORITY
+
+The current critical path is:
+
+`real Business Nonfiction pilot → Literary Master → HUMAN GO | CONDITIONAL_GO | NO_GO`
+
+Task 011 tooling acceptance is not product GO. BOOK OS product GO requires the actual private real-book pilot to reach a LOCKED Literary Master and the human Owner to make the final decision from the evidence.
+
+No additional infrastructure milestone is required before starting the first complete book unless the pilot reveals a concrete regression/blocker.
+
+The first current Owner gate is creative:
+
+- select/confirm the real book idea;
+- select/confirm the intended reader.
+
+Before the first paid OpenAI call, explicit bounded budget approval remains mandatory. No task or UI action may infer that approval.
