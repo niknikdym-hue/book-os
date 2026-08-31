@@ -32,6 +32,7 @@ type Props = {
 
 export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
+  const [apiKey, setApiKey] = useState("");
   const [idea, setIdea] = useState("");
   const [readerHint, setReaderHint] = useState("");
   const [planningNote, setPlanningNote] = useState("");
@@ -42,24 +43,44 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  async function reloadReadiness() {
+    const value = await coreApi<LaunchReadiness>("GET", "/api/launch/readiness");
+    setReadiness(value);
+    if (value.configured_model) setModel(value.configured_model);
+  }
+
   useEffect(() => {
-    void coreApi<LaunchReadiness>("GET", "/api/launch/readiness")
-      .then((value) => {
-        setReadiness(value);
-        if (value.configured_model) setModel(value.configured_model);
-      })
-      .catch((reason: unknown) => setError(String(reason)));
+    void reloadReadiness().catch((reason: unknown) => setError(String(reason)));
   }, []);
 
   const cost = Number(maxCostUsd);
   const paidReady =
-    allowPaid && Number.isFinite(cost) && cost > 0 && model.trim().length > 0;
+    readiness?.openai_credential_state === "AVAILABLE" &&
+    allowPaid &&
+    Number.isFinite(cost) &&
+    cost > 0 &&
+    model.trim().length > 0;
   const contractApproved =
     project.book_contract?.authority_status === "APPROVED" ||
     project.book_contract?.authority_status === "LOCKED";
   const architectureApproved =
     project.architecture?.authority_status === "APPROVED" ||
     project.architecture?.authority_status === "LOCKED";
+
+  async function saveKey() {
+    if (!apiKey.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", "/api/launch/openai-key", { api_key: apiKey.trim() });
+      setApiKey("");
+      await reloadReadiness();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function run(path: string, body: Record<string, unknown>) {
     setBusy(true);
@@ -75,6 +96,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       onProject(result.project);
       setAllowPaid(false);
     } catch (reason) {
+      setAllowPaid(false);
       setError(String(reason));
     } finally {
       setBusy(false);
@@ -91,14 +113,33 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
         <span className={`badge ${readiness?.openai_credential_state === "AVAILABLE" ? "approved" : "draft"}`}>
           {readiness?.openai_credential_state === "AVAILABLE"
             ? "OpenAI готов"
-            : "OpenAI не настроен"}
+            : "Нужен ключ OpenAI"}
         </span>
       </div>
 
       <p className="muted">
-        Planner создаёт только черновые предложения. Book Contract, архитектура и контракты глав
+        Planner создаёт только черновые предложения. Контракт книги, архитектура и контракты глав
         становятся authority только после вашего отдельного утверждения.
       </p>
+
+      {readiness?.openai_credential_state === "NOT_AVAILABLE" && (
+        <div className="credential-setup">
+          <label className="field">
+            <span>OpenAI API key</span>
+            <small>Сохраняется только в macOS Keychain. BOOK OS не показывает его после сохранения.</small>
+            <input
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="Вставьте API key"
+            />
+          </label>
+          <button className="primary" disabled={busy || apiKey.trim().length < 10} onClick={() => void saveKey()}>
+            Сохранить в Keychain
+          </button>
+        </div>
+      )}
 
       <div className="form-grid">
         <label className="field">
@@ -122,14 +163,14 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
           onChange={(event) => setAllowPaid(event.target.checked)}
         />
         <span>
-          Разрешаю следующий платный OpenAI-запрос с указанным пределом. После запроса разрешение
-          автоматически сбросится.
+          Разрешаю следующий платный OpenAI-запрос с указанным пределом. После любой попытки
+          разрешение автоматически сбросится.
         </span>
       </label>
 
       {!contractApproved && (
         <div className="planning-step">
-          <h4>1. Определение книги и Book Contract</h4>
+          <h4>1. Определение книги и контракт</h4>
           <div className="form-grid">
             <label className="field">
               <span>Идея книги</span>
@@ -162,7 +203,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                 })
               }
             >
-              {busy ? "Planner работает…" : "Предложить Book Contract"}
+              {busy ? "Planner работает…" : "Предложить контракт книги"}
             </button>
           </div>
         </div>
@@ -229,7 +270,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       )}
       {readiness && (
         <small className="muted">
-          Словарь мусора: {readiness.anti_junk_entry_count} записей · preflight внешних вызовов: {readiness.external_calls}
+          Словарь мусора: {readiness.anti_junk_entry_count} записей · проверка готовности внешних вызовов: {readiness.external_calls}
         </small>
       )}
       {error && <div className="alert inline-alert">{error}</div>}
