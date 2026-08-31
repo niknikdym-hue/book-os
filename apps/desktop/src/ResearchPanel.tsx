@@ -45,7 +45,7 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
     "SUPPORTS" | "PARTIALLY_SUPPORTS" | "CONTRADICTS" | "CONTEXT_ONLY"
   >("PARTIALLY_SUPPORTS");
   const [pointer, setPointer] = useState("");
-  const [limitations, setОграничения доказательства] = useState("");
+  const [limitations, setLimitations] = useState("");
   const [evidence, setEvidence] = useState<EvidenceView[]>([]);
   const [citationIdentifier, setCitationIdentifier] = useState("");
   const [citationCheck, setCitationCheck] = useState<CitationCheckView | null>(null);
@@ -411,7 +411,7 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
                       <textarea
                         rows={2}
                         value={limitations}
-                        onChange={(event) => setОграничения доказательства(event.target.value)}
+                        onChange={(event) => setLimitations(event.target.value)}
                         placeholder="Обязательно для частичного подтверждения"
                       />
                     </label>

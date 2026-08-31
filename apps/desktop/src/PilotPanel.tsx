@@ -111,7 +111,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
   const [stage, setStage] = useState<(typeof stages)[number]>("IDEA");
   const [stageHumanMinutes, setStageHumanMinutes] = useState("");
   const [observationText, setObservationText] = useState("");
-  const [observationСерьёзность, setObservationСерьёзность] = useState("ATTENTION");
+  const [observationSeverity, setObservationSeverity] = useState("ATTENTION");
   const [observationCategory, setObservationCategory] = useState<(typeof observationCategories)[number]>(
     "WORKFLOW_FRICTION",
   );
@@ -125,8 +125,8 @@ export function PilotPanel({ project }: { project: ProjectView }) {
   const [maxCostUsd, setMaxCostUsd] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [preflight, setPreflight] = useState<OpenAIPreflight | null>(null);
-  const [decision, setРешение] = useState("GO");
-  const [decisionReason, setРешениеReason] = useState("");
+  const [decision, setDecision] = useState("GO");
+  const [decisionReason, setDecisionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -221,7 +221,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
         {
           stage,
           category: observationCategory,
-          severity: observationСерьёзность,
+          severity: observationSeverity,
           actor: humanActor.trim(),
           actor_kind: "HUMAN",
           description: observationText.trim(),
@@ -332,7 +332,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
     }
   }
 
-  async function recordFinalРешение() {
+  async function recordFinalDecision() {
     if (!pilot || !summary?.go_no_go.ready || !humanActor.trim() || !decisionReason.trim()) return;
     setBusy(true);
     setError(null);
@@ -475,8 +475,8 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                 <label className="field">
                   <span>Серьёзность</span>
                   <select
-                    value={observationСерьёзность}
-                    onChange={(event) => setObservationСерьёзность(event.target.value)}
+                    value={observationSeverity}
+                    onChange={(event) => setObservationSeverity(event.target.value)}
                   >
                     <option value="INFO">{uiLabel("INFO")}</option>
                     <option value="ATTENTION">{uiLabel("ATTENTION")}</option>
@@ -581,7 +581,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                 <div className="form-grid" aria-label="Final human GO NO-GO decision">
                   <label className="field">
                     <span>Решение</span>
-                    <select value={decision} onChange={(event) => setРешение(event.target.value)}>
+                    <select value={decision} onChange={(event) => setDecision(event.target.value)}>
                       <option>GO</option>
                       <option>CONDITIONAL_GO</option>
                       <option>NO_GO</option>
@@ -591,13 +591,13 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                     <span>Причина решения человека</span>
                     <textarea
                       value={decisionReason}
-                      onChange={(event) => setРешениеReason(event.target.value)}
+                      onChange={(event) => setDecisionReason(event.target.value)}
                     />
                   </label>
                   <div className="actions">
                     <button
                       className="primary"
-                      onClick={() => void recordFinalРешение()}
+                      onClick={() => void recordFinalDecision()}
                       disabled={busy || !humanActor.trim() || !decisionReason.trim()}
                     >
                       Зафиксировать финальное решение человека
