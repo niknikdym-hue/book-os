@@ -1,0 +1,101 @@
+name: Task014 Integrate Clean Once
+on: push
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: github.ref_name == 'brain/task-014-prose-anti-junk-panel'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-014-prose-anti-junk-panel
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Integrate prose rules directly
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Anti-junk sort typing.
+          p = Path('services/local-core/src/book_os_core/anti_junk.py')
+          text = p.read_text()
+          old = 'return sorted(findings, key=lambda item: (int(item["start"]), str(item["entry_id"])))'
+          new = 'return sorted(findings, key=lambda item: (int(str(item["start"])), str(item["entry_id"])))'
+          assert old in text
+          p.write_text(text.replace(old, new, 1))
+
+          # Writer: direct gateway wrapper, no monkey-patch.
+          p = Path('services/local-core/src/book_os_core/drafting.py')
+          text = p.read_text()
+          anchor = 'from .authority_types import JSONValue, utc_now\n'
+          assert anchor in text
+          text = text.replace(anchor, anchor + 'from .anti_junk import AntiJunkService\n', 1)
+          anchor = 'from .prompts import SECTION_DRAFT_V1\n'
+          assert anchor in text
+          text = text.replace(anchor, 'from .model_gateway_anti_junk import AntiJunkModelGateway\n' + anchor, 1)
+          old = '''    def __init__(self, data_dir: Path, gateway: ModelGateway):\n        self._projects = ProjectService(data_dir)\n        self._gateway = gateway\n'''
+          new = '''    def __init__(self, data_dir: Path, gateway: ModelGateway):\n        self._projects = ProjectService(data_dir)\n        self._gateway = AntiJunkModelGateway(gateway, AntiJunkService(data_dir))\n'''
+          assert old in text
+          p.write_text(text.replace(old, new, 1))
+
+          # BookBench: direct deterministic anti-junk check.
+          p = Path('services/local-core/src/book_os_core/bookbench.py')
+          text = p.read_text()
+          anchor = 'from .authority import AuthorityService, new_ulid\n'
+          assert anchor in text
+          text = text.replace(anchor, 'from .anti_junk import AntiJunkService\n' + anchor, 1)
+          old = '''        self.projects_dir = data_dir / "projects"\n        self.embedding_gateway = embedding_gateway\n        self.model_gateway = model_gateway\n'''
+          new = '''        self.projects_dir = data_dir / "projects"\n        self.anti_junk = AntiJunkService(data_dir)\n        self.embedding_gateway = embedding_gateway\n        self.model_gateway = model_gateway\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          anchor = '    def _check_opening_ending(self, snapshot: EvaluationSnapshotView) -> _CheckResult:\n'
+          assert anchor in text
+          method = '''    def _check_prose_anti_junk(self, snapshot: EvaluationSnapshotView) -> _CheckResult:\n        units = self._manuscript_targets(snapshot)\n        findings: list[_FindingDraft] = []\n        banned_count = 0\n        review_count = 0\n        for unit in units:\n            for hit in self.anti_junk.scan(unit.text):\n                kind = str(hit["kind"])\n                if kind == "BANNED_TEMPLATE":\n                    banned_count += 1\n                else:\n                    review_count += 1\n                findings.append(\n                    _FindingDraft(\n                        target=unit,\n                        category=(\n                            "PROSE_ANTI_JUNK_TEMPLATE"\n                            if kind == "BANNED_TEMPLATE"\n                            else "PROSE_ANTI_JUNK_CONTEXT_REVIEW"\n                        ),\n                        location=f"chars:{hit['start']}-{hit['end']}",\n                        evidence={\n                            "entry_id": hit["entry_id"],\n                            "dictionary_value": hit["value"],\n                            "match": hit["match"],\n                            "kind": kind,\n                            "source": hit["source"],\n                            "detector_version": "prose-anti-junk-v0.1",\n                        },\n                        severity="ATTENTION",\n                        confidence=1.0 if kind == "BANNED_TEMPLATE" else 0.75,\n                        recommended_action=(\n                            "Переформулировать мысль прямо и конкретно; не использовать "\n                            "шаблонную нейросетевую/рекламную рамку."\n                            if kind == "BANNED_TEMPLATE"\n                            else "Проверить контекст: оставить слово только если буквальный смысл необходим."\n                        ),\n                    )\n                )\n        return _CheckResult(\n            findings=findings,\n            metrics={\n                "banned_template_hit_count": banned_count,\n                "context_review_hit_count": review_count,\n                "dictionary_entry_count": len(self.anti_junk.list_entries()),\n            },\n            output={\n                "detector_version": "prose-anti-junk-v0.1",\n                "claim": "dictionary/pattern quality signals only; no AI-authorship inference",\n            },\n        )\n\n'''
+          text = text.replace(anchor, method + anchor, 1)
+          old = '            "deterministic.ai_prose_pathology": self._check_ai_prose,\n            "deterministic.opening_ending_transition": self._check_opening_ending,'
+          new = '            "deterministic.ai_prose_pathology": self._check_ai_prose,\n            "deterministic.prose_anti_junk": self._check_prose_anti_junk,\n            "deterministic.opening_ending_transition": self._check_opening_ending,'
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '''            "deterministic.ai_prose_pathology",\n            "deterministic.opening_ending_transition",\n'''
+          new = '''            "deterministic.ai_prose_pathology",\n            "deterministic.prose_anti_junk",\n            "deterministic.opening_ending_transition",\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          p.write_text(text)
+
+          # Planner: build multi-part Pydantic payload via model_validate for static typing.
+          p = Path('services/local-core/src/book_os_core/planning.py')
+          text = p.read_text()
+          start = text.index('            payload = BookArchitecturePayload(\n')
+          end_marker = '        except ValidationError as exc:\n            raise ModelOutputError("Architecture proposal failed project schema validation") from exc\n'
+          end = text.index(end_marker, start)
+          replacement = '''            payload = BookArchitecturePayload.model_validate(\n                {\n                    "parts": [\n                        {\n                            "title": part.title,\n                            "purpose": part.purpose,\n                            "chapters": [\n                                {\n                                    **ArchitectureChapterProposalOutput.model_validate(chapter).model_dump(\n                                        mode="json"\n                                    ),\n                                    "chapter_id": None,\n                                }\n                                for chapter in part.chapters\n                            ],\n                        }\n                        for part in proposal.parts\n                    ],\n                    "intellectual_progression": proposal.intellectual_progression,\n                    "concept_allocation": proposal.concept_allocation,\n                    "promise_thesis_coverage": proposal.promise_thesis_coverage,\n                    "major_transitions": proposal.major_transitions,\n                }\n            )\n'''
+          text = text[:start] + replacement + text[end:]
+          p.write_text(text)
+
+          # Remove now-obsolete monkey-patch imports/modules.
+          p = Path('services/local-core/src/book_os_core/pilot_api.py')
+          text = p.read_text().replace(
+              '# Import installs the deterministic prose anti-junk extension into the existing BookBenchService.\nfrom . import bookbench_anti_junk as _bookbench_anti_junk  # noqa: F401\n',
+              '',
+          )
+          p.write_text(text)
+          for obsolete in [
+              Path('services/local-core/src/book_os_core/bookbench_anti_junk.py'),
+              Path('services/local-core/src/book_os_core/drafting_anti_junk.py'),
+          ]:
+              if obsolete.exists():
+                  obsolete.unlink()
+
+          Path('.github/workflows/task014-integrate-clean-once.yml').unlink()
+          PY
+      - run: python -m pip install ruff==0.12.11
+      - run: ruff format services/local-core/src/book_os_core services/local-core/tests/test_task014_launch.py
+      - name: Commit direct integration
+        run: |
+          git config user.name "BOOK OS Central Brain"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Integrate prose rules directly into Writer and BookBench"
+          git push origin HEAD:brain/task-014-prose-anti-junk-panel
