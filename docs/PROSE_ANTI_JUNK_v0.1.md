@@ -3,7 +3,33 @@
 **Status:** ACTIVE QUALITY RULESET  
 **Purpose:** prevent recurrent generic AI/marketing prose from entering BOOK OS outputs and make violations visible in BookBench.
 
-## Principle
+## Core principle
+
+### NEGATIVE-FIRST FRAMING — HIGH-PRIORITY ANTI-PATTERN
+
+**Нейросетевая манера: сначала искусственно объявлять, чем текст, книга, идея или явление НЕ является, вместо того чтобы сразу сказать точную мысль.**
+
+Это не просто список запрещённых фраз. Это запрещённый риторический ход.
+
+Плохая схема:
+
+`отрицательное самоопределение → искусственный контраст → настоящая мысль`
+
+Типовые формы:
+
+- `Эта книга не о том, ...`
+- `Эта книга не про X, а про Y.`
+- `Это не про X. Это про Y.`
+- `Речь не о X, а о Y.`
+- `Дело не в X, а в Y.`
+- `Здесь речь не о ...`
+- декоративное `не X, а Y`, созданное только ради риторического эффекта.
+
+**Требование BOOK OS:** если точную мысль можно сформулировать прямо, система должна начать с неё. Нельзя сначала создавать ложный или ненужный отрицательный тезис только для того, чтобы эффектно его опровергнуть.
+
+Допустимо только необходимое содержательное противопоставление, когда различие между X и Y само является фактом, аргументом или предметом анализа. Контраст не должен производиться ради ритма, драматизации или ощущения глубины.
+
+## General principle
 
 This is not a ban on ordinary Russian words in legitimate context. The target is recurrent formulaic wording, especially when it substitutes for a concrete thought, argument, scene, mechanism or claim.
 
@@ -128,9 +154,10 @@ This ruleset supplements existing BookBench signals including:
 
 1. Generation prompts must treat this file as a negative style constraint.
 2. BookBench `AI_PROSE_PATHOLOGY` must surface direct matches with location/evidence.
-3. Matches are quality findings, not claims of AI authorship.
-4. Ordinary lexical use in a necessary literal/technical sense can be kept by explicit human judgment.
-5. Titles, subtitles, chapter names, transitions and conclusions receive stricter review because stock formulas there are especially visible.
+3. BookBench must treat negative-first framing as a pattern, not only exact-string matching.
+4. Matches are quality findings, not claims of AI authorship.
+5. Ordinary lexical use in a necessary literal/technical sense can be kept by explicit human judgment.
+6. Titles, subtitles, chapter names, transitions and conclusions receive stricter review because stock formulas there are especially visible.
 
 ## Current owner examples
 
