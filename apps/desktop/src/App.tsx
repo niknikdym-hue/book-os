@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { coreApi } from "./api";
 import { AntiJunkPanel } from "./AntiJunkPanel";
+import { ArchitectureEditor } from "./ArchitectureEditor";
 import { BookBenchPanel } from "./BookBenchPanel";
 import { BookMemoryPanel } from "./BookMemoryPanel";
 import { DraftingPanel } from "./DraftingPanel";
@@ -319,25 +320,6 @@ export function App() {
     }
   }
 
-  function updateArchitectureChapter(index: number, patch: Partial<ArchitectureChapter>) {
-    setArchitecture((current) => {
-      const next = clone(current);
-      next.parts[0].chapters[index] = { ...next.parts[0].chapters[index], ...patch };
-      return next;
-    });
-  }
-
-  function moveChapter(index: number, delta: number) {
-    setArchitecture((current) => {
-      const next = clone(current);
-      const target = index + delta;
-      if (target < 0 || target >= next.parts[0].chapters.length) return current;
-      const [item] = next.parts[0].chapters.splice(index, 1);
-      next.parts[0].chapters.splice(target, 0, item);
-      return next;
-    });
-  }
-
   const healthLabel = health
     ? `Локальное ядро: ${health.status === "healthy" ? "работает" : health.status}`
     : error && !project
@@ -531,143 +513,14 @@ export function App() {
                 </div>
               </section>
 
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">ЧЕЛОВЕЧЕСКОЕ РЕШЕНИЕ 2</p>
-                    <h3>Архитектура книги</h3>
-                  </div>
-                  <StatusBadge status={project.architecture?.status} />
-                </div>
-                <div className="form-grid">
-                  <Field
-                    label="Интеллектуальное движение книги"
-                    value={architecture.intellectual_progression}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, intellectual_progression: value }))
-                    }
-                  />
-                  <Field
-                    label="Распределение ключевых идей"
-                    value={architecture.concept_allocation}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, concept_allocation: value }))
-                    }
-                  />
-                  <Field
-                    label="Как архитектура выполняет обещание и тезис"
-                    value={architecture.promise_thesis_coverage}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, promise_thesis_coverage: value }))
-                    }
-                  />
-                  <Field
-                    label="Крупные переходы"
-                    value={architecture.major_transitions}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, major_transitions: value }))
-                    }
-                  />
-                  <Field
-                    label="Название части"
-                    value={architecture.parts[0].title}
-                    onChange={(value) =>
-                      setArchitecture((current) => {
-                        const next = clone(current);
-                        next.parts[0].title = value;
-                        return next;
-                      })
-                    }
-                  />
-                  <Field
-                    label="Функция части"
-                    value={architecture.parts[0].purpose}
-                    onChange={(value) =>
-                      setArchitecture((current) => {
-                        const next = clone(current);
-                        next.parts[0].purpose = value;
-                        return next;
-                      })
-                    }
-                  />
-                </div>
-                <div className="chapter-plans">
-                  <div className="subheading">
-                    <h4>Главы по порядку</h4>
-                    <button
-                      className="ghost"
-                      onClick={() =>
-                        setArchitecture((current) => {
-                          const next = clone(current);
-                          next.parts[0].chapters.push(newArchitectureChapter());
-                          return next;
-                        })
-                      }
-                    >
-                      + Добавить главу
-                    </button>
-                  </div>
-                  {architecture.parts[0].chapters.map((chapter, index) => (
-                    <div className="chapter-plan" key={chapter.chapter_id ?? `new-${index}`}>
-                      <div className="chapter-order">
-                        <strong>Глава {index + 1}</strong>
-                        <button className="icon" onClick={() => moveChapter(index, -1)} disabled={index === 0}>
-                          ↑
-                        </button>
-                        <button
-                          className="icon"
-                          onClick={() => moveChapter(index, 1)}
-                          disabled={index === architecture.parts[0].chapters.length - 1}
-                        >
-                          ↓
-                        </button>
-                      </div>
-                      <label className="field">
-                        <span>Название</span>
-                        <input
-                          value={chapter.title}
-                          onChange={(event) =>
-                            updateArchitectureChapter(index, { title: event.target.value })
-                          }
-                        />
-                      </label>
-                      <Field
-                        label="Функция главы"
-                        value={chapter.purpose}
-                        onChange={(value) => updateArchitectureChapter(index, { purpose: value })}
-                      />
-                      <Field
-                        label="Новый вклад главы"
-                        value={chapter.new_contribution}
-                        onChange={(value) =>
-                          updateArchitectureChapter(index, { new_contribution: value })
-                        }
-                      />
-                      <Field
-                        label="Зависимости"
-                        hint="Одна ссылка на главу/ID на строку"
-                        value={chapter.dependencies.join("\n")}
-                        onChange={(value) =>
-                          updateArchitectureChapter(index, { dependencies: lines(value) })
-                        }
-                      />
-                      <Field
-                        label="Переход к следующей главе"
-                        value={chapter.transition}
-                        onChange={(value) => updateArchitectureChapter(index, { transition: value })}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="actions">
-                  <button className="secondary" onClick={() => void saveArchitecture()} disabled={busy}>
-                    Сохранить черновик
-                  </button>
-                  <button className="primary" onClick={() => void approveArchitecture()} disabled={busy}>
-                    Утвердить архитектуру
-                  </button>
-                </div>
-              </section>
+              <ArchitectureEditor
+                architecture={architecture}
+                setArchitecture={setArchitecture}
+                statusBadge={<StatusBadge status={project.architecture?.status} />}
+                busy={busy}
+                onSave={() => void saveArchitecture()}
+                onApprove={() => void approveArchitecture()}
+              />
 
               {project.chapters.length > 0 && (
                 <section className="panel">
