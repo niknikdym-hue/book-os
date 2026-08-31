@@ -40,7 +40,7 @@ def test_fresh_project_migrates_to_0010_and_only_one_active_pilot(tmp_path: Path
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0010"
+                == "0011"
             )
     finally:
         engine.dispose()

@@ -7,7 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .authority_types import new_ulid, utc_now
+from .authority import new_ulid
+from .authority_types import utc_now
 
 AntiJunkKind = Literal["BANNED_TEMPLATE", "CONTEXT_REVIEW"]
 AntiJunkSource = Literal["SYSTEM", "USER"]

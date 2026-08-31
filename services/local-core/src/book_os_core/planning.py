@@ -308,16 +308,6 @@ class PlanningService:
         if contract is None or contract.authority_status not in {"APPROVED", "LOCKED"}:
             raise PlanningGateError("Book Contract must be approved before architecture planning")
         model = self._resolved_model(request.provider, request.model)
-        authority_inputs = [
-            AuthorityInputRef(
-                revision_id=contract.authority_revision_id,
-                revision_hash=contract.revision_id
-                and contract.revision_id
-                and contract.revision_id,
-                entity_type="book.contract",
-            )
-        ]
-        # The authority hash is recovered from the durable revision row below; DocumentView exposes IDs only.
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
@@ -327,7 +317,13 @@ class PlanningService:
                 ).scalar_one()
         finally:
             engine.dispose()
-        authority_inputs[0].revision_hash = str(revision_hash)
+        authority_inputs = [
+            AuthorityInputRef(
+                revision_id=contract.authority_revision_id,
+                revision_hash=str(revision_hash),
+                entity_type="book.contract",
+            )
+        ]
         run_id, raw, usage, provider_run_id = self._run(
             book_id=book_id,
             chapter_id=None,

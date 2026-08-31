@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uiLabel } from "./uiLabels";
 import type {
   DatasetSnapshot,
   EvaluationRun,
@@ -24,12 +25,12 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
   const [semantic, setSemantic] = useState<SemanticResult | null>(null);
   const [judge, setJudge] = useState<EvaluationRun | null>(null);
   const [pairwise, setPairwise] = useState<PairwiseResult | null>(null);
-  const [candidateA, setCandidateA] = useState("Candidate A text");
-  const [candidateB, setCandidateB] = useState("Candidate B text");
+  const [candidateA, setCandidateA] = useState("Текст кандидата A");
+  const [candidateB, setCandidateB] = useState("Текст кандидата B");
   const [pairwiseSeed, setPairwiseSeed] = useState(42);
   const [fingerprints, setFingerprints] = useState<VoiceFingerprint[]>([]);
   const [selectedFingerprintId, setSelectedFingerprintId] = useState("");
-  const [voiceName, setVoiceName] = useState("Owner reference voice");
+  const [voiceName, setVoiceName] = useState("Эталонный авторский голос");
   const [voiceComparison, setVoiceComparison] = useState<VoiceComparison | null>(null);
   const [dataset, setDataset] = useState<DatasetSnapshot | null>(null);
   const [scorecards, setScorecards] = useState<Scorecard[]>([]);
@@ -49,11 +50,11 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
   async function buildSnapshot() {
     setError("");
     if (scope === "CHAPTER" && !chapterId) {
-      setError("Select a chapter before building a chapter snapshot.");
+      setError("Выберите главу перед созданием снимка.");
       return;
     }
     if (scope === "MANUSCRIPT_UNIT" && !unitId.trim()) {
-      setError("Enter a ManuscriptUnit id before building a unit snapshot.");
+      setError("Укажите ID фрагмента рукописи перед созданием снимка.");
       return;
     }
     const body = {
@@ -68,7 +69,7 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
     setJudge(null);
     setPairwise(null);
     setVoiceComparison(null);
-    setMessage("Exact snapshot ready");
+    setMessage("Точный снимок готов");
   }
 
   async function runDeterministic() {
@@ -139,11 +140,11 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
     if (!snapshot) return;
     const created = await coreApi<VoiceFingerprint>("POST", `${basePath}/voice-fingerprints`, {
       snapshot_id: snapshot.snapshot_id,
-      name: voiceName.trim() || "Owner reference voice",
+      name: voiceName.trim() || "Эталонный авторский голос",
     });
     await loadFingerprints();
     setSelectedFingerprintId(created.fingerprint_id);
-    setMessage("Voice Fingerprint created from exact references");
+    setMessage("Профиль авторского голоса создан по точным версиям");
   }
 
   async function compareVoice() {
@@ -173,39 +174,39 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
 
   async function sendToEditorialInbox(findingId: string) {
     await coreApi("POST", `${basePath}/findings/${findingId}/handoff`, { actor: "OWNER" });
-    setMessage("Sent to Editorial Inbox for human review");
+    setMessage("Передано в редактуру для решения человека");
   }
 
   return (
     <section className="panel bookbench">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">M7 · DIAGNOSTIC DERIVED STATE</p>
+          <p className="eyebrow">M7 · ДИАГНОСТИКА КАЧЕСТВА</p>
           <h3>BookBench</h3>
         </div>
-        <strong>No overall score</strong>
+        <strong>Без магического общего балла</strong>
       </div>
 
-      <p>Exact revision evidence only. Results never rewrite, approve, accept, or waive authority.</p>
+      <p>Только доказательства по точным версиям. BookBench не переписывает и не утверждает authority.</p>
 
       <div className="toolbar">
         <label>
-          Evaluation scope
+          Область проверки
           <select
-            aria-label="Evaluation scope"
+            aria-label="Область проверки"
             value={scope}
             onChange={(event) => setScope(event.target.value as Scope)}
           >
-            <option value="BOOK">BOOK</option>
-            <option value="CHAPTER">CHAPTER</option>
-            <option value="MANUSCRIPT_UNIT">MANUSCRIPT_UNIT</option>
+            <option value="BOOK">Книга</option>
+            <option value="CHAPTER">Глава</option>
+            <option value="MANUSCRIPT_UNIT">Фрагмент рукописи</option>
           </select>
         </label>
         {scope === "CHAPTER" && (
           <label>
-            Chapter target
+            Глава
             <select
-              aria-label="Chapter target"
+              aria-label="Глава"
               value={chapterId}
               onChange={(event) => setChapterId(event.target.value)}
             >
@@ -219,54 +220,54 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
         )}
         {scope === "MANUSCRIPT_UNIT" && (
           <label>
-            ManuscriptUnit target
+            ID фрагмента рукописи
             <input
-              aria-label="ManuscriptUnit target"
+              aria-label="ID фрагмента рукописи"
               value={unitId}
               onChange={(event) => setUnitId(event.target.value)}
-              placeholder="unit id"
+              placeholder="ID фрагмента"
             />
           </label>
         )}
-        <button onClick={() => void buildSnapshot()}>Build exact snapshot</button>
+        <button onClick={() => void buildSnapshot()}>Создать точный снимок</button>
       </div>
 
       <div className="toolbar">
         <button disabled={!snapshot} onClick={() => void runDeterministic()}>
-          Run deterministic
+          Запустить детерминированные проверки
         </button>
         <button disabled={!snapshot} onClick={() => void runSemantic()}>
-          Run semantic
+          Запустить семантические проверки
         </button>
         <button disabled={!snapshot} onClick={() => void runJudge()}>
-          Run judge
+          Запустить модельную оценку
         </button>
         <button disabled={!snapshot} onClick={() => void runPairwise()}>
-          Run pairwise
+          Сравнить два варианта
         </button>
       </div>
 
       <div className="toolbar">
         <label>
-          Candidate one
+          Вариант A
           <input
-            aria-label="Candidate one"
+            aria-label="Вариант A"
             value={candidateA}
             onChange={(event) => setCandidateA(event.target.value)}
           />
         </label>
         <label>
-          Candidate two
+          Вариант B
           <input
-            aria-label="Candidate two"
+            aria-label="Вариант B"
             value={candidateB}
             onChange={(event) => setCandidateB(event.target.value)}
           />
         </label>
         <label>
-          Pairwise seed
+          Seed сравнения
           <input
-            aria-label="Pairwise seed"
+            aria-label="Seed сравнения"
             type="number"
             value={pairwiseSeed}
             onChange={(event) => setPairwiseSeed(Number(event.target.value))}
@@ -275,28 +276,28 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
       </div>
 
       <section>
-        <h4>Voice Fingerprint</h4>
+        <h4>Профиль авторского голоса</h4>
         <div className="toolbar">
           <label>
-            Fingerprint name
+            Название профиля
             <input
-              aria-label="Fingerprint name"
+              aria-label="Название профиля"
               value={voiceName}
               onChange={(event) => setVoiceName(event.target.value)}
             />
           </label>
           <button disabled={!snapshot} onClick={() => void createFingerprint()}>
-            Create Voice Fingerprint
+            Create Профиль авторского голоса
           </button>
-          <button onClick={() => void loadFingerprints()}>Load Voice Fingerprints</button>
+          <button onClick={() => void loadFingerprints()}>Load Профиль авторского голосаs</button>
           <label>
-            Selected fingerprint
+            Выбранный профиль
             <select
-              aria-label="Selected fingerprint"
+              aria-label="Выбранный профиль"
               value={selectedFingerprintId}
               onChange={(event) => setSelectedFingerprintId(event.target.value)}
             >
-              <option value="">Select fingerprint</option>
+              <option value="">Выберите профиль</option>
               {fingerprints.map((fingerprint) => (
                 <option key={fingerprint.fingerprint_id} value={fingerprint.fingerprint_id}>
                   {fingerprint.name} · v{fingerprint.extractor_version}
@@ -308,45 +309,45 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
             disabled={!snapshot || !selectedFingerprintId}
             onClick={() => void compareVoice()}
           >
-            Compare Voice Fingerprint
+            Compare Профиль авторского голоса
           </button>
         </div>
       </section>
 
-      <button onClick={() => void compareConfigs()}>Compare fake configs</button>
+      <button onClick={() => void compareConfigs()}>Сравнить тестовые конфигурации</button>
 
       {error && <p role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
 
       {snapshot && (
         <p aria-label="BookBench snapshot identity">
-          <strong>{snapshot.current ? "CURRENT" : "NON-CURRENT / STALE"}</strong> · {snapshot.scope} ·
+          <strong>{snapshot.current ? "ТЕКУЩИЙ" : "УСТАРЕЛ"}</strong> · {snapshot.scope} ·
           snapshot {snapshot.snapshot_hash.slice(0, 12)}
         </p>
       )}
 
       {semantic && (
         <p aria-label="Semantic configuration">
-          Semantic config {semantic.config_hash.slice(0, 12)} · candidates only
+          Семантическая конфигурация {semantic.config_hash.slice(0, 12)} · только кандидаты для проверки
         </p>
       )}
 
       {judge && (
         <p aria-label="Judge independence">
-          Judge independence: <strong>{judge.independence_state}</strong> · latency {judge.latency_ms}ms ·
+          Независимость оценки: <strong>{judge.independence_state}</strong> · задержка {judge.latency_ms}ms ·
           cost ${judge.cost_usd ?? 0}
         </p>
       )}
 
       {pairwise && (
         <p aria-label="Pairwise result">
-          Pairwise seed {pairwise.seed} · A={pairwise.labels.A} · B={pairwise.labels.B} · winner {pairwise.winner_candidate_id ?? "TIE"}
+          Seed сравнения {pairwise.seed} · A={pairwise.labels.A} · B={pairwise.labels.B} · победитель {pairwise.winner_candidate_id ?? "TIE"}
         </p>
       )}
 
       {voiceComparison && (
         <section aria-label="Voice comparison">
-          <h4>Voice comparison · diagnostic only</h4>
+          <h4>Сравнение авторского голоса · только диагностика</h4>
           <pre>{JSON.stringify(voiceComparison.feature_deltas, null, 2)}</pre>
         </section>
       )}
@@ -354,18 +355,18 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
       {report?.dimensions.map((dimension) => (
         <article key={dimension.dimension} className="finding-card">
           <h4>
-            {dimension.dimension} <span className="badge">{dimension.state}</span>
+            {uiLabel(dimension.dimension)} <span className="badge">{uiLabel(dimension.state)}</span>
           </h4>
           {dimension.findings.map((finding) => (
             <div key={finding.finding_id}>
               <strong>{finding.category}</strong>
               <p>
-                {finding.location} · confidence {finding.confidence}
+                {finding.location} · уверенность {finding.confidence}
               </p>
               <pre>{JSON.stringify(finding.evidence, null, 2)}</pre>
               <p>{finding.recommended_action}</p>
               <button onClick={() => void sendToEditorialInbox(finding.finding_id)}>
-                Send to Editorial Inbox
+                Передать в редактуру
               </button>
             </div>
           ))}
@@ -373,9 +374,9 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
       ))}
 
       <section aria-label="AI prose pathology examples">
-        <h4>AI-prose pathology examples</h4>
+        <h4>Примеры нейросетевого мусора и шаблонов</h4>
         {pathologyFindings.length === 0 ? (
-          <p>No measured pathology examples in the current report.</p>
+          <p>В текущем отчёте таких примеров не найдено.</p>
         ) : (
           pathologyFindings.map((finding) => (
             <p key={finding.finding_id}>
@@ -387,13 +388,13 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
 
       {dataset && (
         <p aria-label="Dataset identity">
-          Dataset v{dataset.version} · {dataset.dataset_hash.slice(0, 12)} · {dataset.case_count} cases
+          Dataset v{dataset.version} · {dataset.dataset_hash.slice(0, 12)} · {dataset.case_count} случаев
         </p>
       )}
 
       {scorecards.length > 0 && (
         <section aria-label="Configuration scorecards">
-          <h4>Dataset/config scorecards — no overall score</h4>
+          <h4>Сравнение конфигураций по датасету — без общего балла</h4>
           {scorecards.map((scorecard) => (
             <article key={scorecard.scorecard_id}>
               <strong>
@@ -404,7 +405,7 @@ export function BookBenchPanel({ project }: { project: ProjectView }) {
               </p>
               <pre>{JSON.stringify(scorecard.dimensions, null, 2)}</pre>
               <small>
-                latency {scorecard.latency_ms}ms · cost ${scorecard.cost_usd} · usage {JSON.stringify(scorecard.usage)}
+                latency {scorecard.latency_ms}ms · стоимость ${scorecard.cost_usd} · usage {JSON.stringify(scorecard.usage)}
               </small>
             </article>
           ))}

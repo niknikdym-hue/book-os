@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from book_os_core.anti_junk import AntiJunkCreateRequest, AntiJunkError, AntiJunkService
-from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway, ModelOutputError, ModelTaskRequest
+from book_os_core.model_gateway import (
+    DeterministicFakeAdapter,
+    ModelGateway,
+    ModelOutputError,
+    ModelTaskRequest,
+)
 from book_os_core.model_gateway_anti_junk import AntiJunkModelGateway
 from book_os_core.planning import (
     ArchitecturePlanningRequest,
@@ -71,9 +76,7 @@ def test_planner_creates_drafts_only_and_preserves_human_gates(tmp_path: Path) -
     project = projects.create_project(
         NewBookRequest(working_title="Первая тестовая книга", primary_subtype="Strategy")
     )
-    planner = PlanningService(
-        tmp_path, ModelGateway({"fake": DeterministicFakeAdapter()})
-    )
+    planner = PlanningService(tmp_path, ModelGateway({"fake": DeterministicFakeAdapter()}))
 
     contract_run = planner.propose_book_contract(
         project.book_id,
@@ -91,9 +94,7 @@ def test_planner_creates_drafts_only_and_preserves_human_gates(tmp_path: Path) -
     with pytest.raises(PlanningGateError, match="Book Contract"):
         planner.propose_architecture(
             project.book_id,
-            ArchitecturePlanningRequest(
-                provider="fake", model="fake-planner", max_cost_usd=1.0
-            ),
+            ArchitecturePlanningRequest(provider="fake", model="fake-planner", max_cost_usd=1.0),
         )
 
     projects.approve_book_contract(project.book_id)
@@ -109,9 +110,7 @@ def test_planner_creates_drafts_only_and_preserves_human_gates(tmp_path: Path) -
         planner.propose_chapter_contract(
             project.book_id,
             "missing",
-            ChapterContractPlanningRequest(
-                provider="fake", model="fake-planner", max_cost_usd=1.0
-            ),
+            ChapterContractPlanningRequest(provider="fake", model="fake-planner", max_cost_usd=1.0),
         )
 
     approved_architecture = projects.approve_architecture(project.book_id)
@@ -119,11 +118,11 @@ def test_planner_creates_drafts_only_and_preserves_human_gates(tmp_path: Path) -
     chapter_run = planner.propose_chapter_contract(
         project.book_id,
         chapter.chapter_id,
-        ChapterContractPlanningRequest(
-            provider="fake", model="fake-planner", max_cost_usd=1.0
-        ),
+        ChapterContractPlanningRequest(provider="fake", model="fake-planner", max_cost_usd=1.0),
     )
-    selected = next(item for item in chapter_run.project.chapters if item.chapter_id == chapter.chapter_id)
+    selected = next(
+        item for item in chapter_run.project.chapters if item.chapter_id == chapter.chapter_id
+    )
     assert selected.chapter_contract is not None
     assert selected.chapter_contract.status == "DRAFT"
     assert selected.chapter_contract.authority_status is None

@@ -124,25 +124,25 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
     <section className="panel" aria-label="Literary Master">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">FINAL HUMAN RELEASE GATE</p>
+          <p className="eyebrow">ФИНАЛЬНОЕ РЕШЕНИЕ ЧЕЛОВЕКА</p>
           <h3>Literary Master</h3>
         </div>
         <span className={`badge ${readiness?.ready ? "approved" : "draft"}`}>
-          {latestMaster ? "MASTER LOCKED" : readiness?.ready ? "READY FOR HUMAN RELEASE" : "NOT READY"}
+          {latestMaster ? "МАСТЕР ЗАФИКСИРОВАН" : readiness?.ready ? "ГОТОВО К ВЫПУСКУ" : "ЕЩЁ НЕ ГОТОВО"}
         </span>
       </div>
 
       <p className="muted">
-        Literary Master freezes exact approved revisions. Exporting never changes book authority.
+        Литературный мастер фиксирует точные утверждённые версии. Экспорт никогда не меняет authority книги.
       </p>
 
       {error && <div className="alert">{error}</div>}
 
-      {!readiness && !error && <p>Checking release gate…</p>}
+      {!readiness && !error && <p>Проверяем готовность к выпуску…</p>}
 
       {readiness && !readiness.ready && (
         <div aria-label="Literary Master blockers">
-          <strong>Release blockers</strong>
+          <strong>Что блокирует выпуск</strong>
           <ul>
             {readiness.blockers.map((blocker) => (
               <li key={`${blocker.code}:${blocker.detail}`}>
@@ -155,18 +155,18 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
 
       {readiness?.snapshot_id && (
         <p className="muted" aria-label="Literary Master BookBench evidence">
-          BookBench snapshot: {readiness.snapshot_id} · {readiness.snapshot_hash?.slice(0, 16)}…
+          Снимок BookBench: {readiness.snapshot_id} · {readiness.snapshot_hash?.slice(0, 16)}…
         </p>
       )}
 
       {!latestMaster && readiness?.ready && (
         <div className="form-grid">
           <label className="field">
-            <span>Human release actor</span>
+            <span>Кто выпускает мастер</span>
             <input
               value={humanActor}
               onChange={(event) => setHumanActor(event.target.value)}
-              placeholder="Owner / editor name"
+              placeholder="Имя владельца / редактора"
             />
           </label>
           <div className="actions">
@@ -175,7 +175,7 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
               onClick={() => void createMaster()}
               disabled={busy || !humanActor.trim()}
             >
-              Create Literary Master
+              Создать литературный мастер
             </button>
           </div>
         </div>
@@ -184,17 +184,17 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
       {latestMaster && (
         <div aria-label="Current Literary Master">
           <p>
-            <strong>Master:</strong> {latestMaster.master_id}
+            <strong>Мастер:</strong> {latestMaster.master_id}
           </p>
           <p className="muted">
-            Manifest {latestMaster.manifest_hash.slice(0, 16)}… · manuscript {latestMaster.canonical_content_hash.slice(0, 16)}… · human: {latestMaster.human_actor}
+            Manifest {latestMaster.manifest_hash.slice(0, 16)}… · рукопись {latestMaster.canonical_content_hash.slice(0, 16)}… · решение: {latestMaster.human_actor}
           </p>
           <div className="actions">
             <button className="secondary" onClick={() => void exportMarkdown()} disabled={busy}>
-              Export Markdown
+              Экспортировать Markdown
             </button>
             <button className="secondary" onClick={() => void createHandoff()} disabled={busy}>
-              Create Audiobook handoff
+              Создать передачу в Audiobook Studio
             </button>
           </div>
         </div>
@@ -207,7 +207,7 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
       )}
       {handoffEvidence && (
         <p aria-label="Audiobook handoff evidence">
-          Handoff: {handoffEvidence.relative_path} · {handoffEvidence.content_hash.slice(0, 16)}…
+          Передача: {handoffEvidence.relative_path} · {handoffEvidence.content_hash.slice(0, 16)}…
         </p>
       )}
     </section>

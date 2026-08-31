@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uiLabel } from "./uiLabels";
 import type { DraftRunView } from "./draftingTypes";
 import type {
   CitationCheckView,
@@ -44,7 +45,7 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
     "SUPPORTS" | "PARTIALLY_SUPPORTS" | "CONTRADICTS" | "CONTEXT_ONLY"
   >("PARTIALLY_SUPPORTS");
   const [pointer, setPointer] = useState("");
-  const [limitations, setLimitations] = useState("");
+  const [limitations, setОграничения доказательства] = useState("");
   const [evidence, setEvidence] = useState<EvidenceView[]>([]);
   const [citationIdentifier, setCitationIdentifier] = useState("");
   const [citationCheck, setCitationCheck] = useState<CitationCheckView | null>(null);
@@ -227,7 +228,7 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
           source_id: source.source_id,
           relationship,
           pointer: pointer.trim(),
-          note: "Added from the bounded M4 research panel.",
+          note: "Добавлено из панели исследования BOOK OS.",
           strength: "MODERATE",
           limitations: limitations.trim(),
           actor: "OWNER",
@@ -268,59 +269,59 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
     <section className="panel research-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">M4 · CLAIM LEDGER</p>
-          <h3>Research & Evidence</h3>
+          <p className="eyebrow">M4 · РЕЕСТР УТВЕРЖДЕНИЙ</p>
+          <h3>Исследование и доказательства</h3>
         </div>
-        <span className="badge">Source ≠ Evidence ≠ Claim</span>
+        <span className="badge">Источник ≠ доказательство ≠ утверждение</span>
       </div>
 
-      {!chapter && <p className="muted">Select a chapter first.</p>}
+      {!chapter && <p className="muted">Сначала выберите главу.</p>}
       {chapter && !currentDraft && (
-        <p className="muted">Generate a manuscript DRAFT before registering material claims.</p>
+        <p className="muted">Сначала создайте черновик текста, затем регистрируйте проверяемые утверждения.</p>
       )}
 
       {currentDraft && (
         <>
           <div className="research-boundary">
-            <strong>Exact manuscript revision</strong>
+            <strong>Точная версия рукописи</strong>
             <code>{currentDraft.revision_id}</code>
-            <small>Claim evidence is bound to this revision/hash and becomes stale if the draft changes.</small>
+            <small>Доказательства привязаны к этой версии и её хэшу; после изменения текста привязка становится устаревшей.</small>
           </div>
 
           <div className="form-grid">
             <label className="field">
-              <span>Material claim</span>
+              <span>Проверяемое утверждение</span>
               <textarea
                 rows={3}
                 value={claimText}
                 onChange={(event) => setClaimText(event.target.value)}
-                placeholder="Register one factual claim exactly as it must be verified"
+                placeholder="Запишите одно фактическое утверждение в формулировке, которую нужно проверить"
               />
             </label>
             <label className="field">
-              <span>Claim type</span>
+              <span>Тип утверждения</span>
               <select value={claimType} onChange={(event) => setClaimType(event.target.value as typeof claimType)}>
-                {claimTypes.map((item) => <option key={item}>{item}</option>)}
+                {claimTypes.map((item) => <option key={item} value={item}>{uiLabel(item)}</option>)}
               </select>
             </label>
           </div>
           <div className="actions">
             <button className="secondary" disabled={busy || !claimText.trim()} onClick={() => void createClaim()}>
-              Add Claim
+              Добавить утверждение
             </button>
           </div>
 
           {claims.length > 0 && (
             <>
               <label className="field">
-                <span>Claim under review</span>
+                <span>Утверждение на проверке</span>
                 <select
                   value={selectedClaim?.claim_id ?? ""}
                   onChange={(event) => setSelectedClaimId(event.target.value)}
                 >
                   {claims.map((item) => (
                     <option key={item.claim_id} value={item.claim_id}>
-                      {item.verification_state} · {item.normalized_text}
+                      {uiLabel(item.verification_state)} · {item.normalized_text}
                     </option>
                   ))}
                 </select>
@@ -328,21 +329,21 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
               {selectedClaim && (
                 <div className="claim-status">
                   <span className={`badge ${selectedClaim.verification_state.toLowerCase()}`}>
-                    {selectedClaim.verification_state}
+                    {uiLabel(selectedClaim.verification_state)}
                   </span>
-                  <span>{selectedClaim.evidence_count} evidence record(s)</span>
+                  <span>{selectedClaim.evidence_count} доказательств</span>
                 </div>
               )}
 
               <div className="form-grid">
                 <label className="field">
-                  <span>Research query</span>
+                  <span>Поисковый запрос</span>
                   <input value={query} onChange={(event) => setQuery(event.target.value)} />
                 </label>
               </div>
               <div className="actions">
                 <button className="secondary" disabled={busy || !query.trim()} onClick={() => void searchResearch()}>
-                  Search metadata
+                  Найти источники
                 </button>
               </div>
 
@@ -353,7 +354,7 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
                       <strong>{item.title}</strong>
                       <small>{item.provider} · {item.publication_year ?? "n.d."} · {item.doi ?? item.external_id}</small>
                       <button className="ghost" disabled={busy} onClick={() => void importCandidate(item)}>
-                        Add Source metadata
+                        Добавить источник
                       </button>
                     </article>
                   ))}
@@ -363,60 +364,60 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
               {source && (
                 <div className="source-card">
                   <h4>{source.title}</h4>
-                  <p><strong>Source status:</strong> {source.access_status}</p>
+                  <p><strong>Статус источника:</strong> {uiLabel(source.access_status)}</p>
                   <p className="muted">
-                    Metadata/search rank is not proof. Full support requires explicit source inspection plus Evidence.
+                    Метаданные и место в поиске ничего не доказывают. Для подтверждения нужно изучить сам источник и создать Evidence.
                   </p>
                   {source.access_status !== "FULL_SOURCE_INSPECTED" && (
                     <>
                       <label className="field">
-                        <span>Inspection note</span>
+                        <span>Что именно проверено в источнике</span>
                         <textarea
                           rows={2}
                           value={inspectionNote}
                           onChange={(event) => setInspectionNote(event.target.value)}
-                          placeholder="What exact source material did you inspect?"
+                          placeholder="Укажите страницу, раздел или другой проверенный фрагмент"
                         />
                       </label>
                       <button className="secondary" disabled={busy || !inspectionNote.trim()} onClick={() => void markInspected()}>
-                        Mark source inspected
+                        Отметить источник изученным
                       </button>
                     </>
                   )}
 
                   <div className="form-grid">
                     <label className="field">
-                      <span>Evidence relationship</span>
+                      <span>Отношение доказательства к утверждению</span>
                       <select
                         value={relationship}
                         onChange={(event) => setRelationship(event.target.value as typeof relationship)}
                       >
-                        <option>SUPPORTS</option>
-                        <option>PARTIALLY_SUPPORTS</option>
-                        <option>CONTRADICTS</option>
-                        <option>CONTEXT_ONLY</option>
+                        <option value="SUPPORTS">{uiLabel("SUPPORTS")}</option>
+                        <option value="PARTIALLY_SUPPORTS">{uiLabel("PARTIALLY_SUPPORTS")}</option>
+                        <option value="CONTRADICTS">{uiLabel("CONTRADICTS")}</option>
+                        <option value="CONTEXT_ONLY">{uiLabel("CONTEXT_ONLY")}</option>
                       </select>
                     </label>
                     <label className="field">
-                      <span>Evidence locator / pointer</span>
+                      <span>Точное место в источнике</span>
                       <input
                         value={pointer}
                         onChange={(event) => setPointer(event.target.value)}
-                        placeholder="Page, section, paragraph, URL fragment or bounded locator"
+                        placeholder="Страница, раздел, абзац, фрагмент URL или другой точный указатель"
                       />
                     </label>
                     <label className="field">
-                      <span>Limitations</span>
+                      <span>Ограничения доказательства</span>
                       <textarea
                         rows={2}
                         value={limitations}
-                        onChange={(event) => setLimitations(event.target.value)}
-                        placeholder="Required for PARTIALLY_SUPPORTS"
+                        onChange={(event) => setОграничения доказательства(event.target.value)}
+                        placeholder="Обязательно для частичного подтверждения"
                       />
                     </label>
                   </div>
                   <button className="primary" disabled={busy || !pointer.trim()} onClick={() => void addEvidence()}>
-                    Add Evidence
+                    Добавить доказательство
                   </button>
                 </div>
               )}
@@ -425,7 +426,7 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
                 <div className="evidence-list">
                   {evidence.map((item) => (
                     <div key={item.evidence_id}>
-                      <strong>{item.relationship}</strong> · {item.pointer} · {item.status}
+                      <strong>{uiLabel(item.relationship)}</strong> · {item.pointer} · {uiLabel(item.status)}
                     </div>
                   ))}
                 </div>
@@ -433,19 +434,19 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
 
               <div className="citation-check">
                 <label className="field">
-                  <span>Citation / source identifier check</span>
+                  <span>Проверка DOI / идентификатора источника</span>
                   <input
                     value={citationIdentifier}
                     onChange={(event) => setCitationIdentifier(event.target.value)}
-                    placeholder="DOI or stored provider identifier"
+                    placeholder="DOI или сохранённый идентификатор источника"
                   />
                 </label>
                 <button className="ghost" disabled={busy || !citationIdentifier.trim()} onClick={() => void checkCitation()}>
-                  Resolve citation
+                  Проверить ссылку
                 </button>
                 {citationCheck && (
                   <p className={citationCheck.resolved ? "healthy" : "alert inline-alert"}>
-                    {citationCheck.resolved ? "RESOLVED" : "UNRESOLVED"}: {citationCheck.reason}
+                    {citationCheck.resolved ? "НАЙДЕНО" : "НЕ НАЙДЕНО"}: {citationCheck.reason}
                   </p>
                 )}
               </div>

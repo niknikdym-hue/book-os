@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uiLabel } from "./uiLabels";
 import type { ProjectView } from "./types";
 
 type PilotRun = {
@@ -110,7 +111,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
   const [stage, setStage] = useState<(typeof stages)[number]>("IDEA");
   const [stageHumanMinutes, setStageHumanMinutes] = useState("");
   const [observationText, setObservationText] = useState("");
-  const [observationSeverity, setObservationSeverity] = useState("ATTENTION");
+  const [observationСерьёзность, setObservationСерьёзность] = useState("ATTENTION");
   const [observationCategory, setObservationCategory] = useState<(typeof observationCategories)[number]>(
     "WORKFLOW_FRICTION",
   );
@@ -124,8 +125,8 @@ export function PilotPanel({ project }: { project: ProjectView }) {
   const [maxCostUsd, setMaxCostUsd] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [preflight, setPreflight] = useState<OpenAIPreflight | null>(null);
-  const [decision, setDecision] = useState("GO");
-  const [decisionReason, setDecisionReason] = useState("");
+  const [decision, setРешение] = useState("GO");
+  const [decisionReason, setРешениеReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -220,7 +221,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
         {
           stage,
           category: observationCategory,
-          severity: observationSeverity,
+          severity: observationСерьёзность,
           actor: humanActor.trim(),
           actor_kind: "HUMAN",
           description: observationText.trim(),
@@ -331,7 +332,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
     }
   }
 
-  async function recordFinalDecision() {
+  async function recordFinalРешение() {
     if (!pilot || !summary?.go_no_go.ready || !humanActor.trim() || !decisionReason.trim()) return;
     setBusy(true);
     setError(null);
@@ -358,33 +359,33 @@ export function PilotPanel({ project }: { project: ProjectView }) {
     <section className="panel" aria-label="Real-book Pilot">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">REAL BUSINESS NONFICTION PILOT</p>
-          <h3>GO / NO-GO evidence</h3>
+          <p className="eyebrow">РЕАЛЬНЫЙ ПИЛОТ BUSINESS NONFICTION</p>
+          <h3>Доказательства для решения GO / NO-GO</h3>
         </div>
         <span className={`badge ${summary?.go_no_go.ready ? "approved" : "draft"}`}>
           {pilot?.status === "COMPLETED"
             ? pilot.final_decision ?? "COMPLETED"
             : summary?.go_no_go.ready
-              ? "HUMAN DECISION READY"
+              ? "ГОТОВО К РЕШЕНИЮ ЧЕЛОВЕКА"
               : pilot
-                ? "EVIDENCE INCOMPLETE"
-                : "NOT STARTED"}
+                ? "ДОКАЗАТЕЛЬСТВА НЕПОЛНЫЕ"
+                : "НЕ НАЧАТ"}
         </span>
       </div>
 
       <p className="muted">
-        Pilot evidence is local to this book. Manuscript text is not copied into this workspace summary.
+        Доказательства пилота хранятся локально в проекте книги. Текст рукописи не копируется в сводку.
       </p>
       {error && <div className="alert">{error}</div>}
 
       {!pilot && (
         <div className="form-grid">
           <label className="field">
-            <span>Human pilot owner</span>
+            <span>Владелец пилота</span>
             <input
               value={humanActor}
               onChange={(event) => setHumanActor(event.target.value)}
-              placeholder="Owner / editor name"
+              placeholder="Имя владельца / редактора"
             />
           </label>
           <div className="actions">
@@ -393,7 +394,7 @@ export function PilotPanel({ project }: { project: ProjectView }) {
               onClick={() => void startPilot()}
               disabled={busy || !humanActor.trim()}
             >
-              Start real-book pilot
+              Начать реальный пилот книги
             </button>
           </div>
         </div>
@@ -402,17 +403,17 @@ export function PilotPanel({ project }: { project: ProjectView }) {
       {pilot && summary && (
         <>
           <div className="summary-grid" aria-label="Pilot evidence summary">
-            <div><strong>Stages</strong><span>{completedStages.length}/{stages.length}</span></div>
-            <div><strong>Human time</strong><span>{summary.human_minutes_total} min</span></div>
-            <div><strong>AI runs</strong><span>{summary.ai_run_count}</span></div>
-            <div><strong>Model cost</strong><span>{String(summary.model_cost_usd)}</span></div>
-            <div><strong>Open BLOCKING</strong><span>{summary.open_observations_by_severity.BLOCKING ?? 0}</span></div>
-            <div><strong>Literary Master</strong><span>{summary.latest_literary_master_id ?? "not reached"}</span></div>
+            <div><strong>Этапы</strong><span>{completedStages.length}/{stages.length}</span></div>
+            <div><strong>Время человека</strong><span>{summary.human_minutes_total} мин</span></div>
+            <div><strong>AI-запуски</strong><span>{summary.ai_run_count}</span></div>
+            <div><strong>Стоимость моделей</strong><span>{String(summary.model_cost_usd)}</span></div>
+            <div><strong>Открытые блокеры</strong><span>{summary.open_observations_by_severity.BLOCKING ?? 0}</span></div>
+            <div><strong>Литературный мастер</strong><span>{summary.latest_literary_master_id ?? "не достигнут"}</span></div>
           </div>
 
           {!summary.go_no_go.ready && (
             <div aria-label="GO NO-GO blockers">
-              <strong>Evidence blockers</strong>
+              <strong>Что мешает готовности</strong>
               <ul>{summary.go_no_go.blockers.map((item) => <li key={item}>{item}</li>)}</ul>
             </div>
           )}
@@ -421,17 +422,17 @@ export function PilotPanel({ project }: { project: ProjectView }) {
             <>
               <div className="form-grid">
                 <label className="field">
-                  <span>Human actor</span>
+                  <span>Кто выполняет действие</span>
                   <input value={humanActor} onChange={(event) => setHumanActor(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>Pilot stage</span>
+                  <span>Этап пилота</span>
                   <select value={stage} onChange={(event) => setStage(event.target.value as typeof stage)}>
-                    {stages.map((item) => <option key={item}>{item}</option>)}
+                    {stages.map((item) => <option key={item} value={item}>{uiLabel(item)}</option>)}
                   </select>
                 </label>
                 <label className="field">
-                  <span>Human minutes</span>
+                  <span>Минуты человека</span>
                   <input
                     inputMode="numeric"
                     value={stageHumanMinutes}
@@ -444,22 +445,22 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                     onClick={() => void recordStageCompleted()}
                     disabled={busy || !humanActor.trim()}
                   >
-                    Mark stage complete
+                    Отметить этап завершённым
                   </button>
                 </div>
               </div>
 
               <div className="form-grid">
                 <label className="field">
-                  <span>Workflow observation</span>
+                  <span>Наблюдение по процессу</span>
                   <textarea
                     value={observationText}
                     onChange={(event) => setObservationText(event.target.value)}
-                    placeholder="Local/private observation"
+                    placeholder="Локальное приватное наблюдение"
                   />
                 </label>
                 <label className="field">
-                  <span>Observation category</span>
+                  <span>Категория наблюдения</span>
                   <select
                     value={observationCategory}
                     onChange={(event) =>
@@ -467,19 +468,19 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                     }
                   >
                     {observationCategories.map((item) => (
-                      <option key={item}>{item}</option>
+                      <option key={item} value={item}>{uiLabel(item)}</option>
                     ))}
                   </select>
                 </label>
                 <label className="field">
-                  <span>Severity</span>
+                  <span>Серьёзность</span>
                   <select
-                    value={observationSeverity}
-                    onChange={(event) => setObservationSeverity(event.target.value)}
+                    value={observationСерьёзность}
+                    onChange={(event) => setObservationСерьёзность(event.target.value)}
                   >
-                    <option>INFO</option>
-                    <option>ATTENTION</option>
-                    <option>BLOCKING</option>
+                    <option value="INFO">{uiLabel("INFO")}</option>
+                    <option value="ATTENTION">{uiLabel("ATTENTION")}</option>
+                    <option value="BLOCKING">{uiLabel("BLOCKING")}</option>
                   </select>
                 </label>
                 <div className="actions">
@@ -488,16 +489,16 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                     onClick={() => void addObservation()}
                     disabled={busy || !humanActor.trim() || !observationText.trim()}
                   >
-                    Record observation
+                    Записать наблюдение
                   </button>
                 </div>
               </div>
 
               {openObservations.length > 0 && (
-                <div aria-label="Open pilot observations">
-                  <strong>Open pilot observations</strong>
+                <div aria-label="Открытые наблюдения пилота">
+                  <strong>Открытые наблюдения пилота</strong>
                   <label className="field">
-                    <span>Human resolution reason</span>
+                    <span>Причина закрытия человеком</span>
                     <input
                       value={resolutionReason}
                       onChange={(event) => setResolutionReason(event.target.value)}
@@ -506,13 +507,13 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                   <ul>
                     {openObservations.map((item) => (
                       <li key={item.observation_id}>
-                        <code>{item.severity}</code> · {item.category} · {item.description}{" "}
+                        <code>{uiLabel(item.severity)}</code> · {uiLabel(item.category)} · {item.description}{" "}
                         <button
                           className="secondary"
                           onClick={() => void resolveObservation(item.observation_id)}
                           disabled={busy || !humanActor.trim() || !resolutionReason.trim()}
                         >
-                          Resolve as HUMAN
+                          Закрыть решением человека
                         </button>
                       </li>
                     ))}
@@ -522,42 +523,42 @@ export function PilotPanel({ project }: { project: ProjectView }) {
 
               <div className="form-grid" aria-label="Human pilot reviews">
                 <label className="field">
-                  <span>Human review note</span>
+                  <span>Комментарий человеческой проверки</span>
                   <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
                 </label>
                 <div className="actions">
                   <button className="secondary" onClick={() => void recordHumanReview("DEFECT_REVIEW")} disabled={busy || !humanActor.trim() || !reviewNote.trim()}>
-                    Record BookBench defect review
+                    Зафиксировать разбор ошибок BookBench
                   </button>
                   <button className="secondary" onClick={() => void recordHumanReview("LITERARY_QUALITY_JUDGMENT")} disabled={busy || !humanActor.trim() || !reviewNote.trim()}>
-                    Record literary quality judgment
+                    Зафиксировать оценку литературного качества
                   </button>
                 </div>
               </div>
 
               <div className="form-grid" aria-label="OpenAI zero-call preflight">
                 <label className="field">
-                  <span>Writer model</span>
+                  <span>Модель Writer</span>
                   <input value={writerModel} onChange={(event) => setWriterModel(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>Evaluator model</span>
+                  <span>Модель Evaluator</span>
                   <input value={evaluatorModel} onChange={(event) => setEvaluatorModel(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>Max requests</span>
+                  <span>Максимум запросов</span>
                   <input inputMode="numeric" value={maxRequests} onChange={(event) => setMaxRequests(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>Max input tokens</span>
+                  <span>Максимум входных токенов</span>
                   <input inputMode="numeric" value={maxInputTokens} onChange={(event) => setMaxInputTokens(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>Max output tokens</span>
+                  <span>Максимум выходных токенов</span>
                   <input inputMode="numeric" value={maxOutputTokens} onChange={(event) => setMaxOutputTokens(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>Max cost USD</span>
+                  <span>Максимальная стоимость, USD</span>
                   <input inputMode="decimal" value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} />
                 </label>
                 <div className="actions">
@@ -566,12 +567,12 @@ export function PilotPanel({ project }: { project: ProjectView }) {
                     onClick={() => void checkOpenAI()}
                     disabled={busy || !writerModel.trim() || !evaluatorModel.trim() || !maxRequests.trim() || !maxInputTokens.trim() || !maxOutputTokens.trim() || !maxCostUsd.trim()}
                   >
-                    Check OpenAI readiness — zero calls
+                    Проверить готовность OpenAI — без запросов
                   </button>
                 </div>
                 {preflight && (
                   <p>
-                    OpenAI credential: <strong>{preflight.credential_state}</strong> · plan {preflight.plan_hash.slice(0, 16)}… · requests ≤ {preflight.max_requests} · input tokens ≤ {preflight.max_input_tokens} · output tokens ≤ {preflight.max_output_tokens} · cost cap ${preflight.max_cost_usd} · external calls: {preflight.external_calls} · paid calls: {preflight.paid_calls}
+                    Ключ OpenAI: <strong>{preflight.credential_state}</strong> · plan {preflight.plan_hash.slice(0, 16)}… · запросов ≤ {preflight.max_requests} · входных токенов ≤ {preflight.max_input_tokens} · выходных токенов ≤ {preflight.max_output_tokens} · предел стоимости ${preflight.max_cost_usd} · внешних вызовов: {preflight.external_calls} · платных вызовов: {preflight.paid_calls}
                   </p>
                 )}
               </div>
@@ -579,27 +580,27 @@ export function PilotPanel({ project }: { project: ProjectView }) {
               {summary.go_no_go.ready && (
                 <div className="form-grid" aria-label="Final human GO NO-GO decision">
                   <label className="field">
-                    <span>Decision</span>
-                    <select value={decision} onChange={(event) => setDecision(event.target.value)}>
+                    <span>Решение</span>
+                    <select value={decision} onChange={(event) => setРешение(event.target.value)}>
                       <option>GO</option>
                       <option>CONDITIONAL_GO</option>
                       <option>NO_GO</option>
                     </select>
                   </label>
                   <label className="field">
-                    <span>Human decision reason</span>
+                    <span>Причина решения человека</span>
                     <textarea
                       value={decisionReason}
-                      onChange={(event) => setDecisionReason(event.target.value)}
+                      onChange={(event) => setРешениеReason(event.target.value)}
                     />
                   </label>
                   <div className="actions">
                     <button
                       className="primary"
-                      onClick={() => void recordFinalDecision()}
+                      onClick={() => void recordFinalРешение()}
                       disabled={busy || !humanActor.trim() || !decisionReason.trim()}
                     >
-                      Record final human decision
+                      Зафиксировать финальное решение человека
                     </button>
                   </div>
                 </div>

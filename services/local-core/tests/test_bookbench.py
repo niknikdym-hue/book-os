@@ -200,7 +200,7 @@ def test_m7_schema_snapshot_exactness_and_currentness(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0010"
+            == "0011"
         )
         assert connection.execute(
             text("SELECT COUNT(*) FROM evaluation_snapshot_targets WHERE snapshot_id=:snapshot_id"),
@@ -292,7 +292,7 @@ def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(
     service = BookBenchService(tmp_path)
     snapshot = service.create_snapshot(state["book_id"], scope="BOOK")
     runs = service.run_deterministic_suite(state["book_id"], snapshot.snapshot_id)
-    assert len(runs) == 7
+    assert len(runs) == 8
     assert all(run.status == "SUCCEEDED" for run in runs)
 
     repetition = next(run for run in runs if run.check_id == "deterministic.repetition")

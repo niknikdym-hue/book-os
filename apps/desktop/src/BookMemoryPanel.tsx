@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uiLabel } from "./uiLabels";
 import type {
   MemoryApi,
   MemoryIndexStatus,
@@ -17,11 +18,11 @@ type BookMemoryPanelProps = {
 };
 
 const objectKinds: Array<{ value: "ALL" | MemoryObjectKind; label: string }> = [
-  { value: "ALL", label: "All memory objects" },
-  { value: "MANUSCRIPT_UNIT", label: "Manuscript units" },
-  { value: "BOOK_CONTRACT", label: "Book Contract" },
-  { value: "CHAPTER_CONTRACT", label: "Chapter Contracts" },
-  { value: "CLAIM", label: "Claims" },
+  { value: "ALL", label: "Все объекты памяти" },
+  { value: "MANUSCRIPT_UNIT", label: "Фрагменты рукописи" },
+  { value: "BOOK_CONTRACT", label: "Контракт книги" },
+  { value: "CHAPTER_CONTRACT", label: "Контракты глав" },
+  { value: "CLAIM", label: "Утверждения" },
 ];
 
 function score(value: number | null): string {
@@ -43,7 +44,7 @@ export function BookMemoryPanel({ project, chapter, api = coreApi }: BookMemoryP
   const memoryPath = `/api/projects/${project.book_id}/memory`;
   const semanticReady = status?.status === "SEMANTIC_READY";
   const visibleConfig = useMemo(() => {
-    if (!status?.provider || !status.model) return "Lexical index only";
+    if (!status?.provider || !status.model) return "Только лексический индекс";
     const suffix = status.config_hash ? ` · ${status.config_hash.slice(0, 10)}…` : "";
     return `${status.provider} · ${status.model}${suffix}`;
   }, [status]);
@@ -79,7 +80,7 @@ export function BookMemoryPanel({ project, chapter, api = coreApi }: BookMemoryP
   async function rebuild() {
     const model = embeddingModel.trim();
     if (!model) {
-      setError("Enter an embedding model before semantic rebuild.");
+      setError("Укажите embedding-модель перед перестроением семантической памяти.");
       return;
     }
     setBusy(true);
@@ -101,7 +102,7 @@ export function BookMemoryPanel({ project, chapter, api = coreApi }: BookMemoryP
   async function search() {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
-      setError("Enter a Book Memory query.");
+      setError("Введите запрос к памяти книги.");
       return;
     }
     setBusy(true);
@@ -129,56 +130,55 @@ export function BookMemoryPanel({ project, chapter, api = coreApi }: BookMemoryP
     <section className="panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">M5 · DERIVED STATE</p>
+          <p className="eyebrow">M5 · ПРОИЗВОДНАЯ ПАМЯТЬ</p>
           <h3>Book Memory</h3>
           <p>
-            Whole-book retrieval only. Results point to exact revisions; memory indexes never become
-            authority.
+            Поиск по всей книге с привязкой к точным версиям. Индексы памяти никогда не становятся authority.
           </p>
         </div>
         <div>
-          <strong>{status?.status ?? "LOADING"}</strong>
+          <strong>{uiLabel(status?.status ?? "LOADING")}</strong>
           <p>
-            {status?.document_count ?? 0} docs · {status?.embedding_count ?? 0} vectors
+            {status?.document_count ?? 0} документов · {status?.embedding_count ?? 0} векторов
           </p>
         </div>
       </div>
 
       <div className="form-grid">
         <label className="field">
-          <span>Query</span>
+          <span>Запрос</span>
           <input
             aria-label="Book Memory query"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find an exact phrase, idea, claim, or contract rule"
+            placeholder="Найти точную фразу, идею, утверждение или правило контракта"
           />
         </label>
         <label className="field">
-          <span>Mode</span>
+          <span>Режим</span>
           <select
             aria-label="Book Memory mode"
             value={mode}
             onChange={(event) => setMode(event.target.value as MemorySearchMode)}
           >
-            <option value="LEXICAL">Lexical</option>
-            <option value="SEMANTIC">Semantic</option>
-            <option value="HYBRID">Hybrid</option>
+            <option value="LEXICAL">Лексический</option>
+            <option value="SEMANTIC">Семантический</option>
+            <option value="HYBRID">Гибридный</option>
           </select>
         </label>
         <label className="field">
-          <span>Scope</span>
+          <span>Область поиска</span>
           <select
             aria-label="Book Memory scope"
             value={scope}
             onChange={(event) => setScope(event.target.value as MemoryScope)}
           >
-            <option value="CURRENT">Current only</option>
-            <option value="HISTORY">History diagnostics</option>
+            <option value="CURRENT">Только текущая версия</option>
+            <option value="HISTORY">Диагностика истории</option>
           </select>
         </label>
         <label className="field">
-          <span>Object kind</span>
+          <span>Тип объекта</span>
           <select
             aria-label="Book Memory object kind"
             value={objectKind}
@@ -194,16 +194,16 @@ export function BookMemoryPanel({ project, chapter, api = coreApi }: BookMemoryP
           </select>
         </label>
         <label className="field">
-          <span>Semantic rebuild model</span>
+          <span>Модель для семантического индекса</span>
           <input
             aria-label="Embedding model"
             value={embeddingModel}
             onChange={(event) => setEmbeddingModel(event.target.value)}
-            placeholder="Explicit OpenAI development model"
+            placeholder="Явно выбранная модель OpenAI"
           />
         </label>
         <label className="field">
-          <span>Chapter filter</span>
+          <span>Фильтр по главе</span>
           <span>
             <input
               aria-label="Current chapter only"
@@ -212,55 +212,55 @@ export function BookMemoryPanel({ project, chapter, api = coreApi }: BookMemoryP
               disabled={!chapter}
               onChange={(event) => setCurrentChapterOnly(event.target.checked)}
             />{" "}
-            Current selected chapter only
+            Только выбранная глава
           </span>
         </label>
       </div>
 
       <div className="actions">
         <button className="secondary" disabled={busy} onClick={() => void sync()}>
-          Sync lexical memory
+          Синхронизировать лексическую память
         </button>
         <button className="secondary" disabled={busy} onClick={() => void rebuild()}>
-          Rebuild semantic memory
+          Перестроить семантическую память
         </button>
         <button className="primary" disabled={busy} onClick={() => void search()}>
-          Search Book Memory
+          Искать в памяти книги
         </button>
       </div>
 
       <p>
-        Index configuration: <strong>{visibleConfig}</strong>
-        {semanticReady ? " · semantic ready" : " · semantic rebuild required for Semantic/Hybrid"}
+        Конфигурация индекса: <strong>{visibleConfig}</strong>
+        {semanticReady ? " · семантический индекс готов" : " · для семантического/гибридного поиска нужно перестроение"}
       </p>
       {scope === "HISTORY" && (
-        <p role="alert">History mode is diagnostic: every returned row is explicitly non-current.</p>
+        <p role="alert">Исторический режим диагностический: все результаты явно помечены как нетекущие.</p>
       )}
       {error && <p role="alert">{error}</p>}
 
       <div aria-label="Book Memory results">
         {results.length === 0 ? (
-          <p>No memory results loaded.</p>
+          <p>Результатов поиска пока нет.</p>
         ) : (
           results.map((result) => (
             <article className="chapter-plan" key={result.memory_id}>
               <div className="subheading">
                 <strong>
                   #{result.fused_rank ?? result.semantic_rank ?? result.lexical_rank ?? "—"} ·{" "}
-                  {result.object_kind}
+                  {uiLabel(result.object_kind)}
                 </strong>
-                <strong>{result.currentness}</strong>
+                <strong>{uiLabel(result.currentness)}</strong>
               </div>
               <p>{result.text}</p>
               <p>
-                object <code>{result.object_id}</code> · revision <code>{result.revision_id}</code>
+                объект <code>{result.object_id}</code> · версия <code>{result.revision_id}</code>
               </p>
               <p>
-                revision hash <code>{result.revision_hash}</code>
+                хэш версии <code>{result.revision_hash}</code>
               </p>
               <p>
-                lexical {score(result.lexical_score)} · semantic {score(result.semantic_score)} ·
-                fused {score(result.fused_score)}
+                лексика {score(result.lexical_score)} · семантика {score(result.semantic_score)} ·
+                итог {score(result.fused_score)}
               </p>
             </article>
           ))
