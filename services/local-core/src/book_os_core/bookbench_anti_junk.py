@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import cast
 
+# Import installs the Writer gateway wrapper before create_app constructs DraftingService.
+from . import drafting_anti_junk as _drafting_anti_junk  # noqa: F401
 from .anti_junk import AntiJunkService
 from .bookbench import (
     BookBenchService,
