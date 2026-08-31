@@ -26,7 +26,6 @@ from .projects import (
     BookArchitecturePayload,
     BookContractPayload,
     ChapterContractPayload,
-    ProjectGateError,
     ProjectService,
     ProjectView,
 )
