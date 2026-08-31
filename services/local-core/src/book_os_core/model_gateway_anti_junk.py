@@ -13,8 +13,8 @@ from .model_gateway import (
 from .prompts import PromptTemplate
 
 
-class AntiJunkModelGateway:
-    """Gateway wrapper for paid-call bounds and current prose anti-junk constraints."""
+class AntiJunkModelGateway(ModelGateway):
+    """ModelGateway-compatible wrapper for paid-call bounds and prose anti-junk constraints."""
 
     def __init__(self, inner: ModelGateway, anti_junk: AntiJunkService):
         self.inner = inner
