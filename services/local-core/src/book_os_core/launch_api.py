@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from .anti_junk import AntiJunkCreateRequest, AntiJunkError, AntiJunkService
 from .model_gateway import ModelGateway
@@ -16,7 +17,11 @@ from .planning import (
     PlanningGateError,
     PlanningService,
 )
-from .secrets import MacOSKeychainSecretStore, SecretNotFound
+from .secrets import MacOSKeychainSecretStore, SecretNotFound, SecretWriteError
+
+
+class OpenAIKeyRequest(BaseModel):
+    api_key: str = Field(min_length=10, max_length=1000)
 
 
 def build_launch_router(
@@ -26,19 +31,34 @@ def build_launch_router(
 ) -> APIRouter:
     anti_junk = AntiJunkService(data_dir)
     planning = PlanningService(data_dir, gateway)
+    keychain = MacOSKeychainSecretStore()
     router = APIRouter(dependencies=[Depends(require_token)])
 
     @router.get("/api/launch/readiness")
     def launch_readiness() -> dict[str, object]:
         credential_state = "AVAILABLE"
         try:
-            MacOSKeychainSecretStore().get_secret("openai_api_key")
+            keychain.get_secret("openai_api_key")
         except SecretNotFound:
             credential_state = "NOT_AVAILABLE"
         return {
             "openai_credential_state": credential_state,
             "configured_model": os.environ.get("BOOK_OS_OPENAI_MODEL", "").strip() or None,
             "anti_junk_entry_count": len(anti_junk.list_entries()),
+            "external_calls": 0,
+            "paid_calls": 0,
+        }
+
+    @router.post("/api/launch/openai-key")
+    def save_openai_key(payload: OpenAIKeyRequest) -> dict[str, object]:
+        try:
+            keychain.set_secret("openai_api_key", payload.api_key)
+            keychain.get_secret("openai_api_key")
+        except (SecretWriteError, SecretNotFound) as exc:
+            raise HTTPException(status_code=503, detail="Не удалось сохранить ключ в macOS Keychain") from exc
+        return {
+            "openai_credential_state": "AVAILABLE",
+            "secret_returned": False,
             "external_calls": 0,
             "paid_calls": 0,
         }
