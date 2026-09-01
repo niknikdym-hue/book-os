@@ -30,15 +30,16 @@ Used by BOOK OS generation and BookBench.
 - `BLOCK`: generated prose must fail closed and be regenerated/revised before acceptance.
 - `WARN`: surface to BookBench/human review; do not mechanically delete or replace the text.
 - BOOK OS may use rules as generation constraints before a model call and deterministic checks after generation.
+- This is where anti-junk enforcement belongs. Junk must be stopped while the book is being written, not repaired automatically later in Audiobook Studio.
 
 ### AUDIOBOOK_PRE_SYNTHESIS
 
-Used by Audiobook Studio before PREPARE/EXECUTE.
+Shared editorial vocabulary available to Audiobook Studio only when the owner explicitly enables or runs a manual anti-junk check.
 
-- Reuses the shared editorial vocabulary to catch prose-quality junk before money is spent on synthesis.
-- Audiobook Studio MUST NOT silently rewrite the literary source to satisfy a rule.
-- `BLOCK`: synthesis preparation is stopped and the user is shown the exact finding; the source/working copy must be deliberately corrected upstream or explicitly resolved by a human workflow.
-- `WARN`: visible review item; does not mutate text.
+- Audiobook Studio MUST NOT silently rewrite literary text to satisfy a rule.
+- Editorial `BLOCK`/`WARN` values remain useful as severity labels in the findings UI, but neither value is an automatic synthesis blocker in Audiobook Studio.
+- The owner may use findings to edit the separate TTS working copy or go back upstream to BOOK OS, but Studio must not force a literary rewrite.
+- A manual editorial scan must be opt-in from the Studio panel (checkbox/toggle/button), not an invisible mandatory pre-provider gate.
 
 ### AUDIOBOOK_TTS_TECHNICAL
 
@@ -47,6 +48,8 @@ Audiobook Studio only.
 Contains technical speech-preparation rules such as unexpected URLs, Markdown residue, prompt residue, placeholders, malformed control markers, unsupported pronunciation markup or other artifacts that should not reach TTS.
 
 These rules MUST NOT be loaded into BOOK OS prose generation.
+
+Unlike the shared editorial vocabulary, unresolved TTS-technical `BLOCK` findings may fail closed before provider execution because they represent production artifacts rather than literary style decisions.
 
 ## System core and application overlays
 
@@ -79,16 +82,20 @@ Requirements:
 - A corrupt or schema-invalid file fails closed for mutation and produces a visible diagnostic; applications must not overwrite it with an empty file.
 - No manuscript text, API key, project identity or private book data is stored in this file.
 
-## User rule defaults
+## User rule entry from both applications
 
-A rule entered through the BOOK OS `Словарь мусора` panel defaults to:
+Both BOOK OS and Audiobook Studio must expose a simple owner field labelled in Russian along the lines of `Добавить слово/фразу в словарь мусора`.
+
+A new editorial rule defaults to:
 
 - `match_type=PHRASE`
 - `action=BLOCK`
 - `profiles=[BOOK_PROSE, AUDIOBOOK_PRE_SYNTHESIS]`
 - `origin=USER`
 
-The UI must allow the owner to change the action to `WARN` and scope a rule to book prose only or to both editorial profiles. TTS-technical rules are managed by Audiobook Studio and are never the default for a prose entry.
+The UI may allow the owner to change the action to `WARN` and scope a rule to book prose only or to both editorial profiles. TTS-technical rules are managed separately by Audiobook Studio and are never the default for a prose entry.
+
+Both applications must mutate the same shared private store. A field that writes to an application-private legacy dictionary does not satisfy this contract.
 
 ## Matching semantics
 
@@ -117,22 +124,23 @@ BOOK OS:
 
 Audiobook Studio:
 
-- The shared editorial scan runs before provider execution and before any paid request.
-- The TTS technical scan runs on the exact prepared working text identity.
-- Findings are bound to the source/prepared SHA so an approval cannot be reused after text changes.
-- No rule may silently alter the canonical manuscript.
-- A human exception, if supported, must record rule ID, exact text identity, actor, reason and timestamp; changing the text invalidates that exception.
+- Shared editorial scan runs only on an explicit owner action/toggle and never silently mutates text.
+- Editorial findings do not by themselves stop PREPARE/EXECUTE.
+- The TTS technical scan runs automatically on the exact prepared working text identity and may block new synthesis on unresolved technical `BLOCK` findings.
+- If the owner enables optional manual text acceptance, provider execution must additionally require owner acceptance bound to the exact current TTS working-copy SHA; any edit invalidates the prior acceptance.
+- The immutable imported literary source is never edited. Audiobook-specific manual text corrections live in a separate TTS working copy.
+- Pronunciation/stress markup is a separate Audiobook production concern, not an anti-junk rule and not a literary rewrite.
 
 ## Synchronization behavior
 
-Because both applications read the same shared private user file, a rule added in BOOK OS becomes visible to Audiobook Studio on its next lexicon reload. No copy/paste of individual words is required.
+Because both applications read the same shared private user file, a rule added in either BOOK OS or Audiobook Studio becomes visible to the other application on its next lexicon reload. No copy/paste of individual words is required.
 
 System rule changes remain versioned code changes. A system-pack bump requires updating both applications to the same accepted contract version; user rules remain intact.
 
 ## Security and privacy
 
 - Shared user lexicon is local-only.
-- It is excluded from repository commits, diagnostics bundles and model prompts except for the minimum rule text needed as a generation constraint.
+- It is excluded from repository commits, diagnostics bundles and model prompts except for the minimum rule text needed as a BOOK OS generation constraint.
 - No cloud sync is introduced by this contract.
 - No provider/model request is required to scan or manage the lexicon.
 
@@ -149,7 +157,9 @@ Both applications must have offline tests for:
 7. BLOCK vs WARN behavior;
 8. negative-first pattern detection;
 9. no provider/model calls during lexicon tests;
-10. exact text-identity invalidation for any Audiobook Studio resolution/approval.
+10. Audiobook Studio editorial scan is opt-in and non-blocking;
+11. TTS technical BLOCK remains fail-closed before new synthesis;
+12. optional Audiobook manual acceptance is exact-SHA and invalidates after text changes.
 
 ## Compatibility rule
 
