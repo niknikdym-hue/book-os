@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AntiJunkPanel } from "./AntiJunkPanel";
-import { App } from "./App";
 import { ArchitectureEditor } from "./ArchitectureEditor";
 import { AuthorJourney } from "./AuthorJourney";
 import { BookBenchPanel } from "./BookBenchPanel";
