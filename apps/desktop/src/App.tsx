@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { coreApi } from "./api";
 import { AntiJunkPanel } from "./AntiJunkPanel";
+import { App } from "./App";
 import { ArchitectureEditor } from "./ArchitectureEditor";
+import { AuthorJourney } from "./AuthorJourney";
 import { BookBenchPanel } from "./BookBenchPanel";
 import { BookMemoryPanel } from "./BookMemoryPanel";
+import {
+  BUSINESS_SUBTYPES,
+  BookTopicPicker,
+  SUBTYPE_LABELS,
+  type BusinessSubtype,
+} from "./BookTopicPicker";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
 import { LaunchPlanningPanel } from "./LaunchPlanningPanel";
 import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
 import { PilotPanel } from "./PilotPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import { coreApi } from "./api";
 import type {
   ArchitectureChapter,
   BookArchitecturePayload,
@@ -20,32 +28,6 @@ import type {
   ProjectSummary,
   ProjectView,
 } from "./types";
-
-const BUSINESS_SUBTYPES = [
-  "Entrepreneurship",
-  "Strategy",
-  "Leadership",
-  "Management",
-  "Teams & Culture",
-  "Marketing & Brand",
-  "Sales & Negotiation",
-  "Finance & Investing",
-  "Product, Innovation & Technology",
-  "Career & Professional Development",
-] as const;
-
-const SUBTYPE_LABELS: Record<(typeof BUSINESS_SUBTYPES)[number], string> = {
-  Entrepreneurship: "Предпринимательство",
-  Strategy: "Стратегия",
-  Leadership: "Лидерство",
-  Management: "Управление",
-  "Teams & Culture": "Команды и культура",
-  "Marketing & Brand": "Маркетинг и бренд",
-  "Sales & Negotiation": "Продажи и переговоры",
-  "Finance & Investing": "Финансы и инвестиции",
-  "Product, Innovation & Technology": "Продукт, инновации и технологии",
-  "Career & Professional Development": "Карьера и профессиональное развитие",
-};
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "ЧЕРНОВИК",
@@ -133,7 +115,9 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function documentContent<T>(value: ProjectView["book_contract"] | ProjectView["architecture"]): T | null {
+function documentContent<T>(
+  value: ProjectView["book_contract"] | ProjectView["architecture"],
+): T | null {
   return value ? (value.content as T) : null;
 }
 
@@ -171,9 +155,7 @@ export function App() {
   const [project, setProject] = useState<ProjectView | null>(null);
   const [showNewBook, setShowNewBook] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [primarySubtype, setPrimarySubtype] = useState<(typeof BUSINESS_SUBTYPES)[number]>(
-    BUSINESS_SUBTYPES[0],
-  );
+  const [primarySubtype, setPrimarySubtype] = useState<BusinessSubtype>(BUSINESS_SUBTYPES[0]);
   const [secondarySubtype, setSecondarySubtype] = useState("");
   const [bookContract, setBookContract] = useState<BookContractPayload>(clone(emptyBookContract));
   const [architecture, setArchitecture] = useState<BookArchitecturePayload>(clone(emptyArchitecture));
@@ -189,7 +171,9 @@ export function App() {
 
   function hydrate(next: ProjectView) {
     setProject(next);
-    setBookContract(documentContent<BookContractPayload>(next.book_contract) ?? clone(emptyBookContract));
+    setBookContract(
+      documentContent<BookContractPayload>(next.book_contract) ?? clone(emptyBookContract),
+    );
     setArchitecture(
       documentContent<BookArchitecturePayload>(next.architecture) ?? clone(emptyArchitecture),
     );
@@ -330,7 +314,7 @@ export function App() {
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">ЛОКАЛЬНАЯ РЕДАКЦИОННО-АВТОРСКАЯ СИСТЕМА</p>
+          <p className="eyebrow">РЕДАКЦИОННО-АВТОРСКАЯ СИСТЕМА</p>
           <h1>BOOK OS</h1>
         </div>
         <div className="health-block">
@@ -344,7 +328,7 @@ export function App() {
       <div className="workspace">
         <aside className="sidebar">
           <div className="sidebar-heading">
-            <h2>Книги</h2>
+            <h2>Мои книги</h2>
             <button className="primary small" onClick={() => setShowNewBook(true)} disabled={busy}>
               + Новая
             </button>
@@ -367,87 +351,75 @@ export function App() {
         </aside>
 
         <section className="content">
-          <AntiJunkPanel />
+          {project && (
+            <section className="project-header panel">
+              <div>
+                <p className="eyebrow">БИЗНЕС · НОН-ФИКШЕН</p>
+                <h2>{project.working_title}</h2>
+                <p className="muted">
+                  {subtypeLabel(project.primary_subtype)}
+                  {project.secondary_subtype ? ` · ${subtypeLabel(project.secondary_subtype)}` : ""}
+                </p>
+              </div>
+              <div className="stage">
+                <small>Текущий этап</small>
+                <strong>{stageLabel(project.workflow_stage)}</strong>
+              </div>
+            </section>
+          )}
+
+          <AuthorJourney project={project} onStartBook={() => setShowNewBook(true)} />
 
           {showNewBook && (
             <section className="panel new-book">
               <div className="panel-heading">
                 <div>
-                  <p className="eyebrow">КНИГА С НУЛЯ</p>
-                  <h2>Новая книга Business Nonfiction</h2>
+                  <p className="eyebrow">НОВАЯ КНИГА</p>
+                  <h2>Выберите направление книги</h2>
+                  <p className="muted">
+                    Недоступные направления показаны заранее, но их нельзя выбрать, пока BOOK OS не
+                    прошёл отдельную проверку качества для такого типа книги.
+                  </p>
                 </div>
                 <button className="ghost" onClick={() => setShowNewBook(false)}>
                   Закрыть
                 </button>
               </div>
-              <label className="field">
-                <span>Рабочее название</span>
-                <input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} />
+
+              <BookTopicPicker
+                primarySubtype={primarySubtype}
+                secondarySubtype={secondarySubtype}
+                onPrimarySubtype={setPrimarySubtype}
+                onSecondarySubtype={setSecondarySubtype}
+              />
+
+              <label className="field new-title-field">
+                <span>
+                  <span className="step-kicker">3</span> Рабочее название
+                </span>
+                <small>Можно временное. На следующем шаге Planner попросит идею книги и предложит контракт.</small>
+                <input
+                  value={newTitle}
+                  onChange={(event) => setNewTitle(event.target.value)}
+                  placeholder="Например: Бизнес держится на мне"
+                />
               </label>
-              <div className="two-columns">
-                <label className="field">
-                  <span>Основная категория</span>
-                  <select
-                    value={primarySubtype}
-                    onChange={(event) =>
-                      setPrimarySubtype(event.target.value as (typeof BUSINESS_SUBTYPES)[number])
-                    }
-                  >
-                    {BUSINESS_SUBTYPES.map((value) => (
-                      <option key={value} value={value}>{SUBTYPE_LABELS[value]}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Вторая категория — необязательно</span>
-                  <select
-                    value={secondarySubtype}
-                    onChange={(event) => setSecondarySubtype(event.target.value)}
-                  >
-                    <option value="">Нет</option>
-                    {BUSINESS_SUBTYPES.filter((value) => value !== primarySubtype).map((value) => (
-                      <option key={value} value={value}>{SUBTYPE_LABELS[value]}</option>
-                    ))}
-                  </select>
-                </label>
+              <div className="actions create-book-actions">
+                <button
+                  className="primary"
+                  onClick={() => void createProject()}
+                  disabled={busy || newTitle.trim().length === 0}
+                >
+                  Создать книгу и перейти к идее
+                </button>
               </div>
-              <button className="primary" onClick={() => void createProject()} disabled={busy}>
-                Создать проект книги
-              </button>
             </section>
           )}
 
-          {!project && !showNewBook && (
-            <section className="hero panel">
-              <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО BOOK OS</p>
-              <h2>Создайте первую реальную книгу</h2>
-              <p>
-                Контракты, архитектура, версии, исследования, решения редактора и качество хранятся
-                локально как состояние проекта книги, а не как память чата.
-              </p>
-              <button className="primary" onClick={() => setShowNewBook(true)}>
-                Создать новую книгу
-              </button>
-            </section>
-          )}
+          <AntiJunkPanel />
 
           {project && (
             <>
-              <section className="project-header panel">
-                <div>
-                  <p className="eyebrow">ДЕЛОВОЙ НОН-ФИКШЕН</p>
-                  <h2>{project.working_title}</h2>
-                  <p className="muted">
-                    {subtypeLabel(project.primary_subtype)}
-                    {project.secondary_subtype ? ` · ${subtypeLabel(project.secondary_subtype)}` : ""}
-                  </p>
-                </div>
-                <div className="stage">
-                  <small>Текущий этап</small>
-                  <strong>{stageLabel(project.workflow_stage)}</strong>
-                </div>
-              </section>
-
               <LaunchPlanningPanel project={project} chapter={selectedChapter} onProject={hydrate} />
 
               <section className="panel">
