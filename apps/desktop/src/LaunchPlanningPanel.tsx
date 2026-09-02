@@ -104,11 +104,11 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   }
 
   return (
-    <section className="panel launch-planning-panel" aria-label="Старт книги">
+    <section className="panel launch-planning-panel" aria-label="Идея и план книги">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">СТАРТ КНИГИ</p>
-          <h3>BOOK OS Planner</h3>
+          <p className="eyebrow">ТЕКУЩИЙ РАБОЧИЙ ШАГ</p>
+          <h3>Идея и план книги</h3>
         </div>
         <span className={`badge ${readiness?.openai_credential_state === "AVAILABLE" ? "approved" : "draft"}`}>
           {readiness?.openai_credential_state === "AVAILABLE"
@@ -118,15 +118,15 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       </div>
 
       <p className="muted">
-        Planner создаёт только черновые предложения. Контракт книги, архитектура и контракты глав
-        становятся authority только после вашего отдельного утверждения.
+        BOOK OS создаёт только предложение. Контракт книги, архитектура и контракты глав становятся
+        авторитетными только после вашего отдельного утверждения.
       </p>
 
       {readiness?.openai_credential_state === "NOT_AVAILABLE" && (
         <div className="credential-setup">
           <label className="field">
-            <span>OpenAI API key</span>
-            <small>Сохраняется только в macOS Keychain. BOOK OS не показывает его после сохранения.</small>
+            <span>Ключ OpenAI API</span>
+            <small>Сохраняется только в macOS Keychain и не показывается после сохранения.</small>
             <input
               type="password"
               autoComplete="off"
@@ -141,79 +141,45 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
         </div>
       )}
 
-      <div className="form-grid">
-        <label className="field">
-          <span>Модель</span>
-          <input value={model} onChange={(event) => setModel(event.target.value)} />
-          <small>Для первого качественного пилота: gpt-5.6-sol.</small>
-        </label>
-        <label className="field">
-          <span>Максимальная стоимость одного запроса, USD</span>
-          <input
-            inputMode="decimal"
-            value={maxCostUsd}
-            onChange={(event) => setMaxCostUsd(event.target.value)}
-          />
-        </label>
-      </div>
-      <label className="paid-approval">
-        <input
-          type="checkbox"
-          checked={allowPaid}
-          onChange={(event) => setAllowPaid(event.target.checked)}
-        />
-        <span>
-          Разрешаю следующий платный OpenAI-запрос с указанным пределом. После любой попытки
-          разрешение автоматически сбросится.
-        </span>
-      </label>
-
       {!contractApproved && (
-        <div className="planning-step">
-          <h4>1. Определение книги и контракт</h4>
+        <div className="planning-step primary-planning-step">
+          <h4>Опишите идею книги</h4>
+          <p className="muted">
+            Не нужно писать промпт. Достаточно точно объяснить, какую проблему, механизм или вопрос
+            должна раскрыть книга.
+          </p>
           <div className="form-grid">
             <label className="field">
               <span>Идея книги</span>
               <textarea
-                rows={4}
+                rows={5}
                 value={idea}
                 onChange={(event) => setIdea(event.target.value)}
-                placeholder="Коротко: какую проблему или механизм должна исследовать книга?"
+                placeholder="Например: почему растущая компания начинает зависеть от личного контроля основателя и как перенести качество решений из его головы в систему управления."
               />
             </label>
             <label className="field">
-              <span>Кому книга — если уже понятно</span>
+              <span>Кому эта книга — если уже понятно</span>
               <textarea
-                rows={4}
+                rows={5}
                 value={readerHint}
                 onChange={(event) => setReaderHint(event.target.value)}
-                placeholder="Можно оставить пустым: Planner предложит читателя сам."
+                placeholder="Можно оставить пустым — BOOK OS предложит читателя сам."
               />
             </label>
-          </div>
-          <div className="actions">
-            <button
-              className="primary"
-              disabled={busy || !paidReady || idea.trim().length < 3}
-              onClick={() =>
-                void run(`/api/projects/${project.book_id}/planning/book-contract`, {
-                  idea: idea.trim(),
-                  reader_hint: readerHint.trim(),
-                  max_output_tokens: 2600,
-                })
-              }
-            >
-              {busy ? "Planner работает…" : "Предложить контракт книги"}
-            </button>
           </div>
         </div>
       )}
 
       {contractApproved && !architectureApproved && (
-        <div className="planning-step">
-          <h4>2. Архитектура книги</h4>
+        <div className="planning-step primary-planning-step">
+          <h4>Подготовьте предложение архитектуры</h4>
+          <p className="muted">
+            Контракт уже утверждён. Можно дать BOOK OS дополнительное указание — или оставить поле
+            пустым и получить структуру строго из контракта.
+          </p>
           <label className="field">
-            <span>Дополнительное указание Planner — необязательно</span>
+            <span>Дополнительное указание — необязательно</span>
             <textarea
               rows={3}
               value={planningNote}
@@ -221,56 +187,108 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
               placeholder="Например: не делать главы одинакового размера ради симметрии."
             />
           </label>
-          <div className="actions">
-            <button
-              className="primary"
-              disabled={busy || !paidReady}
-              onClick={() =>
-                void run(`/api/projects/${project.book_id}/planning/architecture`, {
-                  planning_note: planningNote.trim(),
-                  max_output_tokens: 5000,
-                })
-              }
-            >
-              {busy ? "Planner работает…" : "Предложить архитектуру"}
-            </button>
-          </div>
         </div>
       )}
 
       {architectureApproved && chapter && (
-        <div className="planning-step">
-          <h4>3. Контракт выбранной главы</h4>
+        <div className="planning-step primary-planning-step">
+          <h4>Подготовьте контракт выбранной главы</h4>
           <p className="muted">
-            Глава {chapter.ordinal}: {chapter.working_title}
+            Глава {chapter.ordinal}: {chapter.working_title}. BOOK OS предложит функцию, обязательные
+            мысли, исследования, сцены и ограничения этой главы.
           </p>
-          <div className="actions">
-            <button
-              className="primary"
-              disabled={busy || !paidReady}
-              onClick={() =>
-                void run(
-                  `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/planning/contract`,
-                  { planning_note: planningNote.trim(), max_output_tokens: 3200 },
-                )
-              }
-            >
-              {busy ? "Planner работает…" : "Предложить контракт главы"}
-            </button>
-          </div>
         </div>
       )}
 
+      <details className="advanced-settings planning-settings">
+        <summary>Дополнительные настройки OpenAI</summary>
+        <div className="form-grid planning-settings-grid">
+          <label className="field">
+            <span>Модель</span>
+            <input value={model} onChange={(event) => setModel(event.target.value)} />
+            <small>Для первого качественного пилота: gpt-5.6-sol.</small>
+          </label>
+          <label className="field">
+            <span>Максимальная стоимость одного запроса, USD</span>
+            <input
+              inputMode="decimal"
+              value={maxCostUsd}
+              onChange={(event) => setMaxCostUsd(event.target.value)}
+            />
+          </label>
+        </div>
+      </details>
+
+      <label className="paid-approval">
+        <input
+          type="checkbox"
+          checked={allowPaid}
+          onChange={(event) => setAllowPaid(event.target.checked)}
+        />
+        <span>
+          Разрешаю <strong>только следующий</strong> платный OpenAI-запрос. Текущий предел — ${maxCostUsd || "0"}.
+          После любой попытки разрешение автоматически сбросится.
+        </span>
+      </label>
+
+      <div className="actions planning-action">
+        {!contractApproved && (
+          <button
+            className="primary"
+            disabled={busy || !paidReady || idea.trim().length < 3}
+            onClick={() =>
+              void run(`/api/projects/${project.book_id}/planning/book-contract`, {
+                idea: idea.trim(),
+                reader_hint: readerHint.trim(),
+                max_output_tokens: 2600,
+              })
+            }
+          >
+            {busy ? "BOOK OS работает…" : "Предложить контракт книги"}
+          </button>
+        )}
+
+        {contractApproved && !architectureApproved && (
+          <button
+            className="primary"
+            disabled={busy || !paidReady}
+            onClick={() =>
+              void run(`/api/projects/${project.book_id}/planning/architecture`, {
+                planning_note: planningNote.trim(),
+                max_output_tokens: 5000,
+              })
+            }
+          >
+            {busy ? "BOOK OS работает…" : "Предложить архитектуру"}
+          </button>
+        )}
+
+        {architectureApproved && chapter && (
+          <button
+            className="primary"
+            disabled={busy || !paidReady}
+            onClick={() =>
+              void run(
+                `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/planning/contract`,
+                { planning_note: planningNote.trim(), max_output_tokens: 3200 },
+              )
+            }
+          >
+            {busy ? "BOOK OS работает…" : "Предложить контракт главы"}
+          </button>
+        )}
+      </div>
+
       {latestRun && (
         <div className="planning-run">
-          <strong>Черновик создан</strong>
-          <span>{latestRun.run_kind} · {latestRun.model}</span>
-          <small>Run ID: {latestRun.run_id}</small>
+          <strong>Черновик создан — теперь его нужно проверить</strong>
+          <span>{latestRun.model}</span>
+          <small>Технический Run ID: {latestRun.run_id}</small>
         </div>
       )}
       {readiness && (
         <small className="muted">
-          Словарь мусора: {readiness.anti_junk_entry_count} записей · проверка готовности внешних вызовов: {readiness.external_calls}
+          Словарь мусора: {readiness.anti_junk_entry_count} записей · внешних вызовов при проверке готовности: {readiness.external_calls}
         </small>
       )}
       {error && <div className="alert inline-alert">{error}</div>}
