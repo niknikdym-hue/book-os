@@ -99,7 +99,7 @@ it("показывает реальный каталог тем и создаё�
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "BOOK OS ведёт по шагам" })).toBeInTheDocument();
-  expect(screen.getByText("Опишите идею книги")).toBeInTheDocument();
+  expect(screen.getAllByText("Опишите идею книги").length).toBeGreaterThan(0);
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({

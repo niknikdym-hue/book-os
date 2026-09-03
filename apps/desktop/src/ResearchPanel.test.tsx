@@ -165,38 +165,38 @@ it("runs Claim → Source → Evidence and makes verification state visible", as
   evidence = [];
   render(<ResearchPanel project={project} chapter={chapter} api={api} />);
 
-  expect(await screen.findByText("Exact manuscript revision")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Material claim"), {
+  expect(await screen.findByText("Точная версия рукописи")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Проверяемое утверждение"), {
     target: { value: "Evidence quality changes verification confidence." },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Add Claim" }));
-  expect(await screen.findByText(/UNREVIEWED · Evidence quality/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Добавить утверждение" }));
+  expect(await screen.findByText(/Не проверено · Evidence quality/)).toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText("Research query"), {
+  fireEvent.change(screen.getByLabelText("Поисковый запрос"), {
     target: { value: "evidence quality" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Search metadata" }));
+  fireEvent.click(screen.getByRole("button", { name: "Найти источники" }));
   expect(await screen.findByText("Evidence Quality")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Add Source metadata" }));
-  expect(await screen.findByText(/Source status:/)).toBeInTheDocument();
-  expect(screen.getByText("METADATA_ONLY")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Добавить источник" }));
+  expect(await screen.findByText(/Статус источника:/)).toBeInTheDocument();
+  expect(screen.getByText("Только метаданные")).toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText("Inspection note"), {
+  fireEvent.change(screen.getByLabelText("Что именно проверено в источнике"), {
     target: { value: "Inspected Section 2 in the source." },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Mark source inspected" }));
-  expect(await screen.findByText("FULL_SOURCE_INSPECTED")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Отметить источник изученным" }));
+  expect(await screen.findByText("Источник изучен")).toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText("Evidence relationship"), {
+  fireEvent.change(screen.getByLabelText("Отношение доказательства к утверждению"), {
     target: { value: "SUPPORTS" },
   });
-  fireEvent.change(screen.getByLabelText("Evidence locator / pointer"), {
+  fireEvent.change(screen.getByLabelText("Точное место в источнике"), {
     target: { value: "Section 2" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Add Evidence" }));
-  expect(await screen.findByText(/SUPPORTED · Evidence quality/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Добавить доказательство" }));
+  expect(await screen.findByText(/Подтверждено · Evidence quality/)).toBeInTheDocument();
   const supportLabel = screen
-    .getAllByText("SUPPORTS")
+    .getAllByText("Подтверждает")
     .find((element) => element.tagName === "STRONG");
-  expect(supportLabel?.parentElement).toHaveTextContent("SUPPORTS · Section 2 · ACTIVE");
+  expect(supportLabel?.parentElement).toHaveTextContent("Подтверждает · Section 2 · Активен");
 });

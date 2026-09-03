@@ -87,22 +87,22 @@ it("rebuilds semantic memory then returns a stable CURRENT hybrid result", async
 
   render(<BookMemoryPanel project={project} chapter={chapter} api={api} />);
 
-  expect(await screen.findByText("LEXICAL_READY")).toBeInTheDocument();
+  expect(await screen.findByText("Лексический индекс готов")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Embedding model"), {
     target: { value: "memory-test" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Rebuild semantic memory" }));
-  expect(await screen.findByText("SEMANTIC_READY")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Перестроить семантическую память" }));
+  expect(await screen.findByText("Семантический индекс готов")).toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText("Book Memory query"), {
     target: { value: "whole book current revision" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Search Book Memory" }));
+  fireEvent.click(screen.getByRole("button", { name: "Искать в памяти книги" }));
 
   expect(
     await screen.findByText("Whole-book memory keeps the current revision visible."),
   ).toBeInTheDocument();
-  expect(screen.getByText("CURRENT")).toBeInTheDocument();
+  expect(screen.getByText("Текущая версия")).toBeInTheDocument();
   expect(screen.getByText(result.revision_id, { selector: "code" })).toBeInTheDocument();
   expect(screen.getByText(result.revision_hash, { selector: "code" })).toBeInTheDocument();
 

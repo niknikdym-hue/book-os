@@ -118,7 +118,7 @@ it("creates an exact-base proposal and human ACCEPT resolves the finding", async
   render(<EditorialPanel project={project} chapter={chapter} api={api} />);
 
   expect(await screen.findByText("This current passage needs one bounded editorial revision.")).toBeInTheDocument();
-  expect(screen.getByText("CURRENT")).toBeInTheDocument();
+  expect(screen.getByText("Текущая версия")).toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText("Editorial proposed text"), {
     target: { value: proposal.proposed_text },
@@ -126,7 +126,7 @@ it("creates an exact-base proposal and human ACCEPT resolves the finding", async
   fireEvent.change(screen.getByLabelText("Editorial proposal rationale"), {
     target: { value: proposal.rationale },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create exact-base proposal" }));
+  fireEvent.click(screen.getByRole("button", { name: "Создать предложение по точной версии" }));
 
   expect(await screen.findByLabelText("Editorial proposal diff")).toHaveTextContent("+++ proposed");
   expect(screen.getByLabelText("Editorial proposal diff")).toHaveTextContent(
@@ -141,7 +141,7 @@ it("creates an exact-base proposal and human ACCEPT resolves the finding", async
   const result = await screen.findByLabelText("Editorial decision result");
   expect(result).toHaveTextContent("ACCEPT · RESOLVED");
   expect(result).toHaveTextContent(accepted.accepted_revision_id ?? "");
-  expect(await screen.findByText("No findings in this filter.")).toBeInTheDocument();
+  expect(await screen.findByText("По этому фильтру замечаний нет.")).toBeInTheDocument();
 
   expect(calls).toContainEqual({
     method: "POST",
