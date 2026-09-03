@@ -390,8 +390,7 @@ class OpenAIResponsesAdapter:
         ).encode("utf-8")
         input_token_upper_bound = len(serialized) + cls._INPUT_TOKEN_OVERHEAD
         preflight_upper_bound_usd = (
-            input_token_upper_bound * input_price
-            + request.max_output_tokens * output_price
+            input_token_upper_bound * input_price + request.max_output_tokens * output_price
         ) / 1_000_000
         if preflight_upper_bound_usd > request.max_cost_usd:
             raise ModelBudgetError(
