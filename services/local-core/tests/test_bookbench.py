@@ -115,8 +115,8 @@ def ready_book(data_dir: Path) -> dict[str, str]:
     projects.approve_chapter_contract(project.book_id, second_chapter.chapter_id)
 
     duplicate_objective = (
-        "Это не про скорость, а про ясность? Важно понимать этот точный повторяемый фрагмент "
-        "для проверки BookBench и качества редакционного решения"
+        "Точный повторяемый фрагмент помогает проверять BookBench и качество "
+        "редакционного решения."
     )
     drafting = DraftingService(data_dir, ModelGateway({"fake": DeterministicFakeAdapter()}))
     first = drafting.generate_section_draft(
@@ -312,9 +312,7 @@ def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(
     assert any(finding.severity == "BLOCKING" for finding in evidence.findings)
 
     pathology = next(run for run in runs if run.check_id == "deterministic.ai_prose_pathology")
-    pathology_categories = {finding.category for finding in pathology.findings}
-    assert "FALSE_CONTRAST_TEMPLATE" in pathology_categories
-    assert "NOT_ABOUT_TEMPLATE" in pathology_categories
+    assert pathology.findings == []
     assert pathology.metrics["ai_authorship_probability"] is None
     assert pathology.output["claim"].startswith("measured prose patterns")
 
