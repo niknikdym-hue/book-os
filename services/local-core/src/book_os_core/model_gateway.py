@@ -293,6 +293,14 @@ class DeterministicFakeAdapter:
 
 class OpenAIResponsesAdapter:
     provider_name = "openai"
+    _PRICING_SOURCE_DATE = "2026-09-03"
+    _PRICING_USD_PER_MILLION: dict[str, tuple[float, float]] = {
+        "gpt-5.6-sol": (4.0, 20.0),
+        "gpt-5.6": (4.0, 20.0),
+        "gpt-5.6-terra": (2.0, 12.0),
+        "gpt-5.6-luna": (0.2, 1.2),
+    }
+    _INPUT_TOKEN_OVERHEAD = 4096
 
     def __init__(
         self,
@@ -359,6 +367,69 @@ class OpenAIResponsesAdapter:
             "max_output_tokens": request.max_output_tokens,
         }
 
+    @classmethod
+    def _pricing(cls, model: str) -> tuple[float, float]:
+        try:
+            return cls._PRICING_USD_PER_MILLION[model]
+        except KeyError as exc:
+            raise ModelBudgetError(
+                f"cost cap cannot be enforced for unpriced OpenAI model: {model}"
+            ) from exc
+
+    @classmethod
+    def _budget_guard(
+        cls, request: ModelTaskRequest, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        if request.max_cost_usd is None:
+            return None
+        input_price, output_price = cls._pricing(request.model)
+        serialized = json.dumps(
+            body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        input_token_upper_bound = len(serialized) + cls._INPUT_TOKEN_OVERHEAD
+        preflight_upper_bound_usd = (
+            input_token_upper_bound * input_price
+            + request.max_output_tokens * output_price
+        ) / 1_000_000
+        if preflight_upper_bound_usd > request.max_cost_usd:
+            raise ModelBudgetError(
+                "worst-case OpenAI request cost "
+                f"${preflight_upper_bound_usd:.6f} exceeds cap ${request.max_cost_usd:.6f}"
+            )
+        return {
+            "max_cost_usd": request.max_cost_usd,
+            "preflight_upper_bound_usd": round(preflight_upper_bound_usd, 6),
+            "input_token_upper_bound": input_token_upper_bound,
+            "max_output_tokens": request.max_output_tokens,
+            "input_usd_per_million": input_price,
+            "output_usd_per_million": output_price,
+            "pricing_source_date": cls._PRICING_SOURCE_DATE,
+        }
+
+    @classmethod
+    def _usage_with_cost_guard(
+        cls, usage: object, guard: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        result = dict(usage) if isinstance(usage, dict) else {}
+        if guard is None:
+            return result
+        audited_guard = dict(guard)
+        input_tokens = result.get("input_tokens")
+        output_tokens = result.get("output_tokens")
+        if (
+            isinstance(input_tokens, (int, float))
+            and not isinstance(input_tokens, bool)
+            and isinstance(output_tokens, (int, float))
+            and not isinstance(output_tokens, bool)
+        ):
+            estimated_actual_cost_usd = (
+                float(input_tokens) * float(guard["input_usd_per_million"])
+                + float(output_tokens) * float(guard["output_usd_per_million"])
+            ) / 1_000_000
+            audited_guard["estimated_actual_cost_usd"] = round(estimated_actual_cost_usd, 6)
+        result["cost_guard"] = audited_guard
+        return result
+
     @staticmethod
     def _output_text(payload: dict[str, Any]) -> str:
         direct = payload.get("output_text")
@@ -375,11 +446,13 @@ class OpenAIResponsesAdapter:
         raise ModelOutputError("OpenAI response contains no output_text")
 
     def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
+        body = self._body(request, prompt)
+        cost_guard = self._budget_guard(request, body)
         api_key = self._secret_store.get_secret("openai_api_key")
         response = self._client.post(
             self._endpoint,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=self._body(request, prompt),
+            json=body,
             timeout=self._timeout_seconds,
         )
         if response.status_code >= 400:
@@ -409,9 +482,9 @@ class OpenAIResponsesAdapter:
             validated = output_type.model_validate(parsed)
         except ValidationError as exc:
             raise ModelOutputError("OpenAI structured output failed schema validation") from exc
-        usage = payload.get("usage")
+        usage = self._usage_with_cost_guard(payload.get("usage"), cost_guard)
         return ModelAdapterResult(
             provider_run_id=str(payload["id"]) if payload.get("id") is not None else None,
             output=validated.model_dump(mode="json"),
-            usage=usage if isinstance(usage, dict) else {},
+            usage=usage,
         )
