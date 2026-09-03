@@ -130,7 +130,6 @@ fn install_desktop_app() -> Result<Option<PathBuf>, String> {
     let app_dir = desktop_app_bundle()?;
     let contents_dir = app_dir.join("Contents");
     let macos_dir = contents_dir.join("MacOS");
-    let resources_dir = contents_dir.join("Resources");
     let installed_executable = macos_dir.join("BOOK OS");
     let current_executable = std::env::current_exe().map_err(|error| error.to_string())?;
 
@@ -138,8 +137,10 @@ fn install_desktop_app() -> Result<Option<PathBuf>, String> {
         return Ok(Some(app_dir));
     }
 
+    if app_dir.exists() {
+        fs::remove_dir_all(&app_dir).map_err(|error| error.to_string())?;
+    }
     fs::create_dir_all(&macos_dir).map_err(|error| error.to_string())?;
-    fs::create_dir_all(&resources_dir).map_err(|error| error.to_string())?;
     fs::copy(&current_executable, &installed_executable).map_err(|error| error.to_string())?;
 
     let mut permissions = fs::metadata(&installed_executable)
