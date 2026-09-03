@@ -55,6 +55,23 @@ The transformation map must make material `PRESERVED | REWRITTEN | MOVED | OMITT
 
 AI-produced audio text remains `DRAFT/PROPOSED`; AI cannot approve it.
 
+## Audio-version text output contract — NON-NEGOTIABLE
+
+**UTF-8 TXT is the required output format of the text of an audio version.** It is not the required source/import format of an existing text book.
+
+This rule applies to every BOOK OS path that produces text intended for recording or synthesis:
+
+- a book created from zero as `AUDIO_FIRST`;
+- the audio side of a book created from zero as `DUAL_TEXT_AUDIO`;
+- a recording script derived from an existing text book in `SOURCE_FAITHFUL` mode;
+- a recording script derived from an existing text book in `LISTENING_ADAPTATION` mode.
+
+Before handoff to Audio Studio, the approved recording text must be exportable as a clean `.txt` file encoded in UTF-8 and intended to be read/recorded as the audio version.
+
+The readable UTF-8 TXT must not be polluted with machine metadata. Hashes, provenance, adaptation mode, transformation/coverage map, authority data, pronunciation metadata and production-handoff manifest remain separate structured metadata/artifacts.
+
+The source/import format of an existing text book is a separate concern and may be expanded independently; it does not change the required UTF-8 TXT output contract for the resulting audio-version text.
+
 ## Quality gates for Workflow B
 
 Both modes must pass normal anti-junk/author-voice protections plus audio `LISTENABILITY` checks.
@@ -80,29 +97,31 @@ BOOK OS and Audio Studio remain separate products.
 
 For a book authored for audio from zero:
 
-`BOOK OS Literary Master → immutable Production Handoff → Audio Studio → Audio Edition Master`
+`BOOK OS Literary Master → clean UTF-8 TXT recording text + immutable Production Handoff → Audio Studio → Audio Edition Master`
 
 For an audio edition derived from an existing text book:
 
-`BOOK OS Text Literary Master (immutable source) → BOOK OS AudioScript (derived + human-approved) → immutable Production Handoff → Audio Studio → Audio Edition Master`
+`BOOK OS Text Literary Master (immutable source) → BOOK OS AudioScript (derived + human-approved) → clean UTF-8 TXT recording text + immutable Production Handoff → Audio Studio → Audio Edition Master`
 
-BOOK OS owns literary/editorial quality, listenability and semantic fidelity of the audio script. Audio Studio owns narrator/TTS execution, SSML, pronunciation rendering, synthesis, mastering and audio QC.
+BOOK OS owns literary/editorial quality, listenability and semantic fidelity of the audio-version text. Audio Studio owns narrator/TTS execution, SSML, pronunciation rendering, synthesis, mastering and audio QC.
 
 ## Required UI consequence
 
 The product must expose two separate top-level actions, not one combined audio selector:
 
 - `Создать книгу с нуля`;
-- `Подготовить аудиоверсию готовой книги`.
+- `Подготовить текст для аудиозаписи готовой книги`.
 
 Only `Создать книгу с нуля` exposes `Текст / Аудио — основной формат / Текст + аудио`.
 
-Only `Подготовить аудиоверсию готовой книги` exposes:
+Only `Подготовить текст для аудиозаписи готовой книги` exposes:
 
 - `По оригиналу, с адаптацией для аудио`;
 - `Сохранить суть и концепцию, переписать для аудио`.
 
 The second option must explain in plain Russian that the audio text may differ substantially and be written specifically for listening while the meaning and concept of the original remain authoritative.
+
+Whenever either workflow produces an audio-version text, the user-facing export must provide the clean UTF-8 TXT recording file.
 
 ## Series
 
@@ -114,4 +133,4 @@ Existing book projects remain `TEXT_FIRST` + standalone unless the human explici
 
 No TTS-specific transformation may silently mutate a Literary Master or an approved AudioScript.
 
-Detailed design authority: `docs/AUDIO_NATIVE_AND_SERIES_v0.1.md` version 0.2.0 as amended on 2026-09-03.
+Detailed design authority: `docs/AUDIO_NATIVE_AND_SERIES_v0.1.md`; this decision amendment is binding where it defines the universal UTF-8 TXT audio-version text output contract.
