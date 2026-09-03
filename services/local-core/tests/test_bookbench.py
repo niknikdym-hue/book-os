@@ -115,8 +115,8 @@ def ready_book(data_dir: Path) -> dict[str, str]:
     projects.approve_chapter_contract(project.book_id, second_chapter.chapter_id)
 
     duplicate_objective = (
-        "Точный повторяемый фрагмент помогает проверять BookBench и качество "
-        "редакционного решения."
+        "Точный повторяемый фрагмент связывает решение владельца с наблюдаемым результатом "
+        "и позволяет проверить BookBench и качество редакционного решения"
     )
     drafting = DraftingService(data_dir, ModelGateway({"fake": DeterministicFakeAdapter()}))
     first = drafting.generate_section_draft(
