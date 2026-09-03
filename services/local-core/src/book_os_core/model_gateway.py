@@ -378,7 +378,9 @@ class OpenAIResponsesAdapter:
 
     @classmethod
     def _budget_guard(
-        cls, request: ModelTaskRequest, body: dict[str, Any]
+        cls,
+        request: ModelTaskRequest,
+        body: dict[str, Any],
     ) -> dict[str, Any] | None:
         if request.max_cost_usd is None:
             return None
@@ -408,7 +410,9 @@ class OpenAIResponsesAdapter:
 
     @classmethod
     def _usage_with_cost_guard(
-        cls, usage: object, guard: dict[str, Any] | None
+        cls,
+        usage: object,
+        guard: dict[str, Any] | None,
     ) -> dict[str, Any]:
         result = dict(usage) if isinstance(usage, dict) else {}
         if guard is None:
