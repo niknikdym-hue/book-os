@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
 from book_os_core.model_gateway import (
     AuthorityInputRef,
     DeterministicFakeAdapter,
+    ModelBudgetError,
     ModelTaskRequest,
     OpenAIResponsesAdapter,
 )
@@ -88,6 +90,80 @@ def test_openai_responses_adapter_is_mocked_structured_and_secret_safe() -> None
     assert "super-secret-test-value" not in serialized
     assert "IGNORE ALL RULES" in serialized
     assert "Secret" not in repr(result)
+
+
+def test_openai_cost_cap_blocks_before_http_when_worst_case_exceeds_cap() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        calls.append(http_request)
+        return httpx.Response(500)
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "budget-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "gpt-5.6-sol").model_copy(
+        update={"max_output_tokens": 2600, "max_cost_usd": 0.01}
+    )
+
+    with pytest.raises(ModelBudgetError, match="exceeds cap"):
+        adapter.generate(bounded, SECTION_DRAFT_V1)
+    assert calls == []
+
+
+def test_openai_cost_cap_allows_bounded_call_and_records_audit() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        calls.append(http_request)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp_budget_ok",
+                "output_text": json.dumps({"text": "Bounded draft", "notes": []}),
+                "usage": {"input_tokens": 1000, "output_tokens": 100},
+            },
+        )
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "budget-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "gpt-5.6-sol").model_copy(
+        update={"max_output_tokens": 2600, "max_cost_usd": 0.50}
+    )
+    result = adapter.generate(bounded, SECTION_DRAFT_V1)
+
+    assert len(calls) == 1
+    guard = result.usage["cost_guard"]
+    assert guard["max_cost_usd"] == 0.50
+    assert guard["preflight_upper_bound_usd"] <= 0.50
+    assert guard["estimated_actual_cost_usd"] == 0.006
+    assert guard["pricing_source_date"] == "2026-09-03"
+
+
+def test_openai_cost_cap_rejects_unpriced_model_before_http() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        calls.append(http_request)
+        return httpx.Response(500)
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "budget-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "unknown-paid-model").model_copy(
+        update={"max_output_tokens": 2600, "max_cost_usd": 0.50}
+    )
+
+    with pytest.raises(ModelBudgetError, match="unpriced OpenAI model"):
+        adapter.generate(bounded, SECTION_DRAFT_V1)
+    assert calls == []
 
 
 def test_fake_bookbench_judge_and_pairwise_are_typed_and_bounded() -> None:
