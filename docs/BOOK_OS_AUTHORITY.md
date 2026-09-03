@@ -1,8 +1,8 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.4.0  
-**Date:** 2026-08-31  
+**Version:** 0.5.0  
+**Date:** 2026-09-03  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -14,7 +14,7 @@ Chats are disposable working sessions and may contain drafts, hypotheses, reject
 
 Accepted decisions are not silently overwritten. A changed decision is versioned and/or explicitly superseded; Git history and decision records preserve prior state.
 
-This v0.4 consolidation preserves accepted product decisions while incorporating later explicit Owner decisions and accepted implementation state.
+This v0.5 consolidation preserves accepted product decisions and adds the Owner's explicit non-negotiable quality/technology rule: BOOK OS must target the highest professional book quality realistically achievable and must use the strongest current methods that materially improve quality or reliability. Technical functionality alone is never acceptance evidence for manuscript quality.
 
 ### Current supersession rule
 
@@ -33,6 +33,67 @@ It is **not** a generic AI writer and **not** a one-prompt book generator.
 Its purpose is to give one strong author/editor the intellectual and operational infrastructure of a professional editorial team across research, book architecture, bounded drafting, developmental editing, evidence/fact checking, cross-book editing, literary editing, author-voice control, versioning, provenance, quality gates, human acceptance and release of a Literary Master.
 
 BOOK OS does not promise a bestseller. Its responsibility is manuscript quality; commercial success also depends on topic, author, market, publisher, marketing, timing and external factors.
+
+## 1A. Highest professional quality and current-best methods — ACCEPTED / NON-NEGOTIABLE
+
+This is a permanent project invariant and applies to product design, implementation, evaluation, acceptance and the real-book workflow.
+
+### Book-quality rule
+
+BOOK OS must be built and operated to produce nonfiction at the **highest professional standard realistically achievable**, comparable to work created by a strong professional author, researcher, developmental editor, fact checker, literary editor and production editor working as one disciplined team.
+
+“Technically works”, “tests pass”, “the model returned text”, “the UI is complete” or “the pipeline finished” are **never sufficient acceptance criteria** for a book-producing capability.
+
+A capability that is technically GREEN but predictably produces mediocre, generic, weakly researched, structurally shallow, stylistically synthetic or otherwise sub-professional books is **NOT ACCEPTED**.
+
+Quality includes, where applicable:
+
+- intellectual originality and clarity;
+- depth and correctness of research;
+- claim/evidence integrity and provenance;
+- strong reader promise and thesis;
+- professional architecture and chapter function;
+- thought density without unnecessary difficulty;
+- specificity and useful examples;
+- factual accuracy and honest uncertainty;
+- coherent whole-book logic and progression;
+- genuine author voice and stylistic distinction;
+- absence of machine-prose pathologies and editorial junk;
+- developmental, line and literary editing quality;
+- professional text readability and, when applicable, professional listenability;
+- preservation of meaning/concept/evidence when adapting an existing work;
+- whole-book consistency, novelty and release readiness.
+
+### Current-best-methods rule
+
+BOOK OS implementation must actively use the **strongest current world methods and technologies that materially improve quality, reliability, evidence, evaluation or author control**.
+
+This includes evaluating and adopting, when justified, advances in model capabilities, structured generation, retrieval, reranking, long-context use, research tooling, provenance, semantic analysis, model routing, multi-model evaluation, LLM-as-judge, pairwise evaluation, deterministic diagnostics, author-voice fingerprinting, editorial decision learning, human-in-the-loop authority and other relevant methods.
+
+This does **not** mean chasing novelty or replacing proven components merely because something newer exists. “Latest” is subordinate to measured usefulness. A new method should be adopted when evidence or bounded evaluation shows that it improves BOOK OS quality/reliability or removes a material limitation without violating authority, privacy or safety constraints.
+
+The system remains architecture-level model/provider agnostic. No provider or model brand is protected from replacement when a materially better option is demonstrated for a BOOK OS role.
+
+### Acceptance consequence
+
+For every quality-critical module, Central Brain must ask two separate questions:
+
+1. **Does it work correctly as software?**
+2. **Is it strong enough to help produce a genuinely excellent professional book?**
+
+Both must be YES before the module may be treated as quality-complete.
+
+CI, unit/integration tests and deterministic gates prove software properties. Real-book pilots, BookBench evidence, comparative evaluations and human editorial judgment prove book-quality properties. One cannot substitute for the other.
+
+If a better current method could materially improve a critical quality dimension, Central Brain must not hide that fact merely to preserve schedule or previous implementation. The gap must be surfaced and either closed or explicitly accepted by the human Owner as a bounded trade-off.
+
+### No silent quality downgrade
+
+Speed, implementation convenience, token cost, provider convenience or backward compatibility must not silently lower the professional quality target.
+
+Any material quality/cost/speed trade-off requires explicit human Owner acceptance. Default behavior is to protect book quality.
+
+Codex and other implementation executors may optimize implementation, but they may not redefine this quality target, weaken it to make tests pass, or declare product GO from technical completion alone.
 
 ## 2. First user / pilot — ACCEPTED
 
