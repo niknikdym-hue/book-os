@@ -13,7 +13,11 @@ import { LaunchPlanningPanel } from "./LaunchPlanningPanel";
 import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
 import { PilotPanel } from "./PilotPanel";
 import { ResearchPanel } from "./ResearchPanel";
-import { BUSINESS_SUBTYPES, subtypeLabel, type BusinessSubtype } from "./bookCatalog";
+import {
+  BUSINESS_SUBTYPES,
+  subtypeLabel,
+  type BusinessSubtype,
+} from "./bookCatalog";
 import type {
   ArchitectureChapter,
   BookArchitecturePayload,
@@ -148,7 +152,7 @@ export function App() {
   const [project, setProject] = useState<ProjectView | null>(null);
   const [showNewBook, setShowNewBook] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [primarySubtype, setPrimarySubtype] = useState<BusinessSubtype | null>(null);
+  const [primarySubtype, setPrimarySubtype] = useState<BusinessSubtype>(BUSINESS_SUBTYPES[0]);
   const [secondarySubtype, setSecondarySubtype] = useState("");
   const [bookContract, setBookContract] = useState<BookContractPayload>(clone(emptyBookContract));
   const [architecture, setArchitecture] = useState<BookArchitecturePayload>(clone(emptyArchitecture));
@@ -220,7 +224,7 @@ export function App() {
   }, [selectedChapter]);
 
   async function createProject() {
-    if (!newTitle.trim() || !primarySubtype) return;
+    if (!newTitle.trim()) return;
     setBusy(true);
     setError(null);
     try {
@@ -235,7 +239,6 @@ export function App() {
       await refreshProjects();
       hydrate(created);
       setNewTitle("");
-      setPrimarySubtype(null);
       setSecondarySubtype("");
       setShowNewBook(false);
     } catch (reason) {
@@ -411,63 +414,51 @@ export function App() {
                     <StatusBadge status={project.book_contract.status} />
                   </div>
                   <p className="muted">
-                    Отредактируйте черновик до точного обещания книги. Утверждение — только ваше решение.
+                    Проверьте предложение BOOK OS. Исправьте формулировки при необходимости и
+                    утверждайте только тот контракт, по которому действительно хотите писать всю книгу.
                   </p>
                   <div className="form-grid">
-                    <Field
-                      label="Читатель"
-                      value={bookContract.reader}
-                      onChange={(value) => setBookContract({ ...bookContract, reader: value })}
-                    />
-                    <Field
-                      label="Проблема читателя"
-                      value={bookContract.reader_problem}
-                      onChange={(value) => setBookContract({ ...bookContract, reader_problem: value })}
-                    />
-                    <Field
-                      label="Центральное обещание"
-                      value={bookContract.central_promise}
-                      onChange={(value) => setBookContract({ ...bookContract, central_promise: value })}
-                    />
-                    <Field
-                      label="Центральный тезис"
-                      value={bookContract.central_thesis}
-                      onChange={(value) => setBookContract({ ...bookContract, central_thesis: value })}
-                    />
-                    <Field
-                      label="Уникальный угол"
-                      value={bookContract.unique_angle}
-                      onChange={(value) => setBookContract({ ...bookContract, unique_angle: value })}
-                    />
-                    <Field
-                      label="Траектория читателя"
-                      value={bookContract.reader_trajectory}
-                      onChange={(value) => setBookContract({ ...bookContract, reader_trajectory: value })}
-                    />
+                    {(
+                      [
+                        ["reader", "Читатель"],
+                        ["reader_problem", "Проблема читателя"],
+                        ["central_promise", "Главное обещание книги"],
+                        ["central_thesis", "Центральный тезис"],
+                        ["unique_angle", "Уникальный угол"],
+                        ["reader_trajectory", "Траектория читателя"],
+                        ["evidence_policy", "Правила доказательности"],
+                        ["voice_genre_constraints", "Голос и жанровые ограничения"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Field
+                        key={key}
+                        label={label}
+                        value={bookContract[key]}
+                        onChange={(value) =>
+                          setBookContract((current) => ({ ...current, [key]: value }))
+                        }
+                      />
+                    ))}
                     <Field
                       label="Что книга сознательно не делает"
+                      hint="Один пункт на строку"
                       value={bookContract.explicit_exclusions.join("\n")}
                       onChange={(value) =>
-                        setBookContract({ ...bookContract, explicit_exclusions: lines(value) })
-                      }
-                    />
-                    <Field
-                      label="Политика доказательности"
-                      value={bookContract.evidence_policy}
-                      onChange={(value) => setBookContract({ ...bookContract, evidence_policy: value })}
-                    />
-                    <Field
-                      label="Жанр и голос"
-                      value={bookContract.voice_genre_constraints}
-                      onChange={(value) =>
-                        setBookContract({ ...bookContract, voice_genre_constraints: value })
+                        setBookContract((current) => ({
+                          ...current,
+                          explicit_exclusions: lines(value),
+                        }))
                       }
                     />
                     <Field
                       label="Критерии готовности"
+                      hint="Один пункт на строку"
                       value={bookContract.readiness_criteria.join("\n")}
                       onChange={(value) =>
-                        setBookContract({ ...bookContract, readiness_criteria: lines(value) })
+                        setBookContract((current) => ({
+                          ...current,
+                          readiness_criteria: lines(value),
+                        }))
                       }
                     />
                   </div>
@@ -475,43 +466,27 @@ export function App() {
                     <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
                       Сохранить черновик
                     </button>
-                    {!contractApproved && (
-                      <button className="primary" onClick={() => void approveBookContract()} disabled={busy}>
-                        Утвердить контракт книги
-                      </button>
-                    )}
-                  </div>
-                </section>
-              )}
-
-              {project.architecture && (
-                <section className="panel" id="architecture">
-                  <div className="panel-heading">
-                    <div>
-                      <p className="eyebrow">ЧЕЛОВЕЧЕСКОЕ РЕШЕНИЕ 2</p>
-                      <h3>Архитектура книги</h3>
-                    </div>
-                    <StatusBadge status={project.architecture.status} />
-                  </div>
-                  <p className="muted">
-                    Перед утверждением видна вся система частей и глав. Меняйте порядок, назначение и
-                    вклад каждой главы до фиксации архитектуры.
-                  </p>
-                  <ArchitectureEditor value={architecture} onChange={setArchitecture} />
-                  <div className="actions">
-                    <button className="secondary" onClick={() => void saveArchitecture()} disabled={busy}>
-                      Сохранить архитектуру
+                    <button className="primary" onClick={() => void approveBookContract()} disabled={busy}>
+                      Утвердить контракт книги
                     </button>
-                    {!architectureApproved && (
-                      <button className="primary" onClick={() => void approveArchitecture()} disabled={busy}>
-                        Утвердить архитектуру
-                      </button>
-                    )}
                   </div>
                 </section>
               )}
 
-              {project.chapters.length > 0 && (
+              {(contractApproved || project.architecture) && (
+                <div id="architecture">
+                  <ArchitectureEditor
+                    architecture={architecture}
+                    setArchitecture={setArchitecture}
+                    statusBadge={<StatusBadge status={project.architecture?.status} />}
+                    busy={busy}
+                    onSave={() => void saveArchitecture()}
+                    onApprove={() => void approveArchitecture()}
+                  />
+                </div>
+              )}
+
+              {architectureApproved && project.chapters.length > 0 && (
                 <section className="panel" id="chapter-contract">
                   <div className="panel-heading">
                     <div>
@@ -520,7 +495,11 @@ export function App() {
                     </div>
                     <StatusBadge status={selectedChapter?.chapter_contract?.status} />
                   </div>
-                  <label className="field compact">
+                  <p className="muted">
+                    Сначала зафиксируйте функцию и границы главы. Только после этого Writer получает
+                    право создавать её систематический черновик.
+                  </p>
+                  <label className="field">
                     <span>Глава</span>
                     <select
                       value={selectedChapterId ?? ""}
@@ -528,125 +507,118 @@ export function App() {
                     >
                       {project.chapters.map((chapter) => (
                         <option key={chapter.chapter_id} value={chapter.chapter_id}>
-                          {chapter.ordinal}. {chapter.title}
+                          {chapter.ordinal}. {chapter.working_title}
                         </option>
                       ))}
                     </select>
                   </label>
                   <div className="form-grid">
-                    <Field
-                      label="Задача главы"
-                      value={chapterContract.chapter_purpose}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, chapter_purpose: value })
-                      }
-                    />
-                    <Field
-                      label="Новый вклад"
-                      value={chapterContract.new_contribution}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, new_contribution: value })
-                      }
-                    />
-                    <Field
-                      label="Состояние читателя до главы"
-                      value={chapterContract.reader_prior_state}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, reader_prior_state: value })
-                      }
-                    />
-                    <Field
-                      label="Состояние читателя после главы"
-                      value={chapterContract.reader_after_state}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, reader_after_state: value })
-                      }
-                    />
-                    <Field
-                      label="Обязательные утверждения"
-                      value={chapterContract.required_claims.join("\n")}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, required_claims: lines(value) })
-                      }
-                    />
-                    <Field
-                      label="Исследования: обязательные или допустимые"
-                      value={chapterContract.required_or_permitted_research.join("\n")}
-                      onChange={(value) =>
-                        setChapterContract({
-                          ...chapterContract,
-                          required_or_permitted_research: lines(value),
-                        })
-                      }
-                    />
-                    <Field
-                      label="Сцены и примеры"
-                      value={chapterContract.required_scenes_examples.join("\n")}
-                      onChange={(value) =>
-                        setChapterContract({
-                          ...chapterContract,
-                          required_scenes_examples: lines(value),
-                        })
-                      }
-                    />
-                    <Field
-                      label="Зарезервировано для других глав"
-                      value={chapterContract.reserved_elsewhere.join("\n")}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, reserved_elsewhere: lines(value) })
-                      }
-                    />
-                    <Field
-                      label="Требования к открытию"
-                      value={chapterContract.opening_requirements}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, opening_requirements: value })
-                      }
-                    />
-                    <Field
-                      label="Требования к окончанию"
-                      value={chapterContract.ending_requirements}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, ending_requirements: value })
-                      }
-                    />
-                    <Field
-                      label="Переход к следующей главе"
-                      value={chapterContract.transition_requirements}
-                      onChange={(value) =>
-                        setChapterContract({ ...chapterContract, transition_requirements: value })
-                      }
-                    />
+                    {(
+                      [
+                        ["chapter_purpose", "Функция главы"],
+                        ["new_contribution", "Новый вклад"],
+                        ["reader_prior_state", "Что читатель понимает до главы"],
+                        ["reader_after_state", "Что читатель понимает после главы"],
+                        ["opening_requirements", "Требования к началу"],
+                        ["ending_requirements", "Требования к финалу"],
+                        ["transition_requirements", "Требования к переходу"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Field
+                        key={key}
+                        label={label}
+                        value={chapterContract[key]}
+                        onChange={(value) =>
+                          setChapterContract((current) => ({ ...current, [key]: value }))
+                        }
+                      />
+                    ))}
+                    {(
+                      [
+                        ["required_claims", "Обязательные утверждения"],
+                        ["required_or_permitted_research", "Нужное/разрешённое исследование"],
+                        ["required_scenes_examples", "Нужные сцены и примеры"],
+                        ["reserved_elsewhere", "Что должно остаться в других главах"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Field
+                        key={key}
+                        label={label}
+                        hint="Один пункт на строку"
+                        value={chapterContract[key].join("\n")}
+                        onChange={(value) =>
+                          setChapterContract((current) => ({ ...current, [key]: lines(value) }))
+                        }
+                      />
+                    ))}
                   </div>
                   <div className="actions">
-                    <button className="secondary" onClick={() => void saveChapterContract()} disabled={busy}>
-                      Сохранить контракт главы
+                    <button
+                      className="secondary"
+                      onClick={() => void saveChapterContract()}
+                      disabled={busy || !selectedChapter}
+                    >
+                      Сохранить черновик
                     </button>
-                    {!chapterReady && (
-                      <button
-                        className="primary"
-                        onClick={() => void approveChapterContract()}
-                        disabled={busy}
-                      >
-                        Утвердить контракт главы
-                      </button>
-                    )}
+                    <button
+                      className="primary"
+                      onClick={() => void approveChapterContract()}
+                      disabled={busy || !selectedChapter}
+                    >
+                      Утвердить контракт главы
+                    </button>
                   </div>
                 </section>
               )}
 
-              <DraftingPanel project={project} chapter={selectedChapter} onProject={hydrate} />
-              <ResearchPanel project={project} chapter={selectedChapter} onProject={hydrate} />
-              <EditorialPanel project={project} chapter={selectedChapter} onProject={hydrate} />
-              <BookBenchPanel project={project} chapter={selectedChapter} />
-              <BookMemoryPanel project={project} chapter={selectedChapter} />
-              <LiteraryMasterPanel project={project} />
-              <PilotPanel project={project} />
+              {chapterReady && <DraftingPanel project={project} chapter={selectedChapter} />}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Проверка фактов и источников</summary>
+                  <ResearchPanel project={project} chapter={selectedChapter} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Редактура книги</summary>
+                  <EditorialPanel project={project} chapter={selectedChapter} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>BookBench · контроль качества</summary>
+                  <BookBenchPanel project={project} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Literary Master · финальная версия</summary>
+                  <LiteraryMasterPanel project={project} />
+                </details>
+              )}
+
               <details className="utility-drawer">
-                <summary>Словарь мусора и служебные настройки</summary>
+                <summary>Настройки текста · Словарь мусора</summary>
                 <AntiJunkPanel />
               </details>
+
+              <details className="utility-drawer">
+                <summary>Дополнительные инструменты и диагностика</summary>
+                <BookMemoryPanel project={project} chapter={selectedChapter} />
+                <PilotPanel project={project} />
+              </details>
             </>
+          )}
+
+          {!project && (
+            <details className="utility-drawer global-settings">
+              <summary>Настройки текста · Словарь мусора</summary>
+              <AntiJunkPanel />
+            </details>
           )}
         </section>
       </div>
