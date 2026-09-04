@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import "./launchUx.css";
 import {
   AVAILABLE_BUSINESS_SUBTYPES,
@@ -10,7 +11,7 @@ import {
 type Props = {
   newTitle: string;
   setNewTitle: (value: string) => void;
-  primarySubtype: BusinessSubtype;
+  primarySubtype: BusinessSubtype | null;
   setPrimarySubtype: (value: BusinessSubtype) => void;
   secondarySubtype: string;
   setSecondarySubtype: (value: string) => void;
@@ -30,6 +31,13 @@ export function BookStartPanel({
   onCreate,
   onClose,
 }: Props) {
+  const topicsRef = useRef<HTMLDivElement>(null);
+  const detailsRef = useRef<HTMLDivElement>(null);
+
+  function goTo(element: HTMLDivElement | null) {
+    element?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <section className="panel new-book book-start-panel" aria-label="Создание новой книги">
       <div className="panel-heading">
@@ -56,6 +64,7 @@ export function BookStartPanel({
               className={`category-card ${available ? "available selected" : "locked"}`}
               disabled={!available}
               aria-label={`${category.label}${available ? ", доступно" : ", в разработке"}`}
+              onClick={() => available && goTo(topicsRef.current)}
             >
               <span className={`availability ${available ? "ready" : "soon"}`}>
                 {available ? "Доступно" : "В разработке"}
@@ -67,7 +76,7 @@ export function BookStartPanel({
         })}
       </div>
 
-      <div className="catalog-section">
+      <div className="catalog-section" ref={topicsRef}>
         <div className="subheading">
           <div>
             <p className="eyebrow">БИЗНЕС</p>
@@ -87,11 +96,15 @@ export function BookStartPanel({
                 disabled={!available}
                 aria-pressed={selected}
                 aria-label={`${topic.label}${available ? ", доступно" : ", в разработке"}`}
-                onClick={() => topic.subtype && setPrimarySubtype(topic.subtype)}
+                onClick={() => {
+                  if (!topic.subtype) return;
+                  setPrimarySubtype(topic.subtype);
+                  goTo(detailsRef.current);
+                }}
                 title={topic.note ?? topic.description}
               >
                 <span className={`availability ${available ? "ready" : "soon"}`}>
-                  {available ? "Доступно сейчас" : "В разработке"}
+                  {selected ? "Выбрано ✓" : available ? "Доступно сейчас" : "В разработке"}
                 </span>
                 <strong>{topic.label}</strong>
                 <small>{topic.description}</small>
@@ -102,7 +115,7 @@ export function BookStartPanel({
         </div>
       </div>
 
-      <div className="start-details">
+      <div className="start-details" ref={detailsRef}>
         <div>
           <p className="eyebrow">ШАГ 2</p>
           <h3>Назовите рабочий проект</h3>
@@ -128,6 +141,7 @@ export function BookStartPanel({
             <select
               value={secondarySubtype}
               onChange={(event) => setSecondarySubtype(event.target.value)}
+              disabled={!primarySubtype}
             >
               <option value="">Нет</option>
               {AVAILABLE_BUSINESS_SUBTYPES.filter((value) => value !== primarySubtype).map((value) => (
@@ -139,16 +153,18 @@ export function BookStartPanel({
           </label>
         </details>
 
-        <div className="selected-topic-summary">
+        <div className="selected-topic-summary" role="status" aria-live="polite">
           <small>Выбрано</small>
-          <strong>Бизнес → {SUBTYPE_LABELS[primarySubtype]}</strong>
+          <strong>
+            {primarySubtype ? `Бизнес → ${SUBTYPE_LABELS[primarySubtype]}` : "Сначала выберите тему"}
+          </strong>
         </div>
 
         <div className="actions">
           <button
             className="primary"
             onClick={onCreate}
-            disabled={busy || newTitle.trim().length === 0}
+            disabled={busy || !primarySubtype || newTitle.trim().length === 0}
           >
             Создать проект книги
           </button>
