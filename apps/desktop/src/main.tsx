@@ -4,10 +4,11 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
 
-const rootElement = document.getElementById("root");
-if (!rootElement) {
+const rootCandidate = document.getElementById("root");
+if (!rootCandidate) {
   throw new Error("BOOK OS root element is missing");
 }
+const rootElement: HTMLElement = rootCandidate;
 
 createRoot(rootElement).render(
   <StrictMode>
