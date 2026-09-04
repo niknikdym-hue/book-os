@@ -51,41 +51,51 @@ jobs:
         run: |
           python3.12 -m venv services/local-core/.venv
           services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
-      - name: Build production frontend
+      - name: Install desktop dependencies
         working-directory: apps/desktop
-        run: |
-          pnpm install --frozen-lockfile --prod=false
-          pnpm build
-      - name: Build native release binary
-        working-directory: apps/desktop/src-tauri
-        run: cargo build --release --locked
-      - name: Launch production app and verify Desktop bundle
-        working-directory: apps/desktop/src-tauri
+        run: pnpm install --frozen-lockfile --prod=false
+      - name: Build production macOS app bundle
+        working-directory: apps/desktop
+        run: pnpm tauri build --bundles app
+      - name: Launch packaged app and verify frontend mount
         env:
           RUST_BACKTRACE: '1'
         run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          EXEC="$APP/Contents/MacOS/BOOK OS"
           LOG="$RUNNER_TEMP/book-os-native-launch.log"
-          target/release/book-os-desktop >"$LOG" 2>&1 &
+          MARKER="$RUNNER_TEMP/book-os-frontend-ready"
+
+          test -d "$APP"
+          test -x "$EXEC"
+          /usr/bin/plutil -lint "$APP/Contents/Info.plist"
+          rm -f "$MARKER"
+
+          BOOK_OS_FRONTEND_READY_FILE="$MARKER" "$EXEC" >"$LOG" 2>&1 &
           PID=$!
           cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
           trap cleanup EXIT
 
-          for _ in {1..40}; do
-            if [ -x "$HOME/Desktop/BOOK OS.app/Contents/MacOS/BOOK OS" ]; then
+          for _ in {1..120}; do
+            if [ -s "$MARKER" ]; then
               break
             fi
             if ! kill -0 "$PID" 2>/dev/null; then
               cat "$LOG"
-              echo "BOOK OS exited before installing the Desktop app"
+              echo "BOOK OS packaged app exited before the frontend mounted"
               exit 1
             fi
-            sleep 0.5
+            sleep 0.25
           done
 
-          test -x "$HOME/Desktop/BOOK OS.app/Contents/MacOS/BOOK OS"
-          /usr/bin/codesign --verify --deep --strict "$HOME/Desktop/BOOK OS.app"
-          /usr/bin/plutil -lint "$HOME/Desktop/BOOK OS.app/Contents/Info.plist"
-          grep -F "BOOK OS desktop app ready:" "$LOG"
+          if [ ! -s "$MARKER" ]; then
+            cat "$LOG"
+            echo "BOOK OS packaged app stayed alive but the frontend never mounted"
+            exit 1
+          fi
+
+          grep -F "ready" "$MARKER"
+          grep -F "BOOK OS frontend ready" "$LOG"
   secret-scan:
     runs-on: ubuntu-latest
     permissions:
