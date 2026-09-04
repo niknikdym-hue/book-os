@@ -64,11 +64,11 @@ function commonGet(request: { method: string; path: string }) {
   return undefined;
 }
 
-it("показывает реальный каталог тем, требует явный выбор и создаёт проект книги", async () => {
+it("показывает реальный каталог тем, отражает выбор и создаёт проект книги", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
-      const request = (args as { request: { method: string; path: string; body?: unknown } }).request;
+      const request = (args as { request: { method: string; path: string } }).request;
       const common = commonGet(request);
       if (common !== undefined) return common;
       if (request.method === "GET" && request.path === "/api/projects") return [];
@@ -86,13 +86,11 @@ it("показывает реальный каталог тем, требует 
     name: "Стартапы и создание бизнеса, доступно",
   });
   const strategyButton = screen.getByRole("button", { name: "Стратегия, доступно" });
-  const createButton = screen.getByRole("button", { name: "Создать проект книги" });
 
   expect(businessButton).toBeEnabled();
   expect(startupButton).toBeEnabled();
   expect(strategyButton).toBeEnabled();
-  expect(createButton).toBeDisabled();
-  expect(screen.getByText("Сначала выберите тему")).toBeInTheDocument();
+  expect(startupButton).toHaveAttribute("aria-pressed", "true");
   expect(
     screen.getByRole("button", { name: "Финансы и инвестиции, в разработке" }),
   ).toBeDisabled();
@@ -111,8 +109,7 @@ it("показывает реальный каталог тем, требует 
   fireEvent.change(screen.getByLabelText("Рабочее название"), {
     target: { value: "Operating Book" },
   });
-  expect(createButton).toBeEnabled();
-  fireEvent.click(createButton);
+  fireEvent.click(screen.getByRole("button", { name: "Создать проект книги" }));
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "BOOK OS ведёт по шагам" })).toBeInTheDocument();
