@@ -64,11 +64,11 @@ function commonGet(request: { method: string; path: string }) {
   return undefined;
 }
 
-it("показывает реальный каталог тем и создаёт проект книги через нативный мост", async () => {
+it("показывает реальный каталог тем, требует явный выбор и создаёт проект книги", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
-      const request = (args as { request: { method: string; path: string } }).request;
+      const request = (args as { request: { method: string; path: string; body?: unknown } }).request;
       const common = commonGet(request);
       if (common !== undefined) return common;
       if (request.method === "GET" && request.path === "/api/projects") return [];
@@ -81,10 +81,18 @@ it("показывает реальный каталог тем и создаё�
   expect(await screen.findByText("Локальное ядро: работает")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Создать новую книгу" }));
 
-  expect(screen.getByRole("button", { name: "Бизнес, доступно" })).toBeEnabled();
-  expect(
-    screen.getByRole("button", { name: "Стартапы и создание бизнеса, доступно" }),
-  ).toBeEnabled();
+  const businessButton = screen.getByRole("button", { name: "Бизнес, доступно" });
+  const startupButton = screen.getByRole("button", {
+    name: "Стартапы и создание бизнеса, доступно",
+  });
+  const strategyButton = screen.getByRole("button", { name: "Стратегия, доступно" });
+  const createButton = screen.getByRole("button", { name: "Создать проект книги" });
+
+  expect(businessButton).toBeEnabled();
+  expect(startupButton).toBeEnabled();
+  expect(strategyButton).toBeEnabled();
+  expect(createButton).toBeDisabled();
+  expect(screen.getByText("Сначала выберите тему")).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Финансы и инвестиции, в разработке" }),
   ).toBeDisabled();
@@ -92,10 +100,19 @@ it("показывает реальный каталог тем и создаё�
     screen.getByRole("button", { name: "Психология и саморазвитие, в разработке" }),
   ).toBeDisabled();
 
+  fireEvent.click(businessButton);
+  fireEvent.click(strategyButton);
+
+  expect(strategyButton).toHaveAttribute("aria-pressed", "true");
+  expect(startupButton).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByText("Бизнес → Стратегия")).toBeInTheDocument();
+  expect(screen.getByText("Выбрано ✓")).toBeInTheDocument();
+
   fireEvent.change(screen.getByLabelText("Рабочее название"), {
     target: { value: "Operating Book" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Создать проект книги" }));
+  expect(createButton).toBeEnabled();
+  fireEvent.click(createButton);
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "BOOK OS ведёт по шагам" })).toBeInTheDocument();
@@ -103,7 +120,11 @@ it("показывает реальный каталог тем и создаё�
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
-      request: expect.objectContaining({ method: "POST", path: "/api/projects" }),
+      request: expect.objectContaining({
+        method: "POST",
+        path: "/api/projects",
+        body: expect.objectContaining({ primary_subtype: "Strategy" }),
+      }),
     }),
   );
 });
