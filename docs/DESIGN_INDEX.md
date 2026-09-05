@@ -1,7 +1,7 @@
-# BOOK OS — DESIGN / RECOVERY INDEX v0.2
+# BOOK OS — DESIGN / RECOVERY INDEX v0.3
 
 **Status:** CURRENT RECOVERY AUTHORITY  
-**Date:** 2026-08-31  
+**Date:** 2026-09-06  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Purpose
@@ -15,22 +15,23 @@ Read in this order:
 1. `BOOK_OS_AUTHORITY.md` — non-negotiable product/authority decisions and explicit supersessions.
 2. `PROJECT_STATE.md` — exact accepted checkpoint, canonical schema and next permitted action.
 3. `decisions/2026-08-29-global-openai-first.md` — current provider/program decision; former Russia/no-VPN M8 is SUPERSEDED.
-4. `IMPLEMENTATION_ROADMAP_v0.2.md` — current execution roadmap.
-5. `tasks/TASK_011_REAL_BOOK_PILOT.md` — current real-book pilot contract and GO/NO-GO evidence rules.
-6. `CORE_ONTOLOGY.md` — first-class entities and invariants.
-7. `PRODUCT_SPEC_v0.1.md` — product scope, user experience and MVP success.
-8. `EDITORIAL_PROTOCOLS_v0.1.md` — Book/Chapter Contracts, agent roles and human acceptance.
-9. `RESEARCH_AND_CLAIMS_v0.1.md` — Research Engine, Claim Ledger and evidence policy.
-10. `MODEL_GATEWAY_v0.1.md` — provider-neutral execution gateway. Interpret any old regional wording through the superseding 2026-08-29 decision.
-11. `BOOK_MEMORY_v0.1.md` — whole-book memory and retrieval.
-12. `BOOKBENCH_v0.1.md` — quality/eval system and AI-prose pathology detection.
-13. `TECHNICAL_ARCHITECTURE_v0.1.md` — local-first technical architecture and stack.
-14. `SECURITY_AVAILABILITY_v0.1.md` — security/privacy/backup baseline. Any former Russia-specific launch gate is historical unless reaffirmed by newer authority.
-15. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
-16. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — security, rights, supply-chain, recovery, performance and release hardening.
-17. `TASK_EXECUTION_PROTOCOL_v0.1.md` — task necessity, efficiency, scope, evidence and acceptance rules.
-18. `tasks/` — bounded task history/current contracts.
-19. Recent accepted PRs, exact HEADs, CI runs, review threads and `main`.
+4. `decisions/2026-09-06-operation-level-model-routing.md` — Owner decision: no single-model monopoly; route the best executor per editorial operation using task-specific evidence, quality/risk and cost.
+5. `IMPLEMENTATION_ROADMAP_v0.2.md` — current execution roadmap.
+6. `tasks/TASK_011_REAL_BOOK_PILOT.md` — current real-book pilot contract and GO/NO-GO evidence rules.
+7. `CORE_ONTOLOGY.md` — first-class entities and invariants.
+8. `PRODUCT_SPEC_v0.1.md` — product scope, user experience and MVP success.
+9. `EDITORIAL_PROTOCOLS_v0.1.md` — Book/Chapter Contracts, agent roles and human acceptance.
+10. `RESEARCH_AND_CLAIMS_v0.1.md` — Research Engine, Claim Ledger and evidence policy.
+11. `MODEL_GATEWAY_v0.1.md` — provider-neutral execution gateway. Interpret any old regional wording through the superseding 2026-08-29 decision and operation-level routing through the 2026-09-06 Owner decision.
+12. `BOOK_MEMORY_v0.1.md` — whole-book memory and retrieval.
+13. `BOOKBENCH_v0.1.md` — quality/eval system and AI-prose pathology detection.
+14. `TECHNICAL_ARCHITECTURE_v0.1.md` — local-first technical architecture and stack.
+15. `SECURITY_AVAILABILITY_v0.1.md` — security/privacy/backup baseline. Any former Russia-specific launch gate is historical unless reaffirmed by newer authority.
+16. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
+17. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — security, rights, supply-chain, recovery, performance and release hardening.
+18. `TASK_EXECUTION_PROTOCOL_v0.1.md` — task necessity, efficiency, scope, evidence and acceptance rules.
+19. `tasks/` — bounded task history/current contracts.
+20. Recent accepted PRs, exact HEADs, CI runs, review threads and `main`.
 
 Chat history is optional working context. It is never authority.
 
@@ -77,7 +78,7 @@ The historical work remains available as salvage evidence only.
 | Book Contract / Chapter Contract | `EDITORIAL_PROTOCOLS_v0.1.md` |
 | Claim Ledger / research evidence | `RESEARCH_AND_CLAIMS_v0.1.md` |
 | Editorial agents / human acceptance | `EDITORIAL_PROTOCOLS_v0.1.md` |
-| Model Gateway / current provider strategy | `MODEL_GATEWAY_v0.1.md`, `decisions/2026-08-29-global-openai-first.md` |
+| Model Gateway / current provider strategy / operation-level routing | `MODEL_GATEWAY_v0.1.md`, `decisions/2026-08-29-global-openai-first.md`, `decisions/2026-09-06-operation-level-model-routing.md` |
 | Book Memory | `BOOK_MEMORY_v0.1.md` |
 | BookBench | `BOOKBENCH_v0.1.md` |
 | Versioning / provenance | `CORE_ONTOLOGY.md`, `TECHNICAL_ARCHITECTURE_v0.1.md` |
