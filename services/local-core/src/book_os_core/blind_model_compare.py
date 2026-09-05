@@ -20,7 +20,7 @@ from .model_gateway import (
     OpenAIResponsesAdapter,
 )
 from .model_gateway_anti_junk import AntiJunkModelGateway
-from .planning import PlanningGateError, PlanningService
+from .planning import PlanningService
 from .projects import BookContractPayload, ProjectService, ProjectView
 from .prompts import BOOK_CONTRACT_PROPOSAL_V1
 from .secrets import MacOSKeychainSecretStore
