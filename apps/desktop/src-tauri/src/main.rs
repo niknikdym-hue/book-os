@@ -151,11 +151,19 @@ fn wait_for_ready(core: &Core, reader: &mut BufReader<ChildStdout>) -> Result<()
         return Err("local core exited before readiness".into());
     }
     let ready: Ready = serde_json::from_str(&ready_line).map_err(|e| e.to_string())?;
-    let mut port = core
-        .port
-        .lock()
-        .map_err(|_| "local core port lock poisoned".to_string())?;
-    *port = Some(ready.port);
+    request_core_health(core, ready.port)?;
+    {
+        let mut port = core
+            .port
+            .lock()
+            .map_err(|_| "local core port lock poisoned".to_string())?;
+        *port = Some(ready.port);
+    }
+    println!("BOOK OS local core healthy");
+    if let Some(path) = std::env::var_os("BOOK_OS_CORE_READY_FILE") {
+        std::fs::write(PathBuf::from(path), b"healthy\n")
+            .map_err(|error| format!("unable to write local core readiness marker: {error}"))?;
+    }
     Ok(())
 }
 
