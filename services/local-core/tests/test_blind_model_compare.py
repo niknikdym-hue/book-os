@@ -23,9 +23,7 @@ class DifferentiatedBookContractAdapter:
     def __init__(self) -> None:
         self.requests: list[ModelTaskRequest] = []
 
-    def generate(
-        self, request: ModelTaskRequest, prompt: PromptTemplate
-    ) -> ModelAdapterResult:
+    def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
         self.requests.append(request.model_copy(deep=True))
         identity = "ASTRA" if request.model == "gpt-6-astra" else "SOL"
         return ModelAdapterResult(
@@ -107,11 +105,7 @@ def test_blind_compare_keeps_models_hidden_until_human_selection(tmp_path: Path)
     )
 
     record_path = (
-        tmp_path
-        / "projects"
-        / book_id
-        / "model-comparisons"
-        / f"{comparison.comparison_id}.json"
+        tmp_path / "projects" / book_id / "model-comparisons" / f"{comparison.comparison_id}.json"
     )
     record = json.loads(record_path.read_text(encoding="utf-8"))
     assert record["selected_label"] == "A"
