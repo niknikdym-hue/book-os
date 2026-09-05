@@ -8,6 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .anti_junk import AntiJunkCreateRequest, AntiJunkError, AntiJunkService
+from .blind_model_compare import (
+    BlindBookContractCompareRequest,
+    BlindBookContractComparisonService,
+    BlindBookContractSelectRequest,
+    BlindComparisonError,
+    BlindComparisonGateError,
+)
 from .model_gateway import ModelGateway
 from .planning import (
     ArchitecturePlanningRequest,
@@ -31,6 +38,7 @@ def build_launch_router(
 ) -> APIRouter:
     anti_junk = AntiJunkService(data_dir)
     planning = PlanningService(data_dir, gateway)
+    blind_compare = BlindBookContractComparisonService(data_dir)
     keychain = MacOSKeychainSecretStore()
     router = APIRouter(dependencies=[Depends(require_token)])
 
@@ -83,6 +91,32 @@ def build_launch_router(
         except AntiJunkError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {"removed": True}
+
+    @router.post("/api/projects/{book_id}/planning/book-contract/blind-compare")
+    def blind_compare_book_contract(
+        book_id: str, payload: BlindBookContractCompareRequest
+    ) -> dict[str, object]:
+        try:
+            return blind_compare.compare(book_id, payload).model_dump(mode="json")
+        except BlindComparisonGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except BlindComparisonError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post(
+        "/api/projects/{book_id}/planning/book-contract/blind-compare/{comparison_id}/select"
+    )
+    def select_blind_book_contract(
+        book_id: str,
+        comparison_id: str,
+        payload: BlindBookContractSelectRequest,
+    ) -> dict[str, object]:
+        try:
+            return blind_compare.select(book_id, comparison_id, payload).model_dump(mode="json")
+        except BlindComparisonGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except BlindComparisonError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/api/projects/{book_id}/planning/book-contract")
     def propose_book_contract(
