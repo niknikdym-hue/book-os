@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { coreApi } from "./api";
-import type { ChapterView, ProjectView } from "./types";
+import type { BookContractPayload, ChapterView, ProjectView } from "./types";
 
 type LaunchReadiness = {
   openai_credential_state: "AVAILABLE" | "NOT_AVAILABLE";
@@ -24,11 +24,73 @@ type PlanningProposal = {
   project: ProjectView;
 };
 
+type BlindCandidate = {
+  label: "A" | "B";
+  run_id: string;
+  contract: BookContractPayload;
+};
+
+type BlindComparison = {
+  comparison_id: string;
+  candidate_a: BlindCandidate;
+  candidate_b: BlindCandidate;
+  per_request_cap_usd: number;
+  total_cap_usd: number;
+  models_revealed: false;
+};
+
+type BlindSelection = {
+  comparison_id: string;
+  selected_label: "A" | "B";
+  revealed_models: Record<string, string>;
+  revealed_run_ids: Record<string, string>;
+  project: ProjectView;
+};
+
 type Props = {
   project: ProjectView;
   chapter: ChapterView | null;
   onProject: (project: ProjectView) => void;
 };
+
+function ContractCandidateCard({
+  candidate,
+  busy,
+  onSelect,
+}: {
+  candidate: BlindCandidate;
+  busy: boolean;
+  onSelect: (label: "A" | "B") => void;
+}) {
+  const contract = candidate.contract;
+  return (
+    <article className="panel" aria-label={`Вариант ${candidate.label}`}>
+      <div className="panel-heading">
+        <h4>Вариант {candidate.label}</h4>
+        <span className="badge draft">Модель скрыта</span>
+      </div>
+      <p><strong>Для кого:</strong> {contract.reader}</p>
+      <p><strong>Проблема:</strong> {contract.reader_problem}</p>
+      <p><strong>Обещание:</strong> {contract.central_promise}</p>
+      <p><strong>Центральный тезис:</strong> {contract.central_thesis}</p>
+      <p><strong>Уникальный угол:</strong> {contract.unique_angle}</p>
+      <p><strong>Траектория читателя:</strong> {contract.reader_trajectory}</p>
+      <p><strong>Доказательность:</strong> {contract.evidence_policy}</p>
+      <p><strong>Голос и жанр:</strong> {contract.voice_genre_constraints}</p>
+      <div>
+        <strong>Что исключено:</strong>
+        <ul>{contract.explicit_exclusions.map((item) => <li key={item}>{item}</li>)}</ul>
+      </div>
+      <div>
+        <strong>Критерии готовности:</strong>
+        <ul>{contract.readiness_criteria.map((item) => <li key={item}>{item}</li>)}</ul>
+      </div>
+      <button className="primary" disabled={busy} onClick={() => onSelect(candidate.label)}>
+        Выбираю вариант {candidate.label}
+      </button>
+    </article>
+  );
+}
 
 export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
@@ -39,6 +101,10 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   const [model, setModel] = useState("gpt-5.6-sol");
   const [maxCostUsd, setMaxCostUsd] = useState("0.50");
   const [allowPaid, setAllowPaid] = useState(false);
+  const [blindCostUsd, setBlindCostUsd] = useState("0.50");
+  const [allowBlindPaid, setAllowBlindPaid] = useState(false);
+  const [blindComparison, setBlindComparison] = useState<BlindComparison | null>(null);
+  const [blindSelection, setBlindSelection] = useState<BlindSelection | null>(null);
   const [latestRun, setLatestRun] = useState<PlanningProposal | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,12 +120,19 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   }, []);
 
   const cost = Number(maxCostUsd);
+  const blindCost = Number(blindCostUsd);
   const paidReady =
     readiness?.openai_credential_state === "AVAILABLE" &&
     allowPaid &&
     Number.isFinite(cost) &&
     cost > 0 &&
     model.trim().length > 0;
+  const blindPaidReady =
+    readiness?.openai_credential_state === "AVAILABLE" &&
+    allowBlindPaid &&
+    Number.isFinite(blindCost) &&
+    blindCost > 0 &&
+    idea.trim().length >= 3;
   const contractApproved =
     project.book_contract?.authority_status === "APPROVED" ||
     project.book_contract?.authority_status === "LOCKED";
@@ -97,6 +170,50 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       setAllowPaid(false);
     } catch (reason) {
       setAllowPaid(false);
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runBlindComparison() {
+    setBusy(true);
+    setError(null);
+    setBlindComparison(null);
+    setBlindSelection(null);
+    try {
+      const result = await coreApi<BlindComparison>(
+        "POST",
+        `/api/projects/${project.book_id}/planning/book-contract/blind-compare`,
+        {
+          idea: idea.trim(),
+          reader_hint: readerHint.trim(),
+          max_output_tokens: 2600,
+          max_cost_usd_per_request: blindCost,
+        },
+      );
+      setBlindComparison(result);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAllowBlindPaid(false);
+      setBusy(false);
+    }
+  }
+
+  async function selectBlindCandidate(label: "A" | "B") {
+    if (!blindComparison) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await coreApi<BlindSelection>(
+        "POST",
+        `/api/projects/${project.book_id}/planning/book-contract/blind-compare/${blindComparison.comparison_id}/select`,
+        { selected_label: label },
+      );
+      setBlindSelection(result);
+      onProject(result.project);
+    } catch (reason) {
       setError(String(reason));
     } finally {
       setBusy(false);
@@ -171,6 +288,85 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
         </div>
       )}
 
+      {!contractApproved && !blindSelection && (
+        <section className="planning-step">
+          <h4>Первый слепой тест: Sol ↔ Astra</h4>
+          <p className="muted">
+            BOOK OS отправит одну и ту же идею двум моделям с одинаковым контекстом. Вы увидите только
+            варианты A и B. Названия моделей раскроются после того, как вы зафиксируете выбор.
+          </p>
+
+          {!blindComparison && (
+            <>
+              <label className="field">
+                <span>Максимальная стоимость каждого из двух запросов, USD</span>
+                <input
+                  inputMode="decimal"
+                  value={blindCostUsd}
+                  onChange={(event) => setBlindCostUsd(event.target.value)}
+                />
+                <small>
+                  При значении ${blindCostUsd || "0"} общий жёсткий предел двух запросов — до ${
+                    Number.isFinite(blindCost) && blindCost > 0 ? (blindCost * 2).toFixed(2) : "0.00"
+                  }.
+                </small>
+              </label>
+              <label className="paid-approval">
+                <input
+                  type="checkbox"
+                  checked={allowBlindPaid}
+                  onChange={(event) => setAllowBlindPaid(event.target.checked)}
+                />
+                <span>
+                  Разрешаю <strong>только этот слепой тест</strong>: два платных OpenAI-запроса,
+                  каждый не дороже ${blindCostUsd || "0"}. После попытки разрешение автоматически сбросится.
+                </span>
+              </label>
+              <div className="actions planning-action">
+                <button
+                  className="primary"
+                  disabled={busy || !blindPaidReady}
+                  onClick={() => void runBlindComparison()}
+                >
+                  {busy ? "BOOK OS работает…" : "Получить слепые варианты A и B"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {blindComparison && (
+            <>
+              <p className="selected-topic-summary" role="status">
+                Модели скрыты. Сначала сравните содержание и выберите сильнейший Book Contract.
+              </p>
+              <div className="form-grid">
+                <ContractCandidateCard
+                  candidate={blindComparison.candidate_a}
+                  busy={busy}
+                  onSelect={(label) => void selectBlindCandidate(label)}
+                />
+                <ContractCandidateCard
+                  candidate={blindComparison.candidate_b}
+                  busy={busy}
+                  onSelect={(label) => void selectBlindCandidate(label)}
+                />
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {blindSelection && (
+        <div className="selected-topic-summary" role="status" aria-live="polite">
+          <small>Слепой выбор зафиксирован до раскрытия моделей</small>
+          <strong>Выбран вариант {blindSelection.selected_label}</strong>
+          <span>
+            A = {blindSelection.revealed_models.A} · B = {blindSelection.revealed_models.B}
+          </span>
+          <span>Выбранный вариант перенесён в черновик Book Contract для вашей проверки.</span>
+        </div>
+      )}
+
       {contractApproved && !architectureApproved && (
         <div className="planning-step primary-planning-step">
           <h4>Подготовьте предложение архитектуры</h4>
@@ -201,12 +397,12 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       )}
 
       <details className="advanced-settings planning-settings">
-        <summary>Дополнительные настройки OpenAI</summary>
+        <summary>Одиночный OpenAI-запрос — резервный режим</summary>
         <div className="form-grid planning-settings-grid">
           <label className="field">
             <span>Модель</span>
             <input value={model} onChange={(event) => setModel(event.target.value)} />
-            <small>Для первого качественного пилота: gpt-5.6-sol.</small>
+            <small>Резервный одиночный режим первого пилота: gpt-5.6-sol.</small>
           </label>
           <label className="field">
             <span>Максимальная стоимость одного запроса, USD</span>
@@ -219,22 +415,24 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
         </div>
       </details>
 
-      <label className="paid-approval">
-        <input
-          type="checkbox"
-          checked={allowPaid}
-          onChange={(event) => setAllowPaid(event.target.checked)}
-        />
-        <span>
-          Разрешаю <strong>только следующий</strong> платный OpenAI-запрос. Текущий предел — ${maxCostUsd || "0"}.
-          После любой попытки разрешение автоматически сбросится.
-        </span>
-      </label>
+      {!blindComparison && !blindSelection && (
+        <label className="paid-approval">
+          <input
+            type="checkbox"
+            checked={allowPaid}
+            onChange={(event) => setAllowPaid(event.target.checked)}
+          />
+          <span>
+            Разрешаю <strong>только следующий одиночный</strong> платный OpenAI-запрос. Текущий предел — ${maxCostUsd || "0"}.
+            После любой попытки разрешение автоматически сбросится.
+          </span>
+        </label>
+      )}
 
       <div className="actions planning-action">
-        {!contractApproved && (
+        {!contractApproved && !blindComparison && !blindSelection && (
           <button
-            className="primary"
+            className="ghost"
             disabled={busy || !paidReady || idea.trim().length < 3}
             onClick={() =>
               void run(`/api/projects/${project.book_id}/planning/book-contract`, {
@@ -244,7 +442,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
               })
             }
           >
-            {busy ? "BOOK OS работает…" : "Предложить контракт книги"}
+            {busy ? "BOOK OS работает…" : "Одиночный Book Contract без сравнения"}
           </button>
         )}
 
