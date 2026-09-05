@@ -87,11 +87,7 @@ class BlindBookContractComparisonService:
         if gateway is None:
             gateway = AntiJunkModelGateway(
                 ModelGateway(
-                    {
-                        "openai": AstraAwareOpenAIResponsesAdapter(
-                            MacOSKeychainSecretStore()
-                        )
-                    }
+                    {"openai": AstraAwareOpenAIResponsesAdapter(MacOSKeychainSecretStore())}
                 ),
                 AntiJunkService(data_dir),
             )
@@ -104,7 +100,9 @@ class BlindBookContractComparisonService:
         return path
 
     def _record_path(self, book_id: str, comparison_id: str) -> Path:
-        if not comparison_id or any(char not in "0123456789ABCDEFGHJKMNPQRSTVWXYZ" for char in comparison_id):
+        if not comparison_id or any(
+            char not in "0123456789ABCDEFGHJKMNPQRSTVWXYZ" for char in comparison_id
+        ):
             raise BlindComparisonGateError("invalid blind comparison ID")
         return self._comparison_dir(book_id) / f"{comparison_id}.json"
 
@@ -274,7 +272,9 @@ class BlindBookContractComparisonService:
             proposal = BookContractProposalOutput.model_validate(raw)
             contract = BookContractPayload.model_validate(proposal.model_dump(mode="json"))
         except (json.JSONDecodeError, ValidationError) as exc:
-            raise BlindComparisonError("selected blind candidate is not a valid Book Contract") from exc
+            raise BlindComparisonError(
+                "selected blind candidate is not a valid Book Contract"
+            ) from exc
 
         # Record the human preference before revealing model identity.
         if previous is None:
