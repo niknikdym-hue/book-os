@@ -320,7 +320,7 @@ def test_master_and_exports_are_deterministic_and_append_only(tmp_path: Path) ->
 
     backup_dir = tmp_path / "backup"
     _, manifest_path = create_backup(database, backup_dir)
-    assert json.loads(manifest_path.read_text(encoding="utf-8"))["alembic_revision"] == "0010"
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["alembic_revision"] == "0011"
 
 
 def test_release_gate_requires_full_deterministic_bookbench_suite(tmp_path: Path) -> None:

@@ -115,8 +115,8 @@ def ready_book(data_dir: Path) -> dict[str, str]:
     projects.approve_chapter_contract(project.book_id, second_chapter.chapter_id)
 
     duplicate_objective = (
-        "Это не про скорость, а про ясность? Важно понимать этот точный повторяемый фрагмент "
-        "для проверки BookBench и качества редакционного решения"
+        "Точный повторяемый фрагмент связывает решение владельца с наблюдаемым результатом "
+        "и позволяет проверить BookBench и качество редакционного решения"
     )
     drafting = DraftingService(data_dir, ModelGateway({"fake": DeterministicFakeAdapter()}))
     first = drafting.generate_section_draft(
@@ -200,7 +200,7 @@ def test_m7_schema_snapshot_exactness_and_currentness(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0010"
+            == "0011"
         )
         assert connection.execute(
             text("SELECT COUNT(*) FROM evaluation_snapshot_targets WHERE snapshot_id=:snapshot_id"),
@@ -292,7 +292,7 @@ def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(
     service = BookBenchService(tmp_path)
     snapshot = service.create_snapshot(state["book_id"], scope="BOOK")
     runs = service.run_deterministic_suite(state["book_id"], snapshot.snapshot_id)
-    assert len(runs) == 7
+    assert len(runs) == 8
     assert all(run.status == "SUCCEEDED" for run in runs)
 
     repetition = next(run for run in runs if run.check_id == "deterministic.repetition")
@@ -312,9 +312,7 @@ def test_deterministic_suite_is_actionable_reproducible_and_has_no_magic_score(
     assert any(finding.severity == "BLOCKING" for finding in evidence.findings)
 
     pathology = next(run for run in runs if run.check_id == "deterministic.ai_prose_pathology")
-    pathology_categories = {finding.category for finding in pathology.findings}
-    assert "FALSE_CONTRAST_TEMPLATE" in pathology_categories
-    assert "NOT_ABOUT_TEMPLATE" in pathology_categories
+    assert pathology.findings == []
     assert pathology.metrics["ai_authorship_probability"] is None
     assert pathology.output["claim"].startswith("measured prose patterns")
 

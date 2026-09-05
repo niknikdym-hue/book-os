@@ -11,6 +11,7 @@ from sqlalchemy.engine import Engine
 
 from .authority import AuthorityService, canonical_json, content_hash, new_ulid
 from .authority_types import JSONValue, utc_now
+from .anti_junk import AntiJunkService
 from .db import create_database
 from .model_gateway import (
     AuthorityInputRef,
@@ -20,6 +21,7 @@ from .model_gateway import (
     ModelTaskRequest,
     SectionDraftOutput,
 )
+from .model_gateway_anti_junk import AntiJunkModelGateway
 from .prompts import SECTION_DRAFT_V1
 from .projects import ProjectService
 
@@ -68,7 +70,7 @@ class DraftRunView(BaseModel):
 class DraftingService:
     def __init__(self, data_dir: Path, gateway: ModelGateway):
         self._projects = ProjectService(data_dir)
-        self._gateway = gateway
+        self._gateway = AntiJunkModelGateway(gateway, AntiJunkService(data_dir))
 
     def _engine(self, book_id: str) -> Engine:
         self._projects.get_project(book_id)

@@ -43,7 +43,7 @@ test("shows exact release blockers and cannot create early", async () => {
   render(<LiteraryMasterPanel project={project} />);
   expect(await screen.findByText("BOOKBENCH_BLOCKING")).toBeInTheDocument();
   expect(screen.getByText(/AUTHOR_VOICE is BLOCKING/)).toBeInTheDocument();
-  expect(screen.queryByText("Create Literary Master")).not.toBeInTheDocument();
+  expect(screen.queryByText("Создать литературный мастер")).not.toBeInTheDocument();
   expect(screen.getByLabelText("Literary Master BookBench evidence")).toHaveTextContent("S");
 });
 
@@ -105,9 +105,9 @@ test("requires human actor then creates master and exposes deterministic exports
   });
 
   render(<LiteraryMasterPanel project={project} />);
-  const button = await screen.findByText("Create Literary Master");
+  const button = await screen.findByText("Создать литературный мастер");
   expect(button).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Human release actor"), { target: { value: "Elena" } });
+  fireEvent.change(screen.getByLabelText("Кто выпускает мастер"), { target: { value: "Elena" } });
   expect(button).toBeEnabled();
   fireEvent.click(button);
 
@@ -120,12 +120,12 @@ test("requires human actor then creates master and exposes deterministic exports
     ),
   );
 
-  fireEvent.click(screen.getByText("Export Markdown"));
+  fireEvent.click(screen.getByText("Экспортировать Markdown"));
   expect(await screen.findByLabelText("Markdown export evidence")).toHaveTextContent(
     "exports/MASTER1/manuscript.md",
   );
 
-  fireEvent.click(screen.getByText("Create Audiobook handoff"));
+  fireEvent.click(screen.getByText("Создать передачу в Audiobook Studio"));
   expect(await screen.findByLabelText("Audiobook handoff evidence")).toHaveTextContent(
     "exports/MASTER1/audiobook-handoff.json",
   );

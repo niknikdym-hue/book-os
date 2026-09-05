@@ -112,83 +112,6 @@ fn validate_core_api_request(method: &str, path: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn desktop_app_bundle() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME").ok_or("HOME is unavailable")?;
-    Ok(PathBuf::from(home).join("Desktop").join("BOOK OS.app"))
-}
-
-#[cfg(target_os = "macos")]
-fn install_desktop_app() -> Result<Option<PathBuf>, String> {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
-
-    if cfg!(debug_assertions) {
-        return Ok(None);
-    }
-
-    let app_dir = desktop_app_bundle()?;
-    let contents_dir = app_dir.join("Contents");
-    let macos_dir = contents_dir.join("MacOS");
-    let resources_dir = contents_dir.join("Resources");
-    let installed_executable = macos_dir.join("BOOK OS");
-    let current_executable = std::env::current_exe().map_err(|error| error.to_string())?;
-
-    if current_executable == installed_executable {
-        return Ok(Some(app_dir));
-    }
-
-    fs::create_dir_all(&macos_dir).map_err(|error| error.to_string())?;
-    fs::create_dir_all(&resources_dir).map_err(|error| error.to_string())?;
-    fs::copy(&current_executable, &installed_executable).map_err(|error| error.to_string())?;
-
-    let mut permissions = fs::metadata(&installed_executable)
-        .map_err(|error| error.to_string())?
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&installed_executable, permissions).map_err(|error| error.to_string())?;
-
-    let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDisplayName</key><string>BOOK OS</string>
-  <key>CFBundleExecutable</key><string>BOOK OS</string>
-  <key>CFBundleIdentifier</key><string>com.bookos.desktop</string>
-  <key>CFBundleName</key><string>BOOK OS</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-</dict>
-</plist>
-"#;
-    fs::write(contents_dir.join("Info.plist"), plist).map_err(|error| error.to_string())?;
-    fs::write(contents_dir.join("PkgInfo"), "APPL????\n").map_err(|error| error.to_string())?;
-
-    let _ = Command::new("/usr/bin/xattr")
-        .args(["-dr", "com.apple.quarantine"])
-        .arg(&app_dir)
-        .status();
-
-    let status = Command::new("/usr/bin/codesign")
-        .args(["--force", "--deep", "--sign", "-"])
-        .arg(&app_dir)
-        .status()
-        .map_err(|error| format!("unable to invoke codesign: {error}"))?;
-    if !status.success() {
-        return Err(format!("ad-hoc codesign failed with status {status}"));
-    }
-
-    Ok(Some(app_dir))
-}
-
-#[cfg(not(target_os = "macos"))]
-fn install_desktop_app() -> Result<Option<PathBuf>, String> {
-    Ok(None)
-}
-
 fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>), String> {
     let token: String = rng()
         .sample_iter(&Alphanumeric)
@@ -228,11 +151,19 @@ fn wait_for_ready(core: &Core, reader: &mut BufReader<ChildStdout>) -> Result<()
         return Err("local core exited before readiness".into());
     }
     let ready: Ready = serde_json::from_str(&ready_line).map_err(|e| e.to_string())?;
-    let mut port = core
-        .port
-        .lock()
-        .map_err(|_| "local core port lock poisoned".to_string())?;
-    *port = Some(ready.port);
+    request_core_health(core, ready.port)?;
+    {
+        let mut port = core
+            .port
+            .lock()
+            .map_err(|_| "local core port lock poisoned".to_string())?;
+        *port = Some(ready.port);
+    }
+    println!("BOOK OS local core healthy");
+    if let Some(path) = std::env::var_os("BOOK_OS_CORE_READY_FILE") {
+        std::fs::write(PathBuf::from(path), b"healthy\n")
+            .map_err(|error| format!("unable to write local core readiness marker: {error}"))?;
+    }
     Ok(())
 }
 
@@ -277,6 +208,16 @@ async fn core_health(state: tauri::State<'_, CoreState>) -> Result<Value, String
 }
 
 #[tauri::command]
+fn frontend_ready() -> Result<bool, String> {
+    println!("BOOK OS frontend ready");
+    if let Some(path) = std::env::var_os("BOOK_OS_FRONTEND_READY_FILE") {
+        std::fs::write(PathBuf::from(path), b"ready\n")
+            .map_err(|error| format!("unable to write frontend readiness marker: {error}"))?;
+    }
+    Ok(true)
+}
+
+#[tauri::command]
 fn core_api(request: CoreApiRequest, state: tauri::State<'_, CoreState>) -> Result<Value, String> {
     let method = request.method.to_ascii_uppercase();
     validate_core_api_request(&method, &request.path)?;
@@ -310,12 +251,6 @@ fn core_api(request: CoreApiRequest, state: tauri::State<'_, CoreState>) -> Resu
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
-            match install_desktop_app() {
-                Ok(Some(path)) => println!("BOOK OS desktop app ready: {}", path.display()),
-                Ok(None) => {}
-                Err(error) => eprintln!("BOOK OS desktop app installation failed: {error}"),
-            }
-
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(CoreState::default());
@@ -342,7 +277,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![core_health, core_api])
+        .invoke_handler(tauri::generate_handler![core_health, frontend_ready, core_api])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if let Some(state) = window.app_handle().try_state::<CoreState>() {

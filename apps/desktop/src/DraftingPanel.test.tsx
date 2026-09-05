@@ -76,13 +76,19 @@ beforeEach(() => {
 
 it("generates a bounded DRAFT preview through the local API boundary", async () => {
   render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
-  fireEvent.change(screen.getByLabelText("Section objective"), {
+  fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
     target: { value: "Explain the bounded mechanism" },
   });
-  fireEvent.change(screen.getByLabelText("OpenAI model"), {
+  fireEvent.change(screen.getByLabelText("Модель OpenAI"), {
     target: { value: "test-writer" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Generate Draft" }));
+  fireEvent.change(screen.getByLabelText("Максимальная стоимость запроса, USD"), {
+    target: { value: "1.00" },
+  });
+  fireEvent.click(
+    screen.getByLabelText("Разрешаю следующий платный запрос с указанным пределом стоимости."),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Создать черновик" }));
 
   expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
   expect(screen.getAllByText("DRAFT").length).toBeGreaterThan(0);

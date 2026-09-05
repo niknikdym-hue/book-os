@@ -48,7 +48,7 @@ def test_fresh_and_m0_upgrade_preserve_fk_and_wal(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0010"
+            == "0011"
         )
         assert connection.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
         assert connection.execute(text("PRAGMA journal_mode")).scalar_one().lower() == "wal"
@@ -60,7 +60,7 @@ def test_fresh_and_m0_upgrade_preserve_fk_and_wal(tmp_path: Path) -> None:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
     command.upgrade(config, "head")
     with sqlite3.connect(upgraded) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0010",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0011",)
         names = {
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")

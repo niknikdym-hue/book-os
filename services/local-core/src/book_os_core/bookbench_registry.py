@@ -84,6 +84,13 @@ CHECKS: tuple[CheckSpec, ...] = (
         "Measured versioned prose-pattern occurrences; never an AI-authorship probability.",
     ),
     CheckSpec(
+        "deterministic.prose_anti_junk",
+        "0.1.0",
+        "AI_PROSE_PATHOLOGY",
+        "DETERMINISTIC",
+        "System and user prose anti-junk dictionary plus negative-first framing patterns.",
+    ),
+    CheckSpec(
         "deterministic.opening_ending_transition",
         "1.0.0",
         "OPENING_ENDING_TRANSITION",

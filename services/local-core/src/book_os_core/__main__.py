@@ -30,7 +30,14 @@ def main() -> None:
     listener.bind(("127.0.0.1", 0))
     listener.listen()
     server = ReadyServer(
-        uvicorn.Config(create_app(token, data_dir), access_log=False, log_level="warning"),
+        uvicorn.Config(
+            create_app(token, data_dir),
+            access_log=False,
+            log_level="warning",
+            loop="asyncio",
+            http="h11",
+            lifespan="off",
+        ),
         listener.getsockname()[1],
     )
     server.run(sockets=[listener])
