@@ -57,45 +57,55 @@ jobs:
       - name: Build production macOS app bundle
         working-directory: apps/desktop
         run: pnpm tauri build --bundles app
-      - name: Launch packaged app and verify frontend mount
+      - name: Launch packaged app and verify frontend plus local core
         env:
           RUST_BACKTRACE: '1'
         run: |
           APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
           EXEC="$APP/Contents/MacOS/BOOK OS"
           LOG="$RUNNER_TEMP/book-os-native-launch.log"
-          MARKER="$RUNNER_TEMP/book-os-frontend-ready"
+          FRONTEND_MARKER="$RUNNER_TEMP/book-os-frontend-ready"
+          CORE_MARKER="$RUNNER_TEMP/book-os-core-ready"
 
           test -d "$APP"
           test -x "$EXEC"
           /usr/bin/plutil -lint "$APP/Contents/Info.plist"
-          rm -f "$MARKER"
+          rm -f "$FRONTEND_MARKER" "$CORE_MARKER"
 
-          BOOK_OS_FRONTEND_READY_FILE="$MARKER" "$EXEC" >"$LOG" 2>&1 &
+          BOOK_OS_FRONTEND_READY_FILE="$FRONTEND_MARKER" \
+          BOOK_OS_CORE_READY_FILE="$CORE_MARKER" \
+          "$EXEC" >"$LOG" 2>&1 &
           PID=$!
           cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
           trap cleanup EXIT
 
           for _ in {1..120}; do
-            if [ -s "$MARKER" ]; then
+            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ]; then
               break
             fi
             if ! kill -0 "$PID" 2>/dev/null; then
               cat "$LOG"
-              echo "BOOK OS packaged app exited before the frontend mounted"
+              echo "BOOK OS packaged app exited before frontend/core readiness"
               exit 1
             fi
             sleep 0.25
           done
 
-          if [ ! -s "$MARKER" ]; then
+          if [ ! -s "$FRONTEND_MARKER" ]; then
             cat "$LOG"
             echo "BOOK OS packaged app stayed alive but the frontend never mounted"
             exit 1
           fi
+          if [ ! -s "$CORE_MARKER" ]; then
+            cat "$LOG"
+            echo "BOOK OS packaged app stayed alive but the local core never became healthy"
+            exit 1
+          fi
 
-          grep -F "ready" "$MARKER"
+          grep -F "ready" "$FRONTEND_MARKER"
+          grep -F "healthy" "$CORE_MARKER"
           grep -F "BOOK OS frontend ready" "$LOG"
+          grep -F "BOOK OS local core healthy" "$LOG"
   secret-scan:
     runs-on: ubuntu-latest
     permissions:
