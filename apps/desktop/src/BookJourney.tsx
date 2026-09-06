@@ -1,3 +1,4 @@
+import { BookContextPanel } from "./BookContextPanel";
 import type { ChapterView, ProjectView } from "./types";
 
 type JourneyStatus = "done" | "current" | "locked";
@@ -86,9 +87,9 @@ export function BookJourney({ project, chapter }: Props) {
     },
   ];
 
-  let actionTitle = "Опишите идею книги";
+  let actionTitle = "Сначала настройте автора, серию, стиль и объём";
   let actionText =
-    "В блоке «Идея и план книги» дайте несколько точных предложений о том, какую проблему или механизм должна исследовать книга. BOOK OS предложит контракт, но не утвердит его за вас.";
+    "В верхнем блоке выберите или создайте Author Profile, при необходимости Series Profile, утвердите Style Profile и задайте целевой объём в знаках с пробелами. После этого можно переходить к AI-планированию.";
 
   if (project.book_contract && !contractApproved) {
     actionTitle = "Проверьте предложенный контракт книги";
@@ -125,57 +126,61 @@ export function BookJourney({ project, chapter }: Props) {
   }
 
   return (
-    <section className="panel journey-panel" aria-label="Маршрут книги">
-      <div className="panel-heading journey-heading">
-        <div>
-          <p className="eyebrow">МАРШРУТ КНИГИ</p>
-          <h3>BOOK OS ведёт по шагам</h3>
+    <>
+      <BookContextPanel project={project} />
+      <section className="panel journey-panel" aria-label="Маршрут книги">
+        <div className="panel-heading journey-heading">
+          <div>
+            <p className="eyebrow">МАРШРУТ КНИГИ</p>
+            <h3>BOOK OS ведёт по шагам</h3>
+          </div>
+          <span className="journey-progress">
+            {steps.filter((step) => step.status === "done").length}/{steps.length} завершено
+          </span>
         </div>
-        <span className="journey-progress">
-          {steps.filter((step) => step.status === "done").length}/{steps.length} завершено
-        </span>
-      </div>
 
-      <ol className="journey-steps">
-        {steps.map((step, index) => (
-          <li key={step.id} className={`journey-step ${step.status}`}>
-            <span className="journey-number" aria-hidden="true">
-              {step.status === "done" ? "✓" : index + 1}
-            </span>
-            <div>
-              <strong>{step.label}</strong>
-              <small>{step.description}</small>
-            </div>
-            <span className="journey-state">
-              {step.status === "done" ? "Готово" : step.status === "current" ? "Сейчас" : "Позже"}
-            </span>
-          </li>
-        ))}
-      </ol>
+        <ol className="journey-steps">
+          {steps.map((step, index) => (
+            <li key={step.id} className={`journey-step ${step.status}`}>
+              <span className="journey-number" aria-hidden="true">
+                {step.status === "done" ? "✓" : index + 1}
+              </span>
+              <div>
+                <strong>{step.label}</strong>
+                <small>{step.description}</small>
+              </div>
+              <span className="journey-state">
+                {step.status === "done" ? "Готово" : step.status === "current" ? "Сейчас" : "Позже"}
+              </span>
+            </li>
+          ))}
+        </ol>
 
-      <div className="next-action" role="status">
-        <p className="eyebrow">ЧТО ДЕЛАТЬ СЕЙЧАС</p>
-        <strong>{actionTitle}</strong>
-        <p>{actionText}</p>
-      </div>
-
-      <details className="help-drawer">
-        <summary>? Как пользоваться BOOK OS</summary>
-        <div className="help-copy">
-          <p>
-            BOOK OS работает как редакционная система, а не как чат: программа предлагает следующий
-            материал, а автор принимает ключевые решения в самом проекте книги.
-          </p>
-          <ol className="help-steps">
-            <li><strong>Смотрите на «Что делать сейчас».</strong> Это главное действие текущего этапа.</li>
-            <li><strong>AI создаёт предложения, не решения.</strong> Контракт, архитектуру и значимые изменения утверждает человек.</li>
-            <li><strong>Не перескакивайте закрытые шаги.</strong> Следующие этапы становятся доступны после обязательных ворот.</li>
-            <li><strong>Словарь мусора находится в «Настройках текста».</strong> Добавленные фразы начинают участвовать в контроле прозы.</li>
-            <li><strong>Платный OpenAI-вызов всегда отдельный.</strong> Перед каждым таким запросом нужен явный лимит и разрешение.</li>
-            <li><strong>Финальная цель — Literary Master.</strong> Это зафиксированная версия книги, а не просто последний открытый текст.</li>
-          </ol>
+        <div className="next-action" role="status">
+          <p className="eyebrow">ЧТО ДЕЛАТЬ СЕЙЧАС</p>
+          <strong>{actionTitle}</strong>
+          <p>{actionText}</p>
         </div>
-      </details>
-    </section>
+
+        <details className="help-drawer">
+          <summary>? Как пользоваться BOOK OS</summary>
+          <div className="help-copy">
+            <p>
+              BOOK OS работает как редакционная система, а не как чат: программа предлагает следующий
+              материал, а автор принимает ключевые решения в самом проекте книги.
+            </p>
+            <ol className="help-steps">
+              <li><strong>Сначала задайте контекст.</strong> Автор, серия, стиль и объём становятся обязательной опорой AI-планирования.</li>
+              <li><strong>Смотрите на «Что делать сейчас».</strong> Это главное действие текущего этапа.</li>
+              <li><strong>AI создаёт предложения, не решения.</strong> Контракт, архитектуру и значимые изменения утверждает человек.</li>
+              <li><strong>Не перескакивайте закрытые шаги.</strong> Следующие этапы становятся доступны после обязательных ворот.</li>
+              <li><strong>Словарь мусора находится в «Настройках текста».</strong> Добавленные фразы начинают участвовать в контроле прозы.</li>
+              <li><strong>Платный AI-вызов всегда отдельный.</strong> Перед каждым таким запросом нужен явный лимит и разрешение.</li>
+              <li><strong>Финальная цель — Literary Master.</strong> Это зафиксированная версия книги, а не просто последний открытый текст.</li>
+            </ol>
+          </div>
+        </details>
+      </section>
+    </>
   );
 }
