@@ -6,15 +6,21 @@ from pathlib import Path
 import pytest
 
 from book_os_core.blind_model_compare import (
-    AstraAwareOpenAIResponsesAdapter,
     BlindBookContractCompareRequest,
     BlindBookContractComparisonService,
     BlindBookContractSelectRequest,
     BlindComparisonGateError,
 )
+from book_os_core.book_context import (
+    BookContextService,
+    BookContextUpdateRequest,
+    ProfileCreateRequest,
+    ProfileRegistry,
+)
 from book_os_core.model_gateway import ModelAdapterResult, ModelGateway, ModelTaskRequest
 from book_os_core.projects import NewBookRequest, ProjectService
 from book_os_core.prompts import PromptTemplate
+from book_os_core.provider_adapters import BookOSOpenAIResponsesAdapter
 
 
 class DifferentiatedBookContractAdapter:
@@ -44,23 +50,57 @@ class DifferentiatedBookContractAdapter:
         )
 
 
-def create_project(data_dir: Path) -> str:
+def create_project_with_context(data_dir: Path) -> str:
     project = ProjectService(data_dir).create_project(
         NewBookRequest(
             working_title="Blind Pilot",
             primary_subtype="Strategy",
         )
     )
+    registry = ProfileRegistry(data_dir)
+    author = registry.approve_profile(
+        registry.create_profile(
+            ProfileCreateRequest(
+                kind="AUTHOR",
+                content={
+                    "author_name": "Автор",
+                    "voice_requirements": "Плотная современная русская проза",
+                },
+            )
+        ).profile_id
+    )
+    style = registry.approve_profile(
+        registry.create_profile(
+            ProfileCreateRequest(
+                kind="STYLE",
+                content={
+                    "style_name": "Основной",
+                    "author_profile_id": author.profile_id,
+                    "analytical_depth": "Высокая",
+                },
+            )
+        ).profile_id
+    )
+    BookContextService(data_dir).save_context(
+        project.book_id,
+        BookContextUpdateRequest(
+            author_profile_id=author.profile_id,
+            style_profile_id=style.profile_id,
+            target_characters=300_000,
+            min_characters=280_000,
+            max_characters=320_000,
+        ),
+    )
     return project.book_id
 
 
 def test_astra_has_current_fail_closed_price_table() -> None:
-    assert AstraAwareOpenAIResponsesAdapter._pricing("gpt-6-astra") == (10.0, 50.0)
-    assert AstraAwareOpenAIResponsesAdapter._PRICING_SOURCE_DATE == "2026-09-06"
+    assert BookOSOpenAIResponsesAdapter._pricing("gpt-6-astra") == (10.0, 50.0)
+    assert BookOSOpenAIResponsesAdapter._PRICING_SOURCE_DATE == "2026-09-06"
 
 
 def test_blind_compare_keeps_models_hidden_until_human_selection(tmp_path: Path) -> None:
-    book_id = create_project(tmp_path)
+    book_id = create_project_with_context(tmp_path)
     adapter = DifferentiatedBookContractAdapter()
     service = BlindBookContractComparisonService(
         tmp_path,
@@ -88,6 +128,14 @@ def test_blind_compare_keeps_models_hidden_until_human_selection(tmp_path: Path)
     assert adapter.requests[0].prompt_id == adapter.requests[1].prompt_id
     assert comparison.total_cap_usd == 1.0
 
+    context_payload = adapter.requests[0].authoritative_context["book_context"]
+    assert context_payload["target_characters"] == 300_000
+    assert context_payload["min_characters"] == 280_000
+    assert context_payload["max_characters"] == 320_000
+    assert context_payload["author_profile"]["content_hash"]
+    assert context_payload["style_profile"]["content_hash"]
+    assert adapter.requests[0].authoritative_context["book_context_hash"]
+
     selected_contract = comparison.candidate_a.contract
     selection = service.select(
         book_id,
@@ -110,10 +158,11 @@ def test_blind_compare_keeps_models_hidden_until_human_selection(tmp_path: Path)
     record = json.loads(record_path.read_text(encoding="utf-8"))
     assert record["selected_label"] == "A"
     assert record["selected_at"]
+    assert record["book_context_hash"] == adapter.requests[0].authoritative_context["book_context_hash"]
 
 
 def test_blind_preference_cannot_be_switched_after_reveal(tmp_path: Path) -> None:
-    book_id = create_project(tmp_path)
+    book_id = create_project_with_context(tmp_path)
     service = BlindBookContractComparisonService(
         tmp_path,
         ModelGateway({"openai": DifferentiatedBookContractAdapter()}),
