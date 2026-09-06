@@ -87,13 +87,17 @@ def test_same_brief_is_rendered_for_two_profiles_without_manuscript_mutation(
     engine = create_database(project_service.projects_dir / project.book_id / "project.sqlite")
     try:
         with engine.connect() as connection:
-            rows = connection.execute(
-                text(
-                    "SELECT brief_hash,style_profile_hash,prompt_id,status FROM style_preview_runs "
-                    "WHERE batch_id=:batch_id ORDER BY created_at"
-                ),
-                {"batch_id": result.batch_id},
-            ).mappings().all()
+            rows = (
+                connection.execute(
+                    text(
+                        "SELECT brief_hash,style_profile_hash,prompt_id,status FROM style_preview_runs "
+                        "WHERE batch_id=:batch_id ORDER BY created_at"
+                    ),
+                    {"batch_id": result.batch_id},
+                )
+                .mappings()
+                .all()
+            )
     finally:
         engine.dispose()
 
