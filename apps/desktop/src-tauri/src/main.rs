@@ -108,6 +108,19 @@ fn canonical_existing_path(path: PathBuf, label: &str) -> Result<PathBuf, String
         .map_err(|error| format!("{label} unavailable at {}: {error}", path.display()))
 }
 
+fn preserve_venv_python(path: PathBuf) -> Result<PathBuf, String> {
+    // Do not canonicalize the final `python` path. A venv interpreter is commonly a
+    // symlink to the framework/system Python; resolving that symlink changes Python's
+    // executable identity and can make it ignore the venv's installed packages.
+    if !path.is_file() {
+        return Err(format!(
+            "local core Python unavailable at {}",
+            path.display()
+        ));
+    }
+    Ok(path)
+}
+
 fn append_startup_log(path: &Path, message: &str) {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{message}");
@@ -139,7 +152,7 @@ fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>, Pat
     let python = std::env::var("BOOK_OS_PYTHON")
         .map(|value| resolve_python(&value, manifest_dir))
         .unwrap_or_else(|_| default_python(manifest_dir));
-    let python = canonical_existing_path(python, "local core Python")?;
+    let python = preserve_venv_python(python)?;
     let source_path = std::env::var("BOOK_OS_CORE_PYTHONPATH")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -225,19 +238,18 @@ fn wait_for_ready(
     append_startup_log(startup_log, &format!("announced_port={}", ready.port));
 
     let deadline = Instant::now() + CORE_HEALTH_RETRY_DEADLINE;
-    let mut last_error = None;
     loop {
         match request_core_health(core, ready.port) {
             Ok(_) => break,
-            Err(error) => last_error = Some(error),
-        }
-        if Instant::now() >= deadline {
-            let detail = last_error.unwrap_or_else(|| "unknown health error".to_string());
-            return Err(format!(
-                "local core announced port {} but /health did not become ready: {detail}; see {}",
-                ready.port,
-                startup_log.display()
-            ));
+            Err(error) => {
+                if Instant::now() >= deadline {
+                    return Err(format!(
+                        "local core announced port {} but /health did not become ready: {error}; see {}",
+                        ready.port,
+                        startup_log.display()
+                    ));
+                }
+            }
         }
         std::thread::sleep(Duration::from_millis(150));
     }
@@ -398,8 +410,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_existing_path, default_python, json_request_body, resolve_python,
-        validate_core_api_request,
+        canonical_existing_path, default_python, json_request_body, preserve_venv_python,
+        resolve_python, validate_core_api_request,
     };
     use serde_json::json;
     use std::path::{Path, PathBuf};
@@ -444,6 +456,13 @@ mod tests {
     fn canonical_existing_path_rejects_missing_paths() {
         let missing = PathBuf::from("/definitely/not/a/book-os-path");
         assert!(canonical_existing_path(missing, "test path").is_err());
+    }
+
+    #[test]
+    fn venv_python_validation_does_not_canonicalize_the_interpreter() {
+        let current = std::env::current_exe().expect("current executable");
+        let preserved = preserve_venv_python(current.clone()).expect("existing executable");
+        assert_eq!(preserved, current);
     }
 
     #[test]
