@@ -16,6 +16,7 @@ from .blind_model_compare import (
     BlindComparisonError,
     BlindComparisonGateError,
 )
+from .book_context import BookContextService
 from .model_gateway import ModelGateway
 from .model_routing import ModelRoutingError, ModelRoutingService
 from .planning import (
@@ -61,6 +62,7 @@ def build_launch_router(
     anti_junk = AntiJunkService(data_dir)
     planning = PlanningService(data_dir, gateway)
     routing = ModelRoutingService(data_dir)
+    contexts = BookContextService(data_dir)
     blind_compare = BlindBookContractComparisonService(data_dir)
     keychain = MacOSKeychainSecretStore()
     router = APIRouter(dependencies=[Depends(require_token)])
@@ -72,6 +74,14 @@ def build_launch_router(
         except SecretNotFound:
             return "NOT_AVAILABLE"
         return "AVAILABLE"
+
+    def require_book_context(book_id: str) -> None:
+        context = contexts.get_context(book_id)
+        if not context.ready_for_planning:
+            raise PlanningGateError(
+                "Before AI planning, approve Author Profile and Style Profile, choose optional "
+                "Series Profile, and set target length in characters including spaces"
+            )
 
     @router.get("/api/launch/readiness")
     def launch_readiness() -> dict[str, object]:
@@ -158,7 +168,10 @@ def build_launch_router(
         book_id: str, payload: BlindBookContractCompareRequest
     ) -> dict[str, object]:
         try:
+            require_book_context(book_id)
             return blind_compare.compare(book_id, payload).model_dump(mode="json")
+        except PlanningGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except BlindComparisonGateError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except BlindComparisonError as exc:
@@ -184,6 +197,7 @@ def build_launch_router(
         book_id: str, payload: RoutedBookContractPlanningRequest
     ) -> dict[str, object]:
         try:
+            require_book_context(book_id)
             choice = routing.resolve(
                 book_id,
                 "BOOK_CONTRACT_PROPOSAL",
@@ -217,6 +231,7 @@ def build_launch_router(
         book_id: str, payload: RoutedArchitecturePlanningRequest
     ) -> dict[str, object]:
         try:
+            require_book_context(book_id)
             choice = routing.resolve(
                 book_id,
                 "ARCHITECTURE_PROPOSAL",
@@ -252,6 +267,7 @@ def build_launch_router(
         payload: RoutedChapterContractPlanningRequest,
     ) -> dict[str, object]:
         try:
+            require_book_context(book_id)
             choice = routing.resolve(
                 book_id,
                 "CHAPTER_CONTRACT_PROPOSAL",
