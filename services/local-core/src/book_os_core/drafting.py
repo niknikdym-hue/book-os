@@ -87,7 +87,9 @@ class DraftingService:
     @staticmethod
     def _test_or_custom_choice(request: DraftSectionRequest) -> RoutingChoice:
         if not request.model or not request.model.strip():
-            raise DraftingGateError("model must be explicitly selected for an unregistered provider")
+            raise DraftingGateError(
+                "model must be explicitly selected for an unregistered provider"
+            )
         return RoutingChoice(
             provider=request.provider,
             provider_label=request.provider,
