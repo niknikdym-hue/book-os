@@ -321,9 +321,7 @@ class ProfileRegistry:
             None,
         )
         if not isinstance(revision, dict):
-            raise ProfileNotFound(
-                f"profile revision not found: {profile_id}@{content_hash[:12]}"
-            )
+            raise ProfileNotFound(f"profile revision not found: {profile_id}@{content_hash[:12]}")
         return self._view_from_revision(profile_id, record, revision)
 
     def create_profile(self, request: ProfileCreateRequest) -> ProfileView:
