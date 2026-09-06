@@ -52,7 +52,7 @@ def main() -> None:
         ):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
 
-    app.include_router(build_context_router(data_dir, require_token))
+    app.include_router(build_context_router(data_dir, require_token, gateway))
     app.include_router(build_launch_router(data_dir, require_token, gateway))
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
