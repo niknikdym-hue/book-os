@@ -2,12 +2,18 @@ use rand::distr::Alphanumeric;
 use rand::{rng, Rng};
 use serde::Deserialize;
 use serde_json::Value;
-use std::io::{BufRead, BufReader};
+use std::fs::OpenOptions;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
+
+const CORE_HEALTH_CALL_TIMEOUT: Duration = Duration::from_secs(2);
+const CORE_STARTUP_DEADLINE: Duration = Duration::from_secs(60);
+const CORE_HEALTH_RETRY_DEADLINE: Duration = Duration::from_secs(8);
+const CORE_STARTUP_LOG: &str = "local-core-startup.log";
 
 struct Core {
     child: Mutex<Child>,
@@ -97,6 +103,17 @@ fn default_python(manifest_dir: &Path) -> PathBuf {
     resolve_python("../../services/local-core/.venv/bin/python", manifest_dir)
 }
 
+fn canonical_existing_path(path: PathBuf, label: &str) -> Result<PathBuf, String> {
+    path.canonicalize()
+        .map_err(|error| format!("{label} unavailable at {}: {error}", path.display()))
+}
+
+fn append_startup_log(path: &Path, message: &str) {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{message}");
+    }
+}
+
 fn validate_core_api_request(method: &str, path: &str) -> Result<(), String> {
     if !matches!(method, "GET" | "POST" | "PUT") {
         return Err("unsupported local-core API method".into());
@@ -112,7 +129,7 @@ fn validate_core_api_request(method: &str, path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>), String> {
+fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>, PathBuf), String> {
     let token: String = rng()
         .sample_iter(&Alphanumeric)
         .take(48)
@@ -122,36 +139,82 @@ fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>), St
     let python = std::env::var("BOOK_OS_PYTHON")
         .map(|value| resolve_python(&value, manifest_dir))
         .unwrap_or_else(|_| default_python(manifest_dir));
-    let source_path = std::env::var("BOOK_OS_CORE_PYTHONPATH").unwrap_or_else(|_| {
-        format!("{}/../../../services/local-core/src", env!("CARGO_MANIFEST_DIR"))
-    });
-    let mut child = Command::new(python)
+    let python = canonical_existing_path(python, "local core Python")?;
+    let source_path = std::env::var("BOOK_OS_CORE_PYTHONPATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(format!(
+                "{}/../../../services/local-core/src",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+        });
+    let source_path = canonical_existing_path(source_path, "local core source")?;
+    let startup_log = data_dir.join(CORE_STARTUP_LOG);
+    std::fs::write(&startup_log, "")
+        .map_err(|error| format!("unable to initialize local core startup log: {error}"))?;
+    append_startup_log(&startup_log, &format!("python={}", python.display()));
+    append_startup_log(
+        &startup_log,
+        &format!("pythonpath={}", source_path.display()),
+    );
+    append_startup_log(&startup_log, &format!("data_dir={}", data_dir.display()));
+    let stderr = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&startup_log)
+        .map_err(|error| format!("unable to open local core startup log: {error}"))?;
+    let mut child = Command::new(&python)
         .args(["-m", "book_os_core"])
         .env("BOOK_OS_SESSION_TOKEN", &token)
         .env("BOOK_OS_DATA_DIR", data_dir)
-        .env("PYTHONPATH", source_path)
+        .env("PYTHONPATH", &source_path)
+        .env("PYTHONUNBUFFERED", "1")
         .stdout(Stdio::piped())
+        .stderr(Stdio::from(stderr))
         .spawn()
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| format!("unable to spawn local core: {error}"))?;
+    append_startup_log(&startup_log, &format!("pid={}", child.id()));
     let stdout = child.stdout.take().ok_or("sidecar stdout unavailable")?;
     let core = Arc::new(Core {
         child: Mutex::new(child),
         port: Mutex::new(None),
         token,
     });
-    Ok((core, BufReader::new(stdout)))
+    Ok((core, BufReader::new(stdout), startup_log))
 }
 
-fn wait_for_ready(core: &Core, reader: &mut BufReader<ChildStdout>) -> Result<(), String> {
+fn health_agent() -> ureq::Agent {
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(CORE_HEALTH_CALL_TIMEOUT))
+        .build();
+    config.into()
+}
+
+fn wait_for_ready(
+    core: &Core,
+    reader: &mut BufReader<ChildStdout>,
+    startup_log: &Path,
+) -> Result<(), String> {
     let mut ready_line = String::new();
     let read = reader
         .read_line(&mut ready_line)
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| format!("unable to read local core readiness: {error}"))?;
     if read == 0 {
-        return Err("local core exited before readiness".into());
+        return Err(format!(
+            "local core exited before readiness; see {}",
+            startup_log.display()
+        ));
     }
-    let ready: Ready = serde_json::from_str(&ready_line).map_err(|e| e.to_string())?;
-    request_core_health(core, ready.port)?;
+    append_startup_log(
+        startup_log,
+        &format!("stdout_readiness={}", ready_line.trim()),
+    );
+    let ready: Ready = serde_json::from_str(&ready_line)
+        .map_err(|error| format!("invalid local core readiness payload: {error}"))?;
+
+    // Publish the announced port before the redundant HTTP probe. Python emits the
+    // readiness line only after Uvicorn startup, so an HTTP-client stall must never
+    // keep the desktop UI stuck forever in `port=None`.
     {
         let mut port = core
             .port
@@ -159,6 +222,27 @@ fn wait_for_ready(core: &Core, reader: &mut BufReader<ChildStdout>) -> Result<()
             .map_err(|_| "local core port lock poisoned".to_string())?;
         *port = Some(ready.port);
     }
+    append_startup_log(startup_log, &format!("announced_port={}", ready.port));
+
+    let deadline = Instant::now() + CORE_HEALTH_RETRY_DEADLINE;
+    let mut last_error = None;
+    loop {
+        match request_core_health(core, ready.port) {
+            Ok(_) => break,
+            Err(error) => last_error = Some(error),
+        }
+        if Instant::now() >= deadline {
+            let detail = last_error.unwrap_or_else(|| "unknown health error".to_string());
+            return Err(format!(
+                "local core announced port {} but /health did not become ready: {detail}; see {}",
+                ready.port,
+                startup_log.display()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(150));
+    }
+
+    append_startup_log(startup_log, "health=healthy");
     println!("BOOK OS local core healthy");
     if let Some(path) = std::env::var_os("BOOK_OS_CORE_READY_FILE") {
         std::fs::write(PathBuf::from(path), b"healthy\n")
@@ -181,27 +265,37 @@ fn json_request_body(body: Option<Value>) -> Result<String, String> {
 
 fn request_core_health(core: &Core, port: u16) -> Result<Value, String> {
     let url = format!("http://127.0.0.1:{port}/health");
-    let response = ureq::get(&url)
+    let response = health_agent()
+        .get(&url)
         .header("Authorization", &format!("Bearer {}", core.token))
         .call()
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| format!("local core health request failed: {error}"))?;
     read_json_response(response)
 }
 
 #[tauri::command]
 async fn core_health(state: tauri::State<'_, CoreState>) -> Result<Value, String> {
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + CORE_STARTUP_DEADLINE;
+    let mut last_health_error = None;
     loop {
         if let Some(error) = state.error_message() {
             return Err(format!("local core failed to start: {error}"));
         }
         if let Some(core) = state.current_core()? {
             if let Some(port) = core.port()? {
-                return request_core_health(&core, port);
+                match request_core_health(&core, port) {
+                    Ok(value) => return Ok(value),
+                    Err(error) => last_health_error = Some(error),
+                }
             }
         }
         if Instant::now() >= deadline {
-            return Err("local core startup timed out after 30 seconds".into());
+            if let Some(error) = last_health_error {
+                return Err(format!(
+                    "local core health did not become available within 60 seconds: {error}"
+                ));
+            }
+            return Err("local core did not announce a port within 60 seconds".into());
         }
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -256,7 +350,7 @@ fn main() {
             app.manage(CoreState::default());
             let state = app.state::<CoreState>();
             match spawn_core(&data_dir) {
-                Ok((core, mut reader)) => {
+                Ok((core, mut reader, startup_log)) => {
                     let mut managed_core = state
                         .core
                         .lock()
@@ -265,7 +359,8 @@ fn main() {
                     drop(managed_core);
                     let app_handle = app.handle().clone();
                     std::thread::spawn(move || {
-                        if let Err(error) = wait_for_ready(&core, &mut reader) {
+                        if let Err(error) = wait_for_ready(&core, &mut reader, &startup_log) {
+                            append_startup_log(&startup_log, &format!("startup_error={error}"));
                             core.stop();
                             if let Some(state) = app_handle.try_state::<CoreState>() {
                                 state.set_error(error);
@@ -302,7 +397,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_python, json_request_body, resolve_python, validate_core_api_request};
+    use super::{
+        canonical_existing_path, default_python, json_request_body, resolve_python,
+        validate_core_api_request,
+    };
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -340,6 +438,12 @@ mod tests {
         };
 
         assert_eq!(resolve_python(python, manifest_dir), PathBuf::from(python));
+    }
+
+    #[test]
+    fn canonical_existing_path_rejects_missing_paths() {
+        let missing = PathBuf::from("/definitely/not/a/book-os-path");
+        assert!(canonical_existing_path(missing, "test path").is_err());
     }
 
     #[test]
