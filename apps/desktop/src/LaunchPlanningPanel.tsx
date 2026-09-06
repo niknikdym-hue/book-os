@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
 import type { BookContractPayload, ChapterView, ProjectView } from "./types";
 
@@ -186,12 +186,12 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   const selectedProviderLabel = selectedProvider.label;
   const bookPin = routingState?.book_pin ?? null;
 
-  async function reloadReadiness() {
+  const reloadReadiness = useCallback(async () => {
     const value = await coreApi<LaunchReadiness>("GET", "/api/launch/readiness");
     setReadiness(value);
-  }
+  }, []);
 
-  async function reloadRouting() {
+  const reloadRouting = useCallback(async () => {
     const value = await coreApi<RoutingState>(
       "GET",
       `/api/projects/${project.book_id}/model-routing`,
@@ -203,13 +203,13 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       setSelectionScope("BOOK");
       setModel(value.book_pin.model);
     }
-  }
+  }, [project.book_id]);
 
   useEffect(() => {
     void Promise.all([reloadReadiness(), reloadRouting()]).catch((reason: unknown) =>
       setError(String(reason)),
     );
-  }, [project.book_id]);
+  }, [reloadReadiness, reloadRouting]);
 
   useEffect(() => {
     if (selectionMode !== "MANUAL" || bookPin) return;
