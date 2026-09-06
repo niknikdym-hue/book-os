@@ -16,11 +16,19 @@ from .book_context import (
     ProfileRegistry,
     ProfileUpdateRequest,
 )
+from .model_gateway import ModelBudgetError, ModelGateway, ModelProviderError
+from .model_routing import ModelRoutingError
+from .style_preview import StylePreviewError, StylePreviewRequest, StylePreviewService
 
 
-def build_context_router(data_dir: Path, require_token: Callable[..., None]) -> APIRouter:
+def build_context_router(
+    data_dir: Path,
+    require_token: Callable[..., None],
+    gateway: ModelGateway,
+) -> APIRouter:
     profiles = ProfileRegistry(data_dir)
     contexts = BookContextService(data_dir)
+    style_previews = StylePreviewService(data_dir, gateway)
     router = APIRouter(dependencies=[Depends(require_token)])
 
     @router.get("/api/context/profiles")
@@ -74,6 +82,21 @@ def build_context_router(data_dir: Path, require_token: Callable[..., None]) -> 
         except BookContextGateError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except BookContextError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/projects/{book_id}/style-previews")
+    def generate_style_previews(
+        book_id: str, payload: StylePreviewRequest
+    ) -> dict[str, object]:
+        try:
+            return style_previews.generate(book_id, payload).model_dump(mode="json")
+        except ProfileNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (BookContextGateError, ModelRoutingError, ModelBudgetError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ModelProviderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except (StylePreviewError, BookContextError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return router
