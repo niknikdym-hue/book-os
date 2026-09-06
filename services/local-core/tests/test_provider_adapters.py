@@ -138,9 +138,7 @@ def test_ai_ya_cost_cap_blocks_before_http() -> None:
     )
 
     with pytest.raises(ModelBudgetError, match="exceeds cap"):
-        adapter.generate(
-            request("yandex", "aliceai-llm", max_cost_usd=0.001), SECTION_DRAFT_V1
-        )
+        adapter.generate(request("yandex", "aliceai-llm", max_cost_usd=0.001), SECTION_DRAFT_V1)
     assert calls == []
 
 
