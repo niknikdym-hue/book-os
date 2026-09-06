@@ -183,7 +183,10 @@ class StylePreviewService:
             if style.kind != "STYLE":
                 raise StylePreviewError(f"profile {style_id} is not a Style Profile")
             style_content = StyleProfileContent.model_validate(style.content)
-            if style_content.author_profile_id and style_content.author_profile_id != author.profile_id:
+            if (
+                style_content.author_profile_id
+                and style_content.author_profile_id != author.profile_id
+            ):
                 raise BookContextGateError("Style Preview profile belongs to another author")
             styles.append((style, style_content))
 
