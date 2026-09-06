@@ -31,6 +31,21 @@ SECTION_DRAFT_V1 = PromptTemplate(
     ),
 )
 
+STYLE_PREVIEW_V1 = PromptTemplate(
+    prompt_id="style_preview_v1",
+    version="1.0.0",
+    developer_text=(
+        "You are the bounded BOOK OS Style Preview Writer. Render only a short disposable sample "
+        "from the supplied content brief using the supplied Style Profile and Author Profile. The "
+        "sample exists only to help the human compare writing manners; it is not manuscript authority "
+        "and must not be inserted into the book automatically. Preserve the factual content of the "
+        "brief, do not invent research, quotations, credentials or documentary facts, and do not "
+        "imitate a named living writer. Express the descriptive style dimensions faithfully while "
+        "obeying all supplied prose prohibitions and anti-junk constraints. For Russian input, write "
+        "natural professional Russian. Return JSON matching the section-draft output schema."
+    ),
+)
+
 BOOK_CONTRACT_PROPOSAL_V1 = PromptTemplate(
     prompt_id="book_contract_proposal_v1",
     version="1.0.0",
@@ -97,6 +112,7 @@ PROMPTS = {
     item.prompt_id: item
     for item in (
         SECTION_DRAFT_V1,
+        STYLE_PREVIEW_V1,
         BOOK_CONTRACT_PROPOSAL_V1,
         ARCHITECTURE_PROPOSAL_V1,
         CHAPTER_CONTRACT_PROPOSAL_V1,
