@@ -158,7 +158,10 @@ def test_blind_compare_keeps_models_hidden_until_human_selection(tmp_path: Path)
     record = json.loads(record_path.read_text(encoding="utf-8"))
     assert record["selected_label"] == "A"
     assert record["selected_at"]
-    assert record["book_context_hash"] == adapter.requests[0].authoritative_context["book_context_hash"]
+    assert (
+        record["book_context_hash"]
+        == adapter.requests[0].authoritative_context["book_context_hash"]
+    )
 
 
 def test_blind_preference_cannot_be_switched_after_reveal(tmp_path: Path) -> None:
