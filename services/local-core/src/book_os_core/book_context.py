@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Literal, cast
 import hashlib
 import json
+from pathlib import Path
 import re
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
@@ -246,28 +246,51 @@ class ProfileRegistry:
         )
         temporary.replace(self.path)
 
+    def _record(self, profile_id: str) -> dict[str, Any]:
+        self._validate_id(profile_id)
+        payload = self._read()
+        raw = payload["profiles"].get(profile_id)
+        if not isinstance(raw, dict):
+            raise ProfileNotFound(f"profile not found: {profile_id}")
+        return raw
+
+    def _view_from_revision(
+        self,
+        profile_id: str,
+        record: dict[str, Any],
+        revision: dict[str, Any],
+    ) -> ProfileView:
+        kind = cast(ProfileKind, record["kind"])
+        content = cast(dict[str, Any], revision["content"])
+        model = self._load_model(kind, content)
+        return ProfileView(
+            profile_id=profile_id,
+            kind=kind,
+            name=self._profile_name(kind, model),
+            status=cast(ProfileStatus, revision["status"]),
+            current_revision=int(revision["revision"]),
+            content_hash=str(revision["content_hash"]),
+            content=content,
+            created_at=str(record["created_at"]),
+            updated_at=str(record["updated_at"]),
+        )
+
     def _view(self, profile_id: str, record: dict[str, Any]) -> ProfileView:
         revisions = record.get("revisions")
         if not isinstance(revisions, list) or not revisions:
             raise BookContextError("profile has no revisions")
         current_revision = int(record["current_revision"])
         revision = next(
-            (item for item in revisions if int(item.get("revision", -1)) == current_revision),
+            (
+                item
+                for item in revisions
+                if isinstance(item, dict) and int(item.get("revision", -1)) == current_revision
+            ),
             None,
         )
         if not isinstance(revision, dict):
             raise BookContextError("profile current revision is missing")
-        return ProfileView(
-            profile_id=profile_id,
-            kind=record["kind"],
-            name=str(record["name"]),
-            status=revision["status"],
-            current_revision=current_revision,
-            content_hash=str(revision["content_hash"]),
-            content=cast(dict[str, Any], revision["content"]),
-            created_at=str(record["created_at"]),
-            updated_at=str(record["updated_at"]),
-        )
+        return self._view_from_revision(profile_id, record, revision)
 
     def list_profiles(self, kind: ProfileKind | None = None) -> list[ProfileView]:
         payload = self._read()
@@ -281,12 +304,27 @@ class ProfileRegistry:
         return sorted(result, key=lambda item: (item.kind, item.name.casefold()))
 
     def get_profile(self, profile_id: str) -> ProfileView:
-        self._validate_id(profile_id)
-        payload = self._read()
-        raw = payload["profiles"].get(profile_id)
-        if not isinstance(raw, dict):
-            raise ProfileNotFound(f"profile not found: {profile_id}")
-        return self._view(profile_id, raw)
+        return self._view(profile_id, self._record(profile_id))
+
+    def get_profile_by_hash(self, profile_id: str, content_hash: str) -> ProfileView:
+        """Resolve the exact immutable profile revision bound to a book."""
+        record = self._record(profile_id)
+        revisions = record.get("revisions")
+        if not isinstance(revisions, list):
+            raise BookContextError("profile has no revisions")
+        revision = next(
+            (
+                item
+                for item in revisions
+                if isinstance(item, dict) and str(item.get("content_hash", "")) == content_hash
+            ),
+            None,
+        )
+        if not isinstance(revision, dict):
+            raise ProfileNotFound(
+                f"profile revision not found: {profile_id}@{content_hash[:12]}"
+            )
+        return self._view_from_revision(profile_id, record, revision)
 
     def create_profile(self, request: ProfileCreateRequest) -> ProfileView:
         model = self._load_model(request.kind, request.content)
@@ -391,10 +429,14 @@ class BookContextService:
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
-                row = connection.execute(
-                    text("SELECT * FROM book_context_settings WHERE book_id=:book_id"),
-                    {"book_id": book_id},
-                ).mappings().first()
+                row = (
+                    connection.execute(
+                        text("SELECT * FROM book_context_settings WHERE book_id=:book_id"),
+                        {"book_id": book_id},
+                    )
+                    .mappings()
+                    .first()
+                )
         finally:
             engine.dispose()
         if row is None:
@@ -407,19 +449,26 @@ class BookContextService:
                 max_characters=None,
                 ready_for_planning=False,
             )
+
         author = (
-            self.profiles.get_profile(str(row["author_profile_id"]))
-            if row["author_profile_id"]
+            self.profiles.get_profile_by_hash(
+                str(row["author_profile_id"]), str(row["author_profile_hash"])
+            )
+            if row["author_profile_id"] and row["author_profile_hash"]
             else None
         )
         series = (
-            self.profiles.get_profile(str(row["series_profile_id"]))
-            if row["series_profile_id"]
+            self.profiles.get_profile_by_hash(
+                str(row["series_profile_id"]), str(row["series_profile_hash"])
+            )
+            if row["series_profile_id"] and row["series_profile_hash"]
             else None
         )
         style = (
-            self.profiles.get_profile(str(row["style_profile_id"]))
-            if row["style_profile_id"]
+            self.profiles.get_profile_by_hash(
+                str(row["style_profile_id"]), str(row["style_profile_hash"])
+            )
+            if row["style_profile_id"] and row["style_profile_hash"]
             else None
         )
         ready = bool(
