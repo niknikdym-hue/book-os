@@ -72,9 +72,7 @@ def build_context_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.put("/api/projects/{book_id}/context")
-    def save_book_context(
-        book_id: str, payload: BookContextUpdateRequest
-    ) -> dict[str, object]:
+    def save_book_context(book_id: str, payload: BookContextUpdateRequest) -> dict[str, object]:
         try:
             return contexts.save_context(book_id, payload).model_dump(mode="json")
         except ProfileNotFound as exc:
@@ -85,9 +83,7 @@ def build_context_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/api/projects/{book_id}/style-previews")
-    def generate_style_previews(
-        book_id: str, payload: StylePreviewRequest
-    ) -> dict[str, object]:
+    def generate_style_previews(book_id: str, payload: StylePreviewRequest) -> dict[str, object]:
         try:
             return style_previews.generate(book_id, payload).model_dump(mode="json")
         except ProfileNotFound as exc:
