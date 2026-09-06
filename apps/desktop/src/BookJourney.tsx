@@ -1,4 +1,5 @@
 import { BookContextPanel } from "./BookContextPanel";
+import { StylePreviewPanel } from "./StylePreviewPanel";
 import type { ChapterView, ProjectView } from "./types";
 
 type JourneyStatus = "done" | "current" | "locked";
@@ -89,7 +90,7 @@ export function BookJourney({ project, chapter }: Props) {
 
   let actionTitle = "Сначала настройте автора, серию, стиль и объём";
   let actionText =
-    "В верхнем блоке выберите или создайте Author Profile, при необходимости Series Profile, утвердите Style Profile и задайте целевой объём в знаках с пробелами. После этого можно переходить к AI-планированию.";
+    "В верхнем блоке выберите или создайте Author Profile, при необходимости Series Profile, сравните манеры письма, утвердите Style Profile и задайте целевой объём в знаках с пробелами. После этого можно переходить к AI-планированию.";
 
   if (project.book_contract && !contractApproved) {
     actionTitle = "Проверьте предложенный контракт книги";
@@ -128,6 +129,7 @@ export function BookJourney({ project, chapter }: Props) {
   return (
     <>
       <BookContextPanel project={project} />
+      <StylePreviewPanel bookId={project.book_id} />
       <section className="panel journey-panel" aria-label="Маршрут книги">
         <div className="panel-heading journey-heading">
           <div>
