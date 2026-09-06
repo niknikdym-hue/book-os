@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -46,16 +47,23 @@ class BookModelPinView(BaseModel):
     model: str
 
 
-PROVIDERS: dict[str, dict[str, object]] = {
-    "openai": {
-        "label": "AI Pro",
-        "models": [
+@dataclass(frozen=True)
+class ProviderSpec:
+    label: str
+    models: tuple[tuple[str, str], ...]
+    auto: dict[str, str]
+
+
+PROVIDERS: dict[str, ProviderSpec] = {
+    "openai": ProviderSpec(
+        label="AI Pro",
+        models=(
             ("gpt-6-astra", "GPT-6 Astra"),
             ("gpt-5.6-sol", "GPT-5.6 Sol"),
             ("gpt-5.6-terra", "GPT-5.6 Terra"),
             ("gpt-5.6-luna", "GPT-5.6 Luna"),
-        ],
-        "auto": {
+        ),
+        auto={
             "BOOK_CONTRACT_PROPOSAL": "gpt-6-astra",
             "ARCHITECTURE_PROPOSAL": "gpt-6-astra",
             "CHAPTER_CONTRACT_PROPOSAL": "gpt-5.6-sol",
@@ -63,17 +71,17 @@ PROVIDERS: dict[str, dict[str, object]] = {
             "STYLE_PREVIEW": "gpt-5.6-terra",
             "ANNOTATION": "gpt-5.6-terra",
         },
-    },
-    "yandex": {
-        "label": "AI Ya",
-        "models": [
+    ),
+    "yandex": ProviderSpec(
+        label="AI Ya",
+        models=(
             ("aliceai-llm", "Alice AI LLM"),
             ("aliceai-llm-flash", "Alice AI LLM Flash"),
             ("yandexgpt-5.1", "YandexGPT Pro 5.1"),
             ("yandexgpt-5-pro", "YandexGPT Pro 5"),
             ("yandexgpt-5-lite", "YandexGPT Lite 5"),
-        ],
-        "auto": {
+        ),
+        auto={
             "BOOK_CONTRACT_PROPOSAL": "aliceai-llm",
             "ARCHITECTURE_PROPOSAL": "aliceai-llm",
             "CHAPTER_CONTRACT_PROPOSAL": "aliceai-llm",
@@ -81,7 +89,7 @@ PROVIDERS: dict[str, dict[str, object]] = {
             "STYLE_PREVIEW": "aliceai-llm",
             "ANNOTATION": "aliceai-llm-flash",
         },
-    },
+    ),
 }
 
 
@@ -93,10 +101,8 @@ class ModelRoutingService:
     def provider_registry() -> list[ProviderView]:
         result: list[ProviderView] = []
         for provider_id, spec in PROVIDERS.items():
-            models = [ProviderModel(id=model_id, label=label) for model_id, label in spec["models"]]
-            result.append(
-                ProviderView(id=provider_id, label=str(spec["label"]), models=models)
-            )
+            models = [ProviderModel(id=model_id, label=label) for model_id, label in spec.models]
+            result.append(ProviderView(id=provider_id, label=spec.label, models=models))
         return result
 
     def _engine(self, book_id: str) -> Engine:
@@ -104,7 +110,7 @@ class ModelRoutingService:
         return create_database(self.projects.projects_dir / book_id / "project.sqlite")
 
     @staticmethod
-    def _provider(provider: str) -> dict[str, object]:
+    def _provider(provider: str) -> ProviderSpec:
         try:
             return PROVIDERS[provider]
         except KeyError as exc:
@@ -113,7 +119,7 @@ class ModelRoutingService:
     @classmethod
     def validate_model(cls, provider: str, model: str) -> None:
         spec = cls._provider(provider)
-        valid = {model_id for model_id, _ in spec["models"]}
+        valid = {model_id for model_id, _ in spec.models}
         if model not in valid:
             raise ModelRoutingError(f"model {model} is not registered for provider {provider}")
 
@@ -133,7 +139,7 @@ class ModelRoutingService:
         spec = self._provider(provider)
         return BookModelPinView(
             provider=provider,
-            provider_label=str(spec["label"]),
+            provider_label=spec.label,
             model=str(row["model"]),
         )
 
@@ -199,7 +205,7 @@ class ModelRoutingService:
                 rationale = f"Human manual model pin for operation {operation}"
             return RoutingChoice(
                 provider=provider,
-                provider_label=str(spec["label"]),
+                provider_label=spec.label,
                 model=model,
                 selection_mode="MANUAL",
                 selection_scope=selection_scope,
@@ -221,13 +227,14 @@ class ModelRoutingService:
                 rationale="Existing human whole-book model pin overrides Auto routing",
             )
         spec = self._provider(provider)
-        auto = spec["auto"]
-        if operation not in auto:
-            raise ModelRoutingError(f"Auto routing is not defined for operation {operation}")
+        try:
+            auto_model = spec.auto[operation]
+        except KeyError as exc:
+            raise ModelRoutingError(f"Auto routing is not defined for operation {operation}") from exc
         return RoutingChoice(
             provider=provider,
-            provider_label=str(spec["label"]),
-            model=str(auto[operation]),
+            provider_label=spec.label,
+            model=auto_model,
             selection_mode="AUTO",
             selection_scope=None,
             operation=operation,
