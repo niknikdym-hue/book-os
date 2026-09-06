@@ -8,6 +8,7 @@ from fastapi import Header, HTTPException, status
 import uvicorn
 
 from .app import create_app
+from .context_api import build_context_router
 from .launch_api import build_launch_router
 from .model_gateway import ModelGateway
 from .provider_adapters import BookOSOpenAIResponsesAdapter, YandexChatCompletionsAdapter
@@ -51,6 +52,7 @@ def main() -> None:
         ):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
 
+    app.include_router(build_context_router(data_dir, require_token))
     app.include_router(build_launch_router(data_dir, require_token, gateway))
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
