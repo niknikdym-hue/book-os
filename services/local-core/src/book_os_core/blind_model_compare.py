@@ -79,9 +79,7 @@ class BlindBookContractComparisonService:
         self.contexts = BookContextService(data_dir)
         if gateway is None:
             gateway = AntiJunkModelGateway(
-                ModelGateway(
-                    {"openai": BookOSOpenAIResponsesAdapter(MacOSKeychainSecretStore())}
-                ),
+                ModelGateway({"openai": BookOSOpenAIResponsesAdapter(MacOSKeychainSecretStore())}),
                 AntiJunkService(data_dir),
             )
         self.planning = PlanningService(data_dir, gateway)
@@ -221,8 +219,6 @@ class BlindBookContractComparisonService:
             labels.reverse()
         label_by_model = dict(zip(self.MODELS, labels, strict=True))
 
-        # Execute Astra first. If the account cannot access the new model, the comparison
-        # fails before spending a Sol request; labels remain randomized for the human review.
         candidates: dict[str, BlindBookContractCandidate] = {}
         for model in self.MODELS:
             label = label_by_model[model]
@@ -244,12 +240,8 @@ class BlindBookContractComparisonService:
             "selected_label": None,
             "selected_at": None,
             "candidates": {
-                label: {
-                    "run_id": candidate.run_id,
-                    "model": model,
-                }
+                label: {"run_id": candidates[label].run_id, "model": model}
                 for model, label in label_by_model.items()
-                for candidate in [candidates[label]]
             },
         }
         self._write_json(self._record_path(book_id, comparison_id), record)
@@ -314,7 +306,6 @@ class BlindBookContractComparisonService:
                 "selected blind candidate is not a valid Book Contract"
             ) from exc
 
-        # Record the human preference before revealing model identity.
         if previous is None:
             record["selected_label"] = request.selected_label
             record["selected_at"] = utc_now()
