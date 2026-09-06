@@ -379,16 +379,16 @@ class ProfileRegistry:
         if current.status == "APPROVED":
             return current
         if current.kind == "SERIES":
-            content = SeriesProfileContent.model_validate(current.content)
-            author = self.get_profile(content.author_profile_id)
+            series_content = SeriesProfileContent.model_validate(current.content)
+            author = self.get_profile(series_content.author_profile_id)
             if author.kind != "AUTHOR" or author.status != "APPROVED":
                 raise BookContextGateError(
                     "Series Profile requires an approved Author Profile before approval"
                 )
         if current.kind == "STYLE":
-            content = StyleProfileContent.model_validate(current.content)
-            if content.author_profile_id:
-                author = self.get_profile(content.author_profile_id)
+            style_content = StyleProfileContent.model_validate(current.content)
+            if style_content.author_profile_id:
+                author = self.get_profile(style_content.author_profile_id)
                 if author.kind != "AUTHOR" or author.status != "APPROVED":
                     raise BookContextGateError(
                         "author-bound Style Profile requires an approved Author Profile"
