@@ -186,3 +186,25 @@ Do not add Anthropic, Google, DeepSeek, Qwen or other provider switches to the i
 The provider switch is functional, not decorative. A provider that is not configured, has no valid credential, or has not passed its readiness/preflight gate must fail closed and must not silently fall back to the other provider.
 
 Model identity and exact model selection may remain visible in advanced/diagnostic settings, while the primary author-facing control uses the stable product labels **AI Pro** and **AI Ya**.
+
+## 11. Auto vs manual model selection
+
+Both initial providers — **AI Pro** and **AI Ya** — must support the same author-facing control principle:
+
+- **Auto** — BOOK OS selects the model for each editorial operation according to operation-specific evidence, quality, risk, capability, context requirements and cost;
+- **Manual** — the author explicitly selects an available model from the chosen provider.
+
+Manual selection must support exactly two scopes:
+
+1. **This editorial operation** — the selected model is pinned only for the named operation, for example Book Contract, architecture, chapter drafting, whole-book edit, style preview or annotation generation. Other operations continue to use Auto or their own explicit pins.
+2. **Entire book** — the selected model is pinned as the default executor for all eligible AI editorial operations in that book. This allows an author to intentionally create a book using one model throughout, for example GPT-6 Astra, while retaining BOOK OS authority, research, validation and human-gate semantics.
+
+There is no separate stage-level pin in the initial product contour.
+
+A whole-book manual pin is a deliberate author override of automatic routing, not a claim that the selected model is globally best. The UI must make the scope visible and reversible by the human. A new manual pin must never be inferred silently.
+
+If a manually selected model is unavailable, unsupported for a required operation, lacks a verified price/cost guard where a paid cap is required, or fails provider readiness, BOOK OS must fail closed and explain the conflict. It must not silently switch models or providers.
+
+The same control semantics apply to AI Pro and AI Ya. Their actual model lists, capabilities, pricing and Auto-routing rules are provider-specific and must come from the current verified provider registry rather than hard-coded stale assumptions.
+
+Every material run must persist provider, exact model, selection mode (`AUTO` or `MANUAL`), selection scope (`OPERATION` or `BOOK` when manual), operation type, cost/provenance and any routing rationale needed for auditability.
