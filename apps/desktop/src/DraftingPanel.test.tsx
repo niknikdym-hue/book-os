@@ -34,6 +34,22 @@ const project: ProjectView = {
   chapters: [chapter],
 };
 
+const providers = [
+  {
+    id: "openai",
+    label: "AI Pro",
+    models: [
+      { id: "gpt-6-astra", label: "GPT-6 Astra" },
+      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+    ],
+  },
+  {
+    id: "yandex",
+    label: "AI Ya",
+    models: [{ id: "aliceai-llm", label: "Alice AI LLM" }],
+  },
+];
+
 const calls: Array<{ method: string; path: string; body?: unknown }> = [];
 const success: DraftRunView = {
   task_id: "01JTASK0000000000000000000",
@@ -41,9 +57,12 @@ const success: DraftRunView = {
   task_status: "SUCCEEDED",
   run_status: "SUCCEEDED",
   provider: "openai",
-  model: "test-writer",
+  model: "gpt-5.6-sol",
+  selection_mode: "MANUAL",
+  selection_scope: "OPERATION",
+  routing_rationale: "Human manual model pin for operation SECTION_DRAFT",
   prompt_id: "section_draft_v1",
-  prompt_version: "1.0.0",
+  prompt_version: "1.1.0",
   prompt_hash: "a".repeat(64),
   input_revision_id: chapter.chapter_contract?.authority_revision_id ?? "",
   input_revision_hash: "b".repeat(64),
@@ -65,41 +84,55 @@ const fakeApi: DraftApi = async function fakeApi<T>(
   body?: unknown,
 ): Promise<T> {
   calls.push({ method, path, body });
-  if (method === "GET") return [] as T;
-  if (method === "POST") return success as T;
-  throw new Error(`unexpected method: ${method}`);
+  if (method === "GET" && path === "/api/launch/readiness") {
+    return {
+      openai_credential_state: "AVAILABLE",
+      yandex_credential_state: "AVAILABLE",
+      providers,
+    } as T;
+  }
+  if (method === "GET" && path.endsWith("/model-routing")) {
+    return { book_pin: null, providers } as T;
+  }
+  if (method === "GET" && path.endsWith("/drafts")) return [] as T;
+  if (method === "POST" && path.endsWith("/drafts")) return success as T;
+  throw new Error(`unexpected request: ${method} ${path}`);
 };
 
 beforeEach(() => {
   calls.length = 0;
 });
 
-it("generates a bounded DRAFT preview through the local API boundary", async () => {
+it("generates a bounded DRAFT with explicit per-operation model routing", async () => {
   render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
+
+  expect(await screen.findByRole("button", { name: "AI Pro" })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
     target: { value: "Explain the bounded mechanism" },
   });
-  fireEvent.change(screen.getByLabelText("Модель OpenAI"), {
-    target: { value: "test-writer" },
+  fireEvent.click(screen.getByRole("button", { name: "Ручной" }));
+  fireEvent.change(screen.getByLabelText("Модель"), {
+    target: { value: "gpt-5.6-sol" },
   });
   fireEvent.change(screen.getByLabelText("Максимальная стоимость запроса, USD"), {
     target: { value: "1.00" },
   });
-  fireEvent.click(
-    screen.getByLabelText("Разрешаю следующий платный запрос с указанным пределом стоимости."),
-  );
+  fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Создать черновик" }));
 
   expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
   expect(screen.getAllByText("DRAFT").length).toBeGreaterThan(0);
-  expect(screen.getByText(/openai · test-writer/)).toBeInTheDocument();
+  expect(screen.getByText(/AI Pro · gpt-5.6-sol/)).toBeInTheDocument();
+  expect(screen.getByText(/MANUAL · OPERATION/)).toBeInTheDocument();
   expect(calls).toContainEqual({
     method: "POST",
     path: expect.stringContaining("/drafts"),
     body: expect.objectContaining({
       section_objective: "Explain the bounded mechanism",
       provider: "openai",
-      model: "test-writer",
+      model: "gpt-5.6-sol",
+      selection_mode: "MANUAL",
+      selection_scope: "OPERATION",
     }),
   });
 });
