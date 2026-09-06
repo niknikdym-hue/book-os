@@ -173,3 +173,16 @@ These controls must be provenance-aware and human-approved where they affect boo
 The 2026-09-06 Owner principle remains binding: **not “the best model”, but the best executor for the specific editorial operation**.
 
 Style previews, annotation generation, taxonomy research/classification, series-overlap analysis and long-form writing are distinct operations and may be routed to different models/tools according to quality, risk, evidence needs and cost.
+
+## 10. Initial provider scope and UI names
+
+For the first working BOOK OS product contour, expose exactly **two AI providers** in the user interface:
+
+- **AI Pro** = OpenAI;
+- **AI Ya** = Yandex AI Studio / Yandex models.
+
+Do not add Anthropic, Google, DeepSeek, Qwen or other provider switches to the initial user interface before the first real book workflow is validated. The internal Model Gateway must remain provider-neutral and extensible so additional providers can be added later without changing book authority semantics.
+
+The provider switch is functional, not decorative. A provider that is not configured, has no valid credential, or has not passed its readiness/preflight gate must fail closed and must not silently fall back to the other provider.
+
+Model identity and exact model selection may remain visible in advanced/diagnostic settings, while the primary author-facing control uses the stable product labels **AI Pro** and **AI Ya**.
