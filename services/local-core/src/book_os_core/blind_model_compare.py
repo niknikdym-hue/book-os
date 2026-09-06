@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import secrets
@@ -11,18 +12,19 @@ from sqlalchemy import text
 from .anti_junk import AntiJunkService
 from .authority import new_ulid
 from .authority_types import utc_now
+from .book_context import BookContextService
 from .model_gateway import (
     BookContractProposalOutput,
     ModelBudgetError,
     ModelGateway,
     ModelOutputError,
     ModelProviderError,
-    OpenAIResponsesAdapter,
 )
 from .model_gateway_anti_junk import AntiJunkModelGateway
 from .planning import PlanningService
 from .projects import BookContractPayload, ProjectService, ProjectView
 from .prompts import BOOK_CONTRACT_PROPOSAL_V1
+from .provider_adapters import BookOSOpenAIResponsesAdapter
 from .secrets import MacOSKeychainSecretStore
 
 
@@ -32,16 +34,6 @@ class BlindComparisonError(RuntimeError):
 
 class BlindComparisonGateError(BlindComparisonError):
     pass
-
-
-class AstraAwareOpenAIResponsesAdapter(OpenAIResponsesAdapter):
-    """OpenAI adapter with the current bounded price table needed by the first blind pilot."""
-
-    _PRICING_SOURCE_DATE = "2026-09-06"
-    _PRICING_USD_PER_MILLION = {
-        **OpenAIResponsesAdapter._PRICING_USD_PER_MILLION,
-        "gpt-6-astra": (10.0, 50.0),
-    }
 
 
 class BlindBookContractCompareRequest(BaseModel):
@@ -84,10 +76,11 @@ class BlindBookContractComparisonService:
     def __init__(self, data_dir: Path, gateway: ModelGateway | None = None) -> None:
         self.data_dir = data_dir
         self.projects = ProjectService(data_dir)
+        self.contexts = BookContextService(data_dir)
         if gateway is None:
             gateway = AntiJunkModelGateway(
                 ModelGateway(
-                    {"openai": AstraAwareOpenAIResponsesAdapter(MacOSKeychainSecretStore())}
+                    {"openai": BookOSOpenAIResponsesAdapter(MacOSKeychainSecretStore())}
                 ),
                 AntiJunkService(data_dir),
             )
@@ -115,6 +108,41 @@ class BlindBookContractComparisonService:
         )
         temporary.replace(path)
 
+    @staticmethod
+    def _hash_payload(payload: dict[str, Any]) -> str:
+        encoded = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _book_context_payload(self, book_id: str) -> dict[str, Any]:
+        context = self.contexts.get_context(book_id)
+        if not context.ready_for_planning:
+            raise BlindComparisonGateError(
+                "book context must be approved and bound before blind comparison"
+            )
+        return {
+            "author_profile": (
+                context.author_profile.model_dump(mode="json")
+                if context.author_profile is not None
+                else None
+            ),
+            "series_profile": (
+                context.series_profile.model_dump(mode="json")
+                if context.series_profile is not None
+                else None
+            ),
+            "style_profile": (
+                context.style_profile.model_dump(mode="json")
+                if context.style_profile is not None
+                else None
+            ),
+            "target_characters": context.target_characters,
+            "min_characters": context.min_characters,
+            "max_characters": context.max_characters,
+            "characters_unit": context.characters_unit,
+        }
+
     def _run_candidate(
         self,
         *,
@@ -122,6 +150,8 @@ class BlindBookContractComparisonService:
         request: BlindBookContractCompareRequest,
         model: str,
         label: Literal["A", "B"],
+        book_context: dict[str, Any],
+        book_context_hash: str,
     ) -> BlindBookContractCandidate:
         project = self.projects.get_project(book_id)
         objective = f"Сформировать Book Contract для идеи: {request.idea.strip()}"
@@ -133,6 +163,7 @@ class BlindBookContractComparisonService:
             "max_output_tokens": request.max_output_tokens,
             "max_cost_usd": request.max_cost_usd_per_request,
             "blind_candidate": label,
+            "book_context_hash": book_context_hash,
         }
         try:
             run_id, raw, _, _ = self.planning._run(
@@ -151,6 +182,8 @@ class BlindBookContractComparisonService:
                         "primary_subtype": project.primary_subtype,
                         "secondary_subtype": project.secondary_subtype,
                     },
+                    "book_context": book_context,
+                    "book_context_hash": book_context_hash,
                     "idea": request.idea.strip(),
                     "reader_hint": request.reader_hint.strip(),
                 },
@@ -180,6 +213,8 @@ class BlindBookContractComparisonService:
                 "approved Book Contract cannot be replaced by a blind comparison"
             )
 
+        book_context = self._book_context_payload(book_id)
+        book_context_hash = self._hash_payload(book_context)
         comparison_id = new_ulid()
         labels: list[Literal["A", "B"]] = ["A", "B"]
         if secrets.randbelow(2):
@@ -196,12 +231,15 @@ class BlindBookContractComparisonService:
                 request=request,
                 model=model,
                 label=label,
+                book_context=book_context,
+                book_context_hash=book_context_hash,
             )
 
         record = {
             "comparison_id": comparison_id,
             "book_id": book_id,
             "operation": "BOOK_CONTRACT",
+            "book_context_hash": book_context_hash,
             "created_at": utc_now(),
             "selected_label": None,
             "selected_at": None,
