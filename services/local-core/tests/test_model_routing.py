@@ -110,13 +110,17 @@ def test_routing_provenance_is_recorded_on_planning_run(tmp_path: Path) -> None:
     )
     try:
         with engine.connect() as connection:
-            row = connection.execute(
-                text(
-                    "SELECT provider,model,selection_mode,selection_scope,routing_rationale "
-                    "FROM planning_runs WHERE run_id=:run_id"
-                ),
-                {"run_id": run.run_id},
-            ).mappings().one()
+            row = (
+                connection.execute(
+                    text(
+                        "SELECT provider,model,selection_mode,selection_scope,routing_rationale "
+                        "FROM planning_runs WHERE run_id=:run_id"
+                    ),
+                    {"run_id": run.run_id},
+                )
+                .mappings()
+                .one()
+            )
     finally:
         engine.dispose()
 
