@@ -127,10 +127,14 @@ class ModelRoutingService:
         engine = self._engine(book_id)
         try:
             with engine.connect() as connection:
-                row = connection.execute(
-                    text("SELECT provider,model FROM book_model_pins WHERE book_id=:book_id"),
-                    {"book_id": book_id},
-                ).mappings().first()
+                row = (
+                    connection.execute(
+                        text("SELECT provider,model FROM book_model_pins WHERE book_id=:book_id"),
+                        {"book_id": book_id},
+                    )
+                    .mappings()
+                    .first()
+                )
         finally:
             engine.dispose()
         if row is None:
@@ -230,7 +234,9 @@ class ModelRoutingService:
         try:
             auto_model = spec.auto[operation]
         except KeyError as exc:
-            raise ModelRoutingError(f"Auto routing is not defined for operation {operation}") from exc
+            raise ModelRoutingError(
+                f"Auto routing is not defined for operation {operation}"
+            ) from exc
         return RoutingChoice(
             provider=provider,
             provider_label=spec.label,
