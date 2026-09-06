@@ -7,8 +7,8 @@ export type DraftRunView = {
   run_status: string;
   provider: string;
   model: string;
-  selection_mode: string;
-  selection_scope: string | null;
+  selection_mode: "AUTO" | "MANUAL";
+  selection_scope: "OPERATION" | "BOOK" | null;
   routing_rationale: string | null;
   prompt_id: string;
   prompt_version: string;
