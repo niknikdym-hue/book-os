@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import os
 from pathlib import Path
 from typing import Literal
-import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -17,6 +17,7 @@ from .blind_model_compare import (
     BlindComparisonGateError,
 )
 from .book_context import BookContextService
+from .context_planning import ContextAwarePlanningService
 from .model_gateway import ModelGateway
 from .model_routing import ModelRoutingError, ModelRoutingService
 from .planning import (
@@ -25,7 +26,6 @@ from .planning import (
     ChapterContractPlanningRequest,
     PlanningError,
     PlanningGateError,
-    PlanningService,
 )
 from .secrets import MacOSKeychainSecretStore, SecretNotFound, SecretWriteError
 
@@ -60,7 +60,7 @@ def build_launch_router(
     gateway: ModelGateway,
 ) -> APIRouter:
     anti_junk = AntiJunkService(data_dir)
-    planning = PlanningService(data_dir, gateway)
+    planning = ContextAwarePlanningService(data_dir, gateway)
     routing = ModelRoutingService(data_dir)
     contexts = BookContextService(data_dir)
     blind_compare = BlindBookContractComparisonService(data_dir)
