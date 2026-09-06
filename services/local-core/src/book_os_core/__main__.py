@@ -1,9 +1,17 @@
+import hmac
 import json
 import os
 from pathlib import Path
 import socket
+
+from fastapi import Header, HTTPException, status
 import uvicorn
+
 from .app import create_app
+from .launch_api import build_launch_router
+from .model_gateway import ModelGateway
+from .provider_adapters import BookOSOpenAIResponsesAdapter, YandexChatCompletionsAdapter
+from .secrets import MacOSKeychainSecretStore
 
 
 class ReadyServer(uvicorn.Server):
@@ -26,12 +34,31 @@ def main() -> None:
     data_dir = Path(raw_data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    secret_store = MacOSKeychainSecretStore()
+    gateway = ModelGateway(
+        {
+            "openai": BookOSOpenAIResponsesAdapter(secret_store),
+            "yandex": YandexChatCompletionsAdapter(secret_store),
+        }
+    )
+    app = create_app(token, data_dir, gateway=gateway)
+
+    def require_token(authorization: str | None = Header(default=None)) -> None:
+        if (
+            authorization is None
+            or not authorization.startswith("Bearer ")
+            or not hmac.compare_digest(authorization[7:], token)
+        ):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
+
+    app.include_router(build_launch_router(data_dir, require_token, gateway))
+
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     listener.listen()
     server = ReadyServer(
         uvicorn.Config(
-            create_app(token, data_dir),
+            app,
             access_log=False,
             log_level="warning",
             loop="asyncio",
