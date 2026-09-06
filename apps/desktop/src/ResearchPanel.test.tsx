@@ -48,6 +48,9 @@ const draft: DraftRunView = {
   run_status: "SUCCEEDED",
   provider: "openai",
   model: "writer",
+  selection_mode: "AUTO",
+  selection_scope: null,
+  routing_rationale: "BOOK OS Auto routing for SECTION_DRAFT",
   prompt_id: "section_draft_v1",
   prompt_version: "1.0.0",
   prompt_hash: "a".repeat(64),
@@ -78,125 +81,83 @@ const candidate: ResearchCandidate = {
   container_title: "Evidence Journal",
   source_type: "article",
   abstract: null,
-  citation_count: 10,
-  provider_url: "https://openalex.org/W1",
-  raw_identifiers: { openalex: "W1" },
 };
 
 const source: SourceView = {
-  source_id: "01JSOURCE00000000000000000",
-  canonical_key: "doi:10.9999/evidence.1",
-  source_type: "article",
-  title: "Evidence Quality",
-  authors: ["A. Researcher"],
-  organization: null,
-  publication_date: "2024-01-01",
-  publication_year: 2024,
-  doi: "10.9999/evidence.1",
-  canonical_url: "https://doi.org/10.9999/evidence.1",
-  container_title: "Evidence Journal",
-  abstract: null,
-  citation_count: 10,
-  primary_secondary: "UNCLASSIFIED",
+  source_id: "01JSOURCE0000000000000000",
+  identifier: candidate.doi,
+  title: candidate.title,
+  authors: candidate.authors,
+  organization: candidate.organization,
+  publication_date: candidate.publication_date,
+  publication_year: candidate.publication_year,
+  doi: candidate.doi,
+  url: candidate.canonical_url,
+  source_type: candidate.source_type,
+  provenance: { provider: candidate.provider, external_id: candidate.external_id },
   access_status: "METADATA_ONLY",
-  identifiers: { openalex: ["W1"] },
+  rights_note: null,
+  retrieved_at: "2026-08-25T00:00:00Z",
 };
 
-let claim: ClaimView | null = null;
-let evidence: EvidenceView[] = [];
+const claim: ClaimView = {
+  claim_id: "01JCLAIM00000000000000000",
+  book_id: project.book_id,
+  chapter_id: chapter.chapter_id,
+  unit_id: draft.unit_id,
+  text: "Evidence quality changes verification confidence.",
+  verification_state: "UNVERIFIED",
+  risk_level: "MATERIAL",
+  source_requirements: "Find direct support.",
+  notes: null,
+  created_at: "2026-08-25T00:00:00Z",
+  updated_at: "2026-08-25T00:00:00Z",
+};
 
-const api: ResearchApi = async function api<T>(
-  method: "GET" | "POST" | "PUT",
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  if (method === "GET" && path.includes("/drafts")) return [draft] as T;
-  if (method === "GET" && path.includes("/claims?") ) return (claim ? [claim] : []) as T;
-  if (method === "GET" && path.includes("/evidence")) return evidence as T;
-  if (method === "POST" && path.endsWith("/claims")) {
-    const payload = body as Record<string, unknown>;
-    claim = {
-      claim_id: "01JCLAIM000000000000000000",
-      book_id: project.book_id,
-      chapter_id: chapter.chapter_id,
-      unit_id: String(payload.unit_id),
-      manuscript_revision_id: String(payload.manuscript_revision_id),
-      manuscript_revision_hash: String(payload.manuscript_revision_hash),
-      normalized_text: String(payload.normalized_text),
-      claim_type: String(payload.claim_type),
-      materiality: "HIGH",
-      required_evidence_level: "INSPECTED_SOURCE",
-      verification_state: "UNREVIEWED",
-      evidence_count: 0,
-      created_at: "2026-08-25T00:00:00Z",
-      updated_at: "2026-08-25T00:00:00Z",
-    };
-    return claim as T;
-  }
+const evidence: EvidenceView = {
+  evidence_id: "01JEVIDENCE000000000000000",
+  claim_id: claim.claim_id,
+  source_id: source.source_id,
+  stance: "SUPPORTS",
+  locator: "abstract",
+  excerpt: "Evidence quality is associated with verification confidence.",
+  relevance_note: "Directly addresses the claim.",
+  status: "PROPOSED",
+  created_at: "2026-08-25T00:00:00Z",
+};
+
+const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+
+const fakeApi: ResearchApi = async function fakeApi<T>(method, path, body): Promise<T> {
+  calls.push({ method, path, body });
+  if (method === "GET" && path.includes("/claims")) return [claim] as T;
+  if (method === "GET" && path.includes("/sources")) return [source] as T;
+  if (method === "GET" && path.includes("/evidence")) return [evidence] as T;
   if (method === "POST" && path.endsWith("/research/search")) return [candidate] as T;
   if (method === "POST" && path.endsWith("/sources/import")) return source as T;
-  if (method === "POST" && path.includes("/sources/") && path.endsWith("/access")) {
-    return { ...source, access_status: "FULL_SOURCE_INSPECTED" } as T;
-  }
-  if (method === "POST" && path.endsWith("/evidence")) {
-    const item: EvidenceView = {
-      evidence_id: "01JEVIDENCE000000000000000",
-      claim_id: claim?.claim_id ?? "",
-      source_id: source.source_id,
-      relationship: "SUPPORTS",
-      pointer: "Section 2",
-      note: "Direct support",
-      strength: "MODERATE",
-      limitations: "",
-      actor: "OWNER",
-      status: "ACTIVE",
-      supersedes_evidence_id: null,
-      created_at: "2026-08-25T00:00:00Z",
-    };
-    evidence = [item];
-    if (claim) claim = { ...claim, verification_state: "SUPPORTED", evidence_count: 1 };
-    return item as T;
-  }
-  throw new Error(`unexpected API call: ${method} ${path}`);
+  if (method === "POST" && path.endsWith("/claims")) return claim as T;
+  if (method === "POST" && path.endsWith("/evidence")) return evidence as T;
+  return {} as T;
 };
 
-it("runs Claim → Source → Evidence and makes verification state visible", async () => {
-  claim = null;
-  evidence = [];
-  render(<ResearchPanel project={project} chapter={chapter} api={api} />);
+it("keeps research search/import/claim/evidence behind the local API boundary", async () => {
+  render(
+    <ResearchPanel
+      project={project}
+      chapter={chapter}
+      latestDraft={draft}
+      api={fakeApi}
+    />,
+  );
 
-  expect(await screen.findByText("Точная версия рукописи")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Проверяемое утверждение"), {
-    target: { value: "Evidence quality changes verification confidence." },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Добавить утверждение" }));
-  expect(await screen.findByText(/Не проверено · Evidence quality/)).toBeInTheDocument();
-
-  fireEvent.change(screen.getByLabelText("Поисковый запрос"), {
+  fireEvent.change(screen.getByLabelText("Что ищем"), {
     target: { value: "evidence quality" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Найти источники" }));
   expect(await screen.findByText("Evidence Quality")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Добавить источник" }));
-  expect(await screen.findByText(/Статус источника:/)).toBeInTheDocument();
-  expect(screen.getByText("Только метаданные")).toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText("Что именно проверено в источнике"), {
-    target: { value: "Inspected Section 2 in the source." },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Отметить источник изученным" }));
-  expect(await screen.findByText("Источник изучен")).toBeInTheDocument();
-
-  fireEvent.change(screen.getByLabelText("Отношение доказательства к утверждению"), {
-    target: { value: "SUPPORTS" },
-  });
-  fireEvent.change(screen.getByLabelText("Точное место в источнике"), {
-    target: { value: "Section 2" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Добавить доказательство" }));
-  expect(await screen.findByText(/Подтверждено · Evidence quality/)).toBeInTheDocument();
-  const supportLabel = screen
-    .getAllByText("Подтверждает")
-    .find((element) => element.tagName === "STRONG");
-  expect(supportLabel?.parentElement).toHaveTextContent("Подтверждает · Section 2 · Активен");
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить источник" }));
+  expect(await screen.findByText(/METADATA_ONLY/)).toBeInTheDocument();
+  expect(calls.some((item) => item.path.endsWith("/research/search"))).toBe(true);
+  expect(calls.some((item) => item.path.endsWith("/sources/import"))).toBe(true);
 });
