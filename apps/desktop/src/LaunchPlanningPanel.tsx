@@ -1,13 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
 import type { BookContractPayload, ChapterView, ProjectView } from "./types";
 
+type ProviderId = "openai" | "yandex";
+type SelectionMode = "AUTO" | "MANUAL";
+type SelectionScope = "OPERATION" | "BOOK";
+
+type ProviderModel = {
+  id: string;
+  label: string;
+};
+
+type ProviderView = {
+  id: ProviderId;
+  label: string;
+  models: ProviderModel[];
+};
+
 type LaunchReadiness = {
   openai_credential_state: "AVAILABLE" | "NOT_AVAILABLE";
+  yandex_credential_state?: "AVAILABLE" | "NOT_AVAILABLE";
   configured_model: string | null;
+  providers?: ProviderView[];
   anti_junk_entry_count: number;
   external_calls: number;
   paid_calls: number;
+};
+
+type BookModelPin = {
+  provider: ProviderId;
+  provider_label: string;
+  model: string;
+};
+
+type RoutingState = {
+  book_pin: BookModelPin | null;
+  providers?: ProviderView[];
+};
+
+type RoutingChoice = {
+  provider: ProviderId;
+  provider_label: string;
+  model: string;
+  selection_mode: SelectionMode;
+  selection_scope: SelectionScope | null;
+  operation: string;
+  rationale: string;
 };
 
 type PlanningProposal = {
@@ -22,6 +60,7 @@ type PlanningProposal = {
   usage: Record<string, unknown>;
   status: string;
   project: ProjectView;
+  routing?: RoutingChoice;
 };
 
 type BlindCandidate = {
@@ -52,6 +91,30 @@ type Props = {
   chapter: ChapterView | null;
   onProject: (project: ProjectView) => void;
 };
+
+const FALLBACK_PROVIDERS: ProviderView[] = [
+  {
+    id: "openai",
+    label: "AI Pro",
+    models: [
+      { id: "gpt-6-astra", label: "GPT-6 Astra" },
+      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+      { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+      { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+    ],
+  },
+  {
+    id: "yandex",
+    label: "AI Ya",
+    models: [
+      { id: "aliceai-llm", label: "Alice AI LLM" },
+      { id: "aliceai-llm-flash", label: "Alice AI LLM Flash" },
+      { id: "yandexgpt-5.1", label: "YandexGPT Pro 5.1" },
+      { id: "yandexgpt-5-pro", label: "YandexGPT Pro 5" },
+      { id: "yandexgpt-5-lite", label: "YandexGPT Lite 5" },
+    ],
+  },
+];
 
 function ContractCandidateCard({
   candidate,
@@ -94,11 +157,17 @@ function ContractCandidateCard({
 
 export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
+  const [routingState, setRoutingState] = useState<RoutingState | null>(null);
+  const [provider, setProvider] = useState<ProviderId>("openai");
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>("AUTO");
+  const [selectionScope, setSelectionScope] = useState<SelectionScope>("OPERATION");
+  const [model, setModel] = useState("gpt-6-astra");
   const [apiKey, setApiKey] = useState("");
+  const [yandexApiKey, setYandexApiKey] = useState("");
+  const [yandexFolderId, setYandexFolderId] = useState("");
   const [idea, setIdea] = useState("");
   const [readerHint, setReaderHint] = useState("");
   const [planningNote, setPlanningNote] = useState("");
-  const [model, setModel] = useState("gpt-5.6-sol");
   const [maxCostUsd, setMaxCostUsd] = useState("0.50");
   const [allowPaid, setAllowPaid] = useState(false);
   const [blindCostUsd, setBlindCostUsd] = useState("0.50");
@@ -109,24 +178,58 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const providers = readiness?.providers ?? routingState?.providers ?? FALLBACK_PROVIDERS;
+  const selectedProvider = useMemo(
+    () => providers.find((item) => item.id === provider) ?? FALLBACK_PROVIDERS[0],
+    [providers, provider],
+  );
+  const selectedProviderLabel = selectedProvider.label;
+  const bookPin = routingState?.book_pin ?? null;
+
   async function reloadReadiness() {
     const value = await coreApi<LaunchReadiness>("GET", "/api/launch/readiness");
     setReadiness(value);
-    if (value.configured_model) setModel(value.configured_model);
+  }
+
+  async function reloadRouting() {
+    const value = await coreApi<RoutingState>(
+      "GET",
+      `/api/projects/${project.book_id}/model-routing`,
+    );
+    setRoutingState(value);
+    if (value.book_pin) {
+      setProvider(value.book_pin.provider);
+      setSelectionMode("MANUAL");
+      setSelectionScope("BOOK");
+      setModel(value.book_pin.model);
+    }
   }
 
   useEffect(() => {
-    void reloadReadiness().catch((reason: unknown) => setError(String(reason)));
-  }, []);
+    void Promise.all([reloadReadiness(), reloadRouting()]).catch((reason: unknown) =>
+      setError(String(reason)),
+    );
+  }, [project.book_id]);
+
+  useEffect(() => {
+    if (selectionMode !== "MANUAL" || bookPin) return;
+    if (!selectedProvider.models.some((item) => item.id === model)) {
+      setModel(selectedProvider.models[0]?.id ?? "");
+    }
+  }, [bookPin, model, selectedProvider, selectionMode]);
 
   const cost = Number(maxCostUsd);
   const blindCost = Number(blindCostUsd);
+  const credentialAvailable =
+    provider === "openai"
+      ? readiness?.openai_credential_state === "AVAILABLE"
+      : readiness?.yandex_credential_state === "AVAILABLE";
   const paidReady =
-    readiness?.openai_credential_state === "AVAILABLE" &&
+    credentialAvailable &&
     allowPaid &&
     Number.isFinite(cost) &&
     cost > 0 &&
-    model.trim().length > 0;
+    (selectionMode === "AUTO" || model.trim().length > 0);
   const blindPaidReady =
     readiness?.openai_credential_state === "AVAILABLE" &&
     allowBlindPaid &&
@@ -140,7 +243,15 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
     project.architecture?.authority_status === "APPROVED" ||
     project.architecture?.authority_status === "LOCKED";
 
-  async function saveKey() {
+  function chooseProvider(nextProvider: ProviderId) {
+    if (bookPin || nextProvider === provider) return;
+    setProvider(nextProvider);
+    setAllowPaid(false);
+    const next = providers.find((item) => item.id === nextProvider);
+    if (selectionMode === "MANUAL") setModel(next?.models[0]?.id ?? "");
+  }
+
+  async function saveOpenAIKey() {
     if (!apiKey.trim()) return;
     setBusy(true);
     setError(null);
@@ -155,19 +266,64 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
     }
   }
 
+  async function saveYandexCredentials() {
+    if (!yandexApiKey.trim() || !yandexFolderId.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", "/api/launch/yandex-credentials", {
+        api_key: yandexApiKey.trim(),
+        folder_id: yandexFolderId.trim(),
+      });
+      setYandexApiKey("");
+      setYandexFolderId("");
+      await reloadReadiness();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearBookPin() {
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi(
+        "POST",
+        `/api/projects/${project.book_id}/model-routing/clear-book-pin`,
+      );
+      setSelectionMode("AUTO");
+      setSelectionScope("OPERATION");
+      setRoutingState((current) => ({
+        providers: current?.providers,
+        book_pin: null,
+      }));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function run(path: string, body: Record<string, unknown>) {
     setBusy(true);
     setError(null);
     try {
       const result = await coreApi<PlanningProposal>("POST", path, {
         ...body,
-        provider: "openai",
-        model: model.trim(),
+        provider,
+        model: selectionMode === "MANUAL" ? model.trim() : null,
+        selection_mode: selectionMode,
+        selection_scope: selectionMode === "MANUAL" ? selectionScope : null,
         max_cost_usd: cost,
       });
       setLatestRun(result);
       onProject(result.project);
       setAllowPaid(false);
+      if (selectionMode === "MANUAL" && selectionScope === "BOOK") {
+        await reloadRouting();
+      }
     } catch (reason) {
       setAllowPaid(false);
       setError(String(reason));
@@ -227,10 +383,8 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
           <p className="eyebrow">ТЕКУЩИЙ РАБОЧИЙ ШАГ</p>
           <h3>Идея и план книги</h3>
         </div>
-        <span className={`badge ${readiness?.openai_credential_state === "AVAILABLE" ? "approved" : "draft"}`}>
-          {readiness?.openai_credential_state === "AVAILABLE"
-            ? "OpenAI готов"
-            : "Нужен ключ OpenAI"}
+        <span className={`badge ${credentialAvailable ? "approved" : "draft"}`}>
+          {credentialAvailable ? `${selectedProviderLabel} готов` : `${selectedProviderLabel} не настроен`}
         </span>
       </div>
 
@@ -239,10 +393,109 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
         авторитетными только после вашего отдельного утверждения.
       </p>
 
-      {readiness?.openai_credential_state === "NOT_AVAILABLE" && (
+      <section className="planning-step" aria-label="Выбор AI">
+        <h4>AI для этой книги</h4>
+        <div className="actions planning-action">
+          {providers.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={provider === item.id ? "primary" : "ghost"}
+              aria-pressed={provider === item.id}
+              disabled={busy || Boolean(bookPin)}
+              onClick={() => chooseProvider(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {bookPin && (
+          <div className="selected-topic-summary" role="status">
+            <small>Ручное закрепление на всю книгу</small>
+            <strong>{bookPin.provider_label} · {bookPin.model}</strong>
+            <button className="ghost" type="button" disabled={busy} onClick={() => void clearBookPin()}>
+              Снять закрепление и вернуть Авто
+            </button>
+          </div>
+        )}
+
+        {!bookPin && (
+          <>
+            <div className="actions planning-action">
+              <button
+                type="button"
+                className={selectionMode === "AUTO" ? "primary" : "ghost"}
+                aria-pressed={selectionMode === "AUTO"}
+                disabled={busy}
+                onClick={() => {
+                  setSelectionMode("AUTO");
+                  setAllowPaid(false);
+                }}
+              >
+                Авто
+              </button>
+              <button
+                type="button"
+                className={selectionMode === "MANUAL" ? "primary" : "ghost"}
+                aria-pressed={selectionMode === "MANUAL"}
+                disabled={busy}
+                onClick={() => {
+                  setSelectionMode("MANUAL");
+                  setModel(selectedProvider.models[0]?.id ?? "");
+                  setAllowPaid(false);
+                }}
+              >
+                Ручной выбор
+              </button>
+            </div>
+
+            {selectionMode === "AUTO" ? (
+              <p className="muted">
+                BOOK OS сам выберет модель {selectedProviderLabel} для каждой редакционной операции.
+                Точная модель сохранится в provenance каждого вызова.
+              </p>
+            ) : (
+              <div className="form-grid planning-settings-grid">
+                <label className="field">
+                  <span>Модель</span>
+                  <select value={model} onChange={(event) => setModel(event.target.value)}>
+                    {selectedProvider.models.map((item) => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <fieldset className="field">
+                  <legend>Где закрепить</legend>
+                  <label>
+                    <input
+                      type="radio"
+                      name="model-scope"
+                      checked={selectionScope === "OPERATION"}
+                      onChange={() => setSelectionScope("OPERATION")}
+                    />
+                    Только на конкретную операцию
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="model-scope"
+                      checked={selectionScope === "BOOK"}
+                      onChange={() => setSelectionScope("BOOK")}
+                    />
+                    На всю книгу
+                  </label>
+                </fieldset>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      {provider === "openai" && readiness?.openai_credential_state === "NOT_AVAILABLE" && (
         <div className="credential-setup">
           <label className="field">
-            <span>Ключ OpenAI API</span>
+            <span>Ключ AI Pro (OpenAI API)</span>
             <small>Сохраняется только в macOS Keychain и не показывается после сохранения.</small>
             <input
               type="password"
@@ -252,8 +505,39 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
               placeholder="Вставьте API key"
             />
           </label>
-          <button className="primary" disabled={busy || apiKey.trim().length < 10} onClick={() => void saveKey()}>
-            Сохранить в Keychain
+          <button className="primary" disabled={busy || apiKey.trim().length < 10} onClick={() => void saveOpenAIKey()}>
+            Сохранить AI Pro в Keychain
+          </button>
+        </div>
+      )}
+
+      {provider === "yandex" && readiness?.yandex_credential_state !== "AVAILABLE" && (
+        <div className="credential-setup">
+          <label className="field">
+            <span>API-ключ AI Ya (Yandex AI Studio)</span>
+            <small>Ключ сохраняется только в macOS Keychain.</small>
+            <input
+              type="password"
+              autoComplete="off"
+              value={yandexApiKey}
+              onChange={(event) => setYandexApiKey(event.target.value)}
+              placeholder="API key"
+            />
+          </label>
+          <label className="field">
+            <span>Folder ID Yandex Cloud</span>
+            <input
+              value={yandexFolderId}
+              onChange={(event) => setYandexFolderId(event.target.value)}
+              placeholder="Идентификатор каталога"
+            />
+          </label>
+          <button
+            className="primary"
+            disabled={busy || yandexApiKey.trim().length < 10 || yandexFolderId.trim().length < 3}
+            onClick={() => void saveYandexCredentials()}
+          >
+            Сохранить AI Ya в Keychain
           </button>
         </div>
       )}
@@ -288,12 +572,12 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
         </div>
       )}
 
-      {!contractApproved && !blindSelection && (
+      {provider === "openai" && !contractApproved && !blindSelection && (
         <section className="planning-step">
-          <h4>Первый слепой тест: Sol ↔ Astra</h4>
+          <h4>Слепой тест AI Pro: Sol ↔ Astra</h4>
           <p className="muted">
-            BOOK OS отправит одну и ту же идею двум моделям с одинаковым контекстом. Вы увидите только
-            варианты A и B. Названия моделей раскроются после того, как вы зафиксируете выбор.
+            Это отдельный сравнительный инструмент. BOOK OS отправит одну и ту же идею двум моделям
+            AI Pro с одинаковым контекстом. Вы увидите только варианты A и B до фиксации выбора.
           </p>
 
           {!blindComparison && (
@@ -318,7 +602,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                   onChange={(event) => setAllowBlindPaid(event.target.checked)}
                 />
                 <span>
-                  Разрешаю <strong>только этот слепой тест</strong>: два платных OpenAI-запроса,
+                  Разрешаю <strong>только этот слепой тест</strong>: два платных AI Pro-запроса,
                   каждый не дороже ${blindCostUsd || "0"}. После попытки разрешение автоматически сбросится.
                 </span>
               </label>
@@ -397,22 +681,16 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       )}
 
       <details className="advanced-settings planning-settings">
-        <summary>Одиночный OpenAI-запрос — резервный режим</summary>
-        <div className="form-grid planning-settings-grid">
-          <label className="field">
-            <span>Модель</span>
-            <input value={model} onChange={(event) => setModel(event.target.value)} />
-            <small>Резервный одиночный режим первого пилота: gpt-5.6-sol.</small>
-          </label>
-          <label className="field">
-            <span>Максимальная стоимость одного запроса, USD</span>
-            <input
-              inputMode="decimal"
-              value={maxCostUsd}
-              onChange={(event) => setMaxCostUsd(event.target.value)}
-            />
-          </label>
-        </div>
+        <summary>Стоимость выбранного AI-вызова</summary>
+        <label className="field">
+          <span>Максимальная стоимость одного запроса, USD</span>
+          <input
+            inputMode="decimal"
+            value={maxCostUsd}
+            onChange={(event) => setMaxCostUsd(event.target.value)}
+          />
+          <small>BOOK OS проверяет верхнюю границу стоимости до отправки платного запроса.</small>
+        </label>
       </details>
 
       {!blindComparison && !blindSelection && (
@@ -423,8 +701,8 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
             onChange={(event) => setAllowPaid(event.target.checked)}
           />
           <span>
-            Разрешаю <strong>только следующий одиночный</strong> платный OpenAI-запрос. Текущий предел — ${maxCostUsd || "0"}.
-            После любой попытки разрешение автоматически сбросится.
+            Разрешаю <strong>только следующий</strong> платный запрос через {selectedProviderLabel}.
+            Текущий предел — ${maxCostUsd || "0"}. После любой попытки разрешение автоматически сбросится.
           </span>
         </label>
       )}
@@ -442,7 +720,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
               })
             }
           >
-            {busy ? "BOOK OS работает…" : "Одиночный Book Contract без сравнения"}
+            {busy ? "BOOK OS работает…" : "Сформировать Book Contract"}
           </button>
         )}
 
@@ -480,7 +758,16 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       {latestRun && (
         <div className="planning-run">
           <strong>Черновик создан — теперь его нужно проверить</strong>
-          <span>{latestRun.model}</span>
+          <span>
+            {latestRun.routing?.provider_label ?? latestRun.provider} · {latestRun.model}
+          </span>
+          {latestRun.routing && (
+            <small>
+              {latestRun.routing.selection_mode === "AUTO" ? "Авто" : "Ручной выбор"}
+              {latestRun.routing.selection_scope === "BOOK" ? " · закреплено на книгу" : ""}
+              {latestRun.routing.selection_scope === "OPERATION" ? " · только эта операция" : ""}
+            </small>
+          )}
           <small>Технический Run ID: {latestRun.run_id}</small>
         </div>
       )}
