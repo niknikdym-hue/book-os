@@ -1,5 +1,5 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
 import pytest
 
@@ -34,6 +34,32 @@ def create_approved_author(registry: ProfileRegistry, name: str = "Елена Д
     return registry.approve_profile(profile.profile_id)
 
 
+def create_approved_style(registry: ProfileRegistry, author_id: str):
+    style = registry.create_profile(
+        ProfileCreateRequest(
+            kind="STYLE",
+            content={
+                "style_name": "Елена Дилон — основной",
+                "author_profile_id": author_id,
+                "literary_register": "Литературно-публицистический",
+                "authorial_presence": "Сильная авторская позиция",
+                "directness": "Прямая точная мысль",
+                "sentence_paragraph_rhythm": "Варьируемый ритм",
+                "scene_density": "Сцены только функциональные",
+                "evidence_density": "По необходимости",
+                "analytical_depth": "Высокая",
+                "irony_humor": "Сухая точная ирония",
+                "emotional_temperature": "Сдержанная",
+                "practical_instruction_intensity": "Польза встроена в анализ",
+                "terminology_level": "Ясный без примитивизации",
+                "prohibited_patterns": ["negative-first"],
+                "benchmark_excerpts": ["Утверждённый benchmark"],
+            },
+        )
+    )
+    return registry.approve_profile(style.profile_id)
+
+
 def test_profiles_are_versioned_human_approved_and_bound_to_book(tmp_path: Path) -> None:
     project = ProjectService(tmp_path).create_project(
         NewBookRequest(working_title="Контекст книги", primary_subtype="Strategy")
@@ -60,30 +86,7 @@ def test_profiles_are_versioned_human_approved_and_bound_to_book(tmp_path: Path)
         )
     )
     series = registry.approve_profile(series.profile_id)
-
-    style = registry.create_profile(
-        ProfileCreateRequest(
-            kind="STYLE",
-            content={
-                "style_name": "Елена Дилон — основной",
-                "author_profile_id": author.profile_id,
-                "literary_register": "Литературно-публицистический",
-                "authorial_presence": "Сильная авторская позиция",
-                "directness": "Прямая точная мысль",
-                "sentence_paragraph_rhythm": "Варьируемый ритм",
-                "scene_density": "Сцены только функциональные",
-                "evidence_density": "По необходимости",
-                "analytical_depth": "Высокая",
-                "irony_humor": "Сухая точная ирония",
-                "emotional_temperature": "Сдержанная",
-                "practical_instruction_intensity": "Польза встроена в анализ",
-                "terminology_level": "Ясный без примитивизации",
-                "prohibited_patterns": ["negative-first"],
-                "benchmark_excerpts": ["Утверждённый benchmark"],
-            },
-        )
-    )
-    style = registry.approve_profile(style.profile_id)
+    style = create_approved_style(registry, author.profile_id)
 
     context = BookContextService(tmp_path).save_context(
         project.book_id,
@@ -129,6 +132,48 @@ def test_profile_edit_appends_draft_revision_instead_of_silent_overwrite(tmp_pat
     assert len(revisions) == 2
     assert revisions[0]["status"] == "APPROVED"
     assert revisions[1]["status"] == "DRAFT"
+
+
+def test_bound_book_keeps_exact_approved_profile_revision_after_later_edit(
+    tmp_path: Path,
+) -> None:
+    project = ProjectService(tmp_path).create_project(
+        NewBookRequest(working_title="Снимок профиля", primary_subtype="Strategy")
+    )
+    registry = ProfileRegistry(tmp_path)
+    author = create_approved_author(registry)
+    style = create_approved_style(registry, author.profile_id)
+    service = BookContextService(tmp_path)
+    bound = service.save_context(
+        project.book_id,
+        BookContextUpdateRequest(
+            author_profile_id=author.profile_id,
+            style_profile_id=style.profile_id,
+            target_characters=300_000,
+        ),
+    )
+    assert bound.author_profile is not None
+    bound_hash = bound.author_profile.content_hash
+    bound_voice = bound.author_profile.content["voice_requirements"]
+
+    new_draft = registry.update_profile(
+        author.profile_id,
+        ProfileUpdateRequest(
+            content={
+                **author.content,
+                "voice_requirements": "Новая манера для будущих книг, ещё не утверждена.",
+            }
+        ),
+    )
+    assert new_draft.status == "DRAFT"
+    assert new_draft.content_hash != bound_hash
+
+    recovered = service.get_context(project.book_id)
+    assert recovered.ready_for_planning is True
+    assert recovered.author_profile is not None
+    assert recovered.author_profile.status == "APPROVED"
+    assert recovered.author_profile.content_hash == bound_hash
+    assert recovered.author_profile.content["voice_requirements"] == bound_voice
 
 
 def test_series_cannot_be_approved_before_its_author(tmp_path: Path) -> None:
