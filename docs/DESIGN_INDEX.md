@@ -1,4 +1,4 @@
-# BOOK OS — DESIGN / RECOVERY INDEX v0.3
+# BOOK OS — DESIGN / RECOVERY INDEX v0.4
 
 **Status:** CURRENT RECOVERY AUTHORITY  
 **Date:** 2026-09-06  
@@ -16,22 +16,23 @@ Read in this order:
 2. `PROJECT_STATE.md` — exact accepted checkpoint, canonical schema and next permitted action.
 3. `decisions/2026-08-29-global-openai-first.md` — current provider/program decision; former Russia/no-VPN M8 is SUPERSEDED.
 4. `decisions/2026-09-06-operation-level-model-routing.md` — Owner decision: no single-model monopoly; route the best executor per editorial operation using task-specific evidence, quality/risk and cost.
-5. `IMPLEMENTATION_ROADMAP_v0.2.md` — current execution roadmap.
-6. `tasks/TASK_011_REAL_BOOK_PILOT.md` — current real-book pilot contract and GO/NO-GO evidence rules.
-7. `CORE_ONTOLOGY.md` — first-class entities and invariants.
-8. `PRODUCT_SPEC_v0.1.md` — product scope, user experience and MVP success.
-9. `EDITORIAL_PROTOCOLS_v0.1.md` — Book/Chapter Contracts, agent roles and human acceptance.
-10. `RESEARCH_AND_CLAIMS_v0.1.md` — Research Engine, Claim Ledger and evidence policy.
-11. `MODEL_GATEWAY_v0.1.md` — provider-neutral execution gateway. Interpret any old regional wording through the superseding 2026-08-29 decision and operation-level routing through the 2026-09-06 Owner decision.
-12. `BOOK_MEMORY_v0.1.md` — whole-book memory and retrieval.
-13. `BOOKBENCH_v0.1.md` — quality/eval system and AI-prose pathology detection.
-14. `TECHNICAL_ARCHITECTURE_v0.1.md` — local-first technical architecture and stack.
-15. `SECURITY_AVAILABILITY_v0.1.md` — security/privacy/backup baseline. Any former Russia-specific launch gate is historical unless reaffirmed by newer authority.
-16. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
-17. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — security, rights, supply-chain, recovery, performance and release hardening.
-18. `TASK_EXECUTION_PROTOCOL_v0.1.md` — task necessity, efficiency, scope, evidence and acceptance rules.
-19. `tasks/` — bounded task history/current contracts.
-20. Recent accepted PRs, exact HEADs, CI runs, review threads and `main`.
+5. `decisions/2026-09-06-author-series-length-style-publishing-controls.md` — Owner pre-pilot decision: Author/Series hierarchy, target length in characters, inspectable Style Profiles with previews, annotation limits and verified platform taxonomy.
+6. `IMPLEMENTATION_ROADMAP_v0.2.md` — current execution roadmap.
+7. `tasks/TASK_011_REAL_BOOK_PILOT.md` — current real-book pilot contract and GO/NO-GO evidence rules.
+8. `CORE_ONTOLOGY.md` — first-class entities and invariants.
+9. `PRODUCT_SPEC_v0.1.md` — product scope, user experience and MVP success.
+10. `EDITORIAL_PROTOCOLS_v0.1.md` — Book/Chapter Contracts, agent roles and human acceptance.
+11. `RESEARCH_AND_CLAIMS_v0.1.md` — Research Engine, Claim Ledger and evidence policy.
+12. `MODEL_GATEWAY_v0.1.md` — provider-neutral execution gateway. Interpret any old regional wording through the superseding 2026-08-29 decision and operation-level routing through the 2026-09-06 Owner decision.
+13. `BOOK_MEMORY_v0.1.md` — whole-book memory and retrieval.
+14. `BOOKBENCH_v0.1.md` — quality/eval system and AI-prose pathology detection.
+15. `TECHNICAL_ARCHITECTURE_v0.1.md` — local-first technical architecture and stack.
+16. `SECURITY_AVAILABILITY_v0.1.md` — security/privacy/backup baseline. Any former Russia-specific launch gate is historical unless reaffirmed by newer authority.
+17. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
+18. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — security, rights, supply-chain, recovery, performance and release hardening.
+19. `TASK_EXECUTION_PROTOCOL_v0.1.md` — task necessity, efficiency, scope, evidence and acceptance rules.
+20. `tasks/` — bounded task history/current contracts.
+21. Recent accepted PRs, exact HEADs, CI runs, review threads and `main`.
 
 Chat history is optional working context. It is never authority.
 
@@ -50,9 +51,11 @@ The exact current `main` SHA and acceptance evidence live only in `PROJECT_STATE
 
 ## Current critical path
 
-`real Business Nonfiction pilot → Literary Master → HUMAN GO | CONDITIONAL_GO | NO_GO`
+`pre-pilot Author/Series/Length/Style/Publishing controls → real Business Nonfiction pilot → Literary Master → platform Publishing Package → HUMAN GO | CONDITIONAL_GO | NO_GO`
 
-No additional infrastructure milestone is required before the first complete book unless the real pilot reveals a concrete regression.
+The first real pilot must not be treated as representative while the product models only an isolated book. The 2026-09-06 Owner decision requires the working path to include author/series context, target length, style selection/preview and downstream publication metadata controls.
+
+No unrelated infrastructure milestone is required before the first complete book unless the real pilot reveals a concrete regression.
 
 ## Superseded program lane
 
@@ -72,7 +75,12 @@ The historical work remains available as salvage evidence only.
 | Requirement | Authority/spec |
 |---|---|
 | Product goal / first user | `BOOK_OS_AUTHORITY.md`, `PRODUCT_SPEC_v0.1.md` |
-| End-to-end workflow | `BOOK_OS_AUTHORITY.md`, `EDITORIAL_PROTOCOLS_v0.1.md` |
+| End-to-end workflow | `BOOK_OS_AUTHORITY.md`, `EDITORIAL_PROTOCOLS_v0.1.md`, `decisions/2026-09-06-author-series-length-style-publishing-controls.md` |
+| Author Profile / Series Profile / inheritance / cross-book uniqueness | `decisions/2026-09-06-author-series-length-style-publishing-controls.md`, `CORE_ONTOLOGY.md` |
+| Target book length / characters including spaces | `decisions/2026-09-06-author-series-length-style-publishing-controls.md` |
+| Style Profile / generated comparable previews | `decisions/2026-09-06-author-series-length-style-publishing-controls.md` |
+| Annotation / hard character limit / Publishing Package | `decisions/2026-09-06-author-series-length-style-publishing-controls.md` |
+| Verified platform genres / subgenres / tags | `decisions/2026-09-06-author-series-length-style-publishing-controls.md`, `RESEARCH_AND_CLAIMS_v0.1.md` |
 | Book State / Authority Graph | `BOOK_OS_AUTHORITY.md`, `CORE_ONTOLOGY.md` |
 | Entities / relationships | `CORE_ONTOLOGY.md` |
 | Book Contract / Chapter Contract | `EDITORIAL_PROTOCOLS_v0.1.md` |
@@ -85,7 +93,7 @@ The historical work remains available as salvage evidence only.
 | Technology stack / build-vs-buy | `TECHNICAL_ARCHITECTURE_v0.1.md`, `BOOK_OS_AUTHORITY.md` |
 | Security / privacy / recovery | `SECURITY_AVAILABILITY_v0.1.md`, newer explicit decisions |
 | Literary Master / downstream audio | `BOOK_OS_AUTHORITY.md`, `AUDIO_HANDOFF_v0.1.md` |
-| Current MVP/pilot acceptance | `PROJECT_STATE.md`, `TASK_011_REAL_BOOK_PILOT.md` |
+| Current MVP/pilot acceptance | `PROJECT_STATE.md`, `TASK_011_REAL_BOOK_PILOT.md`, `decisions/2026-09-06-author-series-length-style-publishing-controls.md` |
 | Task necessity / bounded delivery | `TASK_EXECUTION_PROTOCOL_v0.1.md` |
 
 ## Baseline rule
