@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from book_os_core.model_gateway import ModelBudgetError, ModelTaskRequest
+from book_os_core.model_gateway import ModelBudgetError, ModelProviderError, ModelTaskRequest
 from book_os_core.provider_adapters import (
     BookOSOpenAIResponsesAdapter,
     YandexChatCompletionsAdapter,
@@ -142,7 +142,7 @@ def test_ai_ya_cost_cap_blocks_before_http() -> None:
     assert calls == []
 
 
-def test_ai_ya_rejects_unpriced_model_before_http() -> None:
+def test_ai_ya_rejects_unsupported_model_before_http() -> None:
     calls: list[httpx.Request] = []
 
     def handler(http_request: httpx.Request) -> httpx.Response:
@@ -160,6 +160,6 @@ def test_ai_ya_rejects_unpriced_model_before_http() -> None:
         endpoint="https://example.test/v1/chat/completions",
     )
 
-    with pytest.raises(ModelBudgetError, match="unpriced Yandex model"):
+    with pytest.raises(ModelProviderError, match="unsupported Yandex model"):
         adapter.generate(request("yandex", "unknown-yandex-model"), SECTION_DRAFT_V1)
     assert calls == []
