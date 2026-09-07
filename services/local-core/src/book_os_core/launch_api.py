@@ -88,8 +88,7 @@ def build_launch_router(
         providers = routing.provider_registry()
         openai_credential_state = credential_state("openai_api_key")
         astra_registered = any(
-            provider.id == "openai"
-            and any(model.id == "gpt-6-astra" for model in provider.models)
+            provider.id == "openai" and any(model.id == "gpt-6-astra" for model in provider.models)
             for provider in providers
         )
         return {
