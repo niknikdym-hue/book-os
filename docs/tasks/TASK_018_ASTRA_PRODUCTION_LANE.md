@@ -50,11 +50,13 @@ Make GPT-6 Astra a safe, fully bounded BOOK OS OpenAI production executor for hi
 4. Add an explicit operation-level Astra reasoning policy for high-value professional book work without creating a model monopoly. Minimum desired initial policy:
    - `BOOK_CONTRACT_PROPOSAL`: Astra, reasoning `high` or stronger;
    - `ARCHITECTURE_PROPOSAL`: Astra, reasoning `high` or stronger;
-   - `SECTION_DRAFT`: keep current Auto routing unless Central Brain/Owner manually pins Astra; manual whole-book or operation pin must remain supported;
+   - `SECTION_DRAFT`: keep current Auto model routing globally, but when the human manually selects/pins Astra, default the Astra reasoning profile to `high` unless the human explicitly chooses another supported effort;
+   - `xhigh` / `max`: available for bounded exceptional operations such as difficult architecture rework, adversarial review, whole-book diagnosis or another explicitly justified high-complexity operation; they are not the default for every chapter;
    - evaluation/adversarial/editorial operations must remain separately routable and must not be silently forced to Astra.
-5. If the current request schema has no reasoning field, add the smallest auditable field/policy necessary so the OpenAI Responses request actually carries the selected reasoning effort. Persist/return enough provenance to know which effort was used.
-6. Zero-call preflight must be able to report that `gpt-6-astra` is registered/configured and whether the OpenAI credential is available, without revealing the secret and without calling OpenAI.
-7. Preserve existing fresh explicit paid permission and positive per-request `max_cost_usd` behavior.
+5. Preserve the existing manual operation pin and whole-book pin. The first real production pilot is expected to use a HUMAN whole-book Astra pin after this task is accepted, but this must remain an explicit project setting, not hard-coded product behavior.
+6. If the current request schema has no reasoning field, add the smallest auditable field/policy necessary so the OpenAI Responses request actually carries the selected reasoning effort. Persist/return enough provenance to know which effort was used.
+7. Zero-call preflight must be able to report that `gpt-6-astra` is registered/configured and whether the OpenAI credential is available, without revealing the secret and without calling OpenAI.
+8. Preserve existing fresh explicit paid permission and positive per-request `max_cost_usd` behavior.
 
 ## OUT OF SCOPE
 
@@ -65,6 +67,18 @@ Make GPT-6 Astra a safe, fully bounded BOOK OS OpenAI production executor for hi
 - No provider expansion beyond existing architecture.
 - No change making Astra the only Writer/Editor/Judge.
 - No secret value in GitHub, logs, tests or comments.
+
+## EVIDENCE FROM THE SEPARATE CLEAN-RESTART BOOK PROJECT
+
+The separate branch `brain/services-series-clean-restart-20260907` is reference evidence only, not BOOK OS authority and not a runtime dependency.
+
+Useful transferable evidence as of 2026-09-07:
+
+- Astra `High` was used successfully for sequential long-form chapter work and was explicitly preferred for continued drafting;
+- `xhigh` / `Max` were reserved for targeted harder operations rather than used continuously;
+- chapter production paired long-form drafting with separate research/source records and a practical specification, reinforcing the existing BOOK OS chapter-admission/evidence approach.
+
+BOOK OS absorbs only the generic lesson: `Astra High` is a credible default reasoning profile when Astra is intentionally chosen for long-form professional prose, while stronger efforts should be used selectively and recorded as provenance.
 
 ## QUALITY / ROUTING PRINCIPLE
 
@@ -77,11 +91,12 @@ Astra is preferred where current evidence says it materially improves complex bo
 3. Astra reasoning effort is actually emitted in the Responses API body and covered by deterministic tests.
 4. Manual operation/book Astra pins remain valid and auditable.
 5. Auto Book Contract/Architecture Astra routing remains green.
-6. Existing Sol/Terra/Luna cost guards remain green.
-7. Zero-call credential/config preflight is secret-safe.
-8. Full backend tests green; ruff/mypy green; frontend tests/typecheck/lint green where touched; cargo/CI canonical jobs green.
-9. Provider/model/paid calls in tests/CI = 0.
-10. No weakening of Task 014/017 fail-closed gates, authority, anti-junk, Keychain, Literary Master or pilot evidence.
+6. Manual whole-book Astra pin yields Astra `high` for long-form drafting unless the human explicitly selects another supported effort.
+7. Existing Sol/Terra/Luna cost guards remain green.
+8. Zero-call credential/config preflight is secret-safe.
+9. Full backend tests green; ruff/mypy green; frontend tests/typecheck/lint green where touched; cargo/CI canonical jobs green.
+10. Provider/model/paid calls in tests/CI = 0.
+11. No weakening of Task 014/017 fail-closed gates, authority, anti-junk, Keychain, Literary Master or pilot evidence.
 
 ## DELIVERABLE
 
