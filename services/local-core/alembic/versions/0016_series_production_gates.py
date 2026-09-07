@@ -15,7 +15,6 @@ down_revision: str | None = "0015"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 
-
 _CANON_STATUSES = (
     "PLANNED",
     "RESERVED",
@@ -41,14 +40,22 @@ def upgrade() -> None:
         sa.Column("approved_by", sa.String(255), nullable=True),
         sa.Column("approved_at", sa.String(32), nullable=True),
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
-        sa.UniqueConstraint("book_id", "revision", name="uq_definition_pack_book_revision"),
-        sa.CheckConstraint("revision > 0", name="ck_definition_pack_revision_positive"),
+        sa.UniqueConstraint(
+            "book_id",
+            "revision",
+            name="uq_definition_pack_book_revision",
+        ),
+        sa.CheckConstraint(
+            "revision > 0",
+            name="ck_definition_pack_revision_positive",
+        ),
         sa.CheckConstraint(
             "status IN ('DRAFT','APPROVED','SUPERSEDED')",
             name="ck_definition_pack_status",
         ),
         sa.CheckConstraint(
-            "status != 'APPROVED' OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)",
+            "status != 'APPROVED' OR "
+            "(approved_by IS NOT NULL AND approved_at IS NOT NULL)",
             name="ck_definition_pack_approved_actor",
         ),
     )
@@ -75,7 +82,9 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.String(32), nullable=False),
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
         sa.UniqueConstraint(
-            "series_profile_id", "asset_key", name="uq_series_canon_asset_key"
+            "series_profile_id",
+            "asset_key",
+            name="uq_series_canon_asset_key",
         ),
         sa.CheckConstraint(
             "status IN ('" + "','".join(_CANON_STATUSES) + "')",
@@ -107,13 +116,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
         sa.ForeignKeyConstraint(["chapter_id"], ["chapters.chapter_id"]),
         sa.ForeignKeyConstraint(
-            ["architecture_revision_id", "architecture_revision_hash"],
-            ["revisions.revision_id", "revisions.content_hash"],
+            ["architecture_revision_id"],
+            ["revisions.revision_id"],
             name="fk_prod_contract_architecture",
         ),
         sa.ForeignKeyConstraint(
-            ["chapter_contract_revision_id", "chapter_contract_revision_hash"],
-            ["revisions.revision_id", "revisions.content_hash"],
+            ["chapter_contract_revision_id"],
+            ["revisions.revision_id"],
             name="fk_prod_contract_chapter_contract",
         ),
         sa.CheckConstraint(
@@ -121,7 +130,8 @@ def upgrade() -> None:
             name="ck_production_contract_status",
         ),
         sa.CheckConstraint(
-            "status != 'APPROVED' OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)",
+            "status != 'APPROVED' OR "
+            "(approved_by IS NOT NULL AND approved_at IS NOT NULL)",
             name="ck_production_contract_approved_actor",
         ),
     )
@@ -148,13 +158,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
         sa.ForeignKeyConstraint(["chapter_id"], ["chapters.chapter_id"]),
         sa.ForeignKeyConstraint(
-            ["architecture_revision_id", "architecture_revision_hash"],
-            ["revisions.revision_id", "revisions.content_hash"],
+            ["architecture_revision_id"],
+            ["revisions.revision_id"],
             name="fk_uniqueness_architecture",
         ),
         sa.ForeignKeyConstraint(
-            ["chapter_contract_revision_id", "chapter_contract_revision_hash"],
-            ["revisions.revision_id", "revisions.content_hash"],
+            ["chapter_contract_revision_id"],
+            ["revisions.revision_id"],
             name="fk_uniqueness_chapter_contract",
         ),
         sa.CheckConstraint(
@@ -193,15 +203,18 @@ def upgrade() -> None:
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
         sa.ForeignKeyConstraint(["chapter_id"], ["chapters.chapter_id"]),
-        sa.ForeignKeyConstraint(["definition_id"], ["definition_packs.definition_id"]),
         sa.ForeignKeyConstraint(
-            ["architecture_revision_id", "architecture_revision_hash"],
-            ["revisions.revision_id", "revisions.content_hash"],
+            ["definition_id"],
+            ["definition_packs.definition_id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["architecture_revision_id"],
+            ["revisions.revision_id"],
             name="fk_admission_architecture",
         ),
         sa.ForeignKeyConstraint(
-            ["chapter_contract_revision_id", "chapter_contract_revision_hash"],
-            ["revisions.revision_id", "revisions.content_hash"],
+            ["chapter_contract_revision_id"],
+            ["revisions.revision_id"],
             name="fk_admission_chapter_contract",
         ),
         sa.ForeignKeyConstraint(
@@ -250,11 +263,13 @@ def upgrade() -> None:
             name="ck_production_checkpoint_actor",
         ),
         sa.CheckConstraint(
-            "progress_percent IS NULL OR (progress_percent >= 0 AND progress_percent <= 100)",
+            "progress_percent IS NULL OR "
+            "(progress_percent >= 0 AND progress_percent <= 100)",
             name="ck_production_checkpoint_progress",
         ),
         sa.CheckConstraint(
-            "kind != 'MID_BOOK' OR (progress_percent >= 40 AND progress_percent <= 60)",
+            "kind != 'MID_BOOK' OR "
+            "(progress_percent >= 40 AND progress_percent <= 60)",
             name="ck_mid_book_checkpoint_range",
         ),
     )
@@ -278,7 +293,11 @@ def upgrade() -> None:
         sa.Column("created_at", sa.String(32), nullable=False),
         sa.ForeignKeyConstraint(["book_id"], ["book_projects.book_id"]),
         sa.ForeignKeyConstraint(["master_id"], ["literary_masters.master_id"]),
-        sa.UniqueConstraint("book_id", "master_id", name="uq_series_closure_master"),
+        sa.UniqueConstraint(
+            "book_id",
+            "master_id",
+            name="uq_series_closure_master",
+        ),
     )
 
     op.execute("INSERT INTO schema_metadata (version) VALUES ('0016')")
@@ -291,16 +310,19 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE TRIGGER protect_used_accepted_asset_delete "
-        "BEFORE DELETE ON series_canon_assets WHEN OLD.status = 'USED_ACCEPTED' "
+        "BEFORE DELETE ON series_canon_assets "
+        "WHEN OLD.status = 'USED_ACCEPTED' "
         "BEGIN SELECT RAISE(ABORT, 'USED_ACCEPTED series asset is immutable'); END"
     )
     for table in ("chapter_admissions", "series_closures"):
         op.execute(
-            f"CREATE TRIGGER protect_{table}_update BEFORE UPDATE ON {table} "
+            f"CREATE TRIGGER protect_{table}_update "
+            f"BEFORE UPDATE ON {table} "
             f"BEGIN SELECT RAISE(ABORT, '{table} is append-only'); END"
         )
         op.execute(
-            f"CREATE TRIGGER protect_{table}_delete BEFORE DELETE ON {table} "
+            f"CREATE TRIGGER protect_{table}_delete "
+            f"BEFORE DELETE ON {table} "
             f"BEGIN SELECT RAISE(ABORT, '{table} is append-only'); END"
         )
     op.execute(
@@ -310,12 +332,107 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE TRIGGER protect_approved_prod_contract_update "
-        "BEFORE UPDATE ON chapter_production_contracts WHEN OLD.status = 'APPROVED' "
+        "BEFORE UPDATE ON chapter_production_contracts "
+        "WHEN OLD.status = 'APPROVED' "
         "BEGIN SELECT RAISE(ABORT, 'approved production contract is immutable'); END"
+    )
+
+    op.execute(
+        "CREATE TRIGGER require_current_writing_admission "
+        "BEFORE INSERT ON bounded_tasks WHEN NEW.task_type = 'SECTION_DRAFT' "
+        "BEGIN "
+        "SELECT CASE WHEN NOT EXISTS ("
+        "SELECT 1 FROM chapter_admissions a "
+        "JOIN definition_packs d ON d.definition_id=a.definition_id "
+        "JOIN chapter_production_contracts pc "
+        "ON pc.production_contract_id=a.production_contract_id "
+        "WHERE a.book_id=NEW.book_id AND a.chapter_id=NEW.chapter_id "
+        "AND a.status='WRITING_ALLOWED' "
+        "AND a.admission_id=(SELECT a2.admission_id FROM chapter_admissions a2 "
+        "WHERE a2.book_id=NEW.book_id AND a2.chapter_id=NEW.chapter_id "
+        "ORDER BY a2.created_at DESC LIMIT 1) "
+        "AND d.book_id=NEW.book_id AND d.status='APPROVED' "
+        "AND d.definition_id=(SELECT d2.definition_id FROM definition_packs d2 "
+        "WHERE d2.book_id=NEW.book_id AND d2.status='APPROVED' "
+        "ORDER BY d2.revision DESC LIMIT 1) "
+        "AND d.content_hash=a.definition_hash "
+        "AND a.architecture_revision_id=(SELECT h.revision_id FROM book_projects b "
+        "JOIN authority_heads h ON h.entity_id=b.architecture_entity_id "
+        "WHERE b.book_id=NEW.book_id) "
+        "AND a.architecture_revision_hash=(SELECT h.revision_hash FROM book_projects b "
+        "JOIN authority_heads h ON h.entity_id=b.architecture_entity_id "
+        "WHERE b.book_id=NEW.book_id) "
+        "AND (SELECT s.status FROM revision_status_history s "
+        "WHERE s.revision_id=a.architecture_revision_id "
+        "ORDER BY s.created_at DESC, s.status_event_id DESC LIMIT 1) "
+        "IN ('APPROVED','LOCKED') "
+        "AND a.chapter_contract_revision_id=(SELECT h.revision_id FROM chapters c "
+        "JOIN authority_heads h ON h.entity_id=c.chapter_contract_entity_id "
+        "WHERE c.book_id=NEW.book_id AND c.chapter_id=NEW.chapter_id) "
+        "AND a.chapter_contract_revision_hash=(SELECT h.revision_hash FROM chapters c "
+        "JOIN authority_heads h ON h.entity_id=c.chapter_contract_entity_id "
+        "WHERE c.book_id=NEW.book_id AND c.chapter_id=NEW.chapter_id) "
+        "AND (SELECT s.status FROM revision_status_history s "
+        "WHERE s.revision_id=a.chapter_contract_revision_id "
+        "ORDER BY s.created_at DESC, s.status_event_id DESC LIMIT 1) "
+        "IN ('APPROVED','LOCKED') "
+        "AND pc.book_id=NEW.book_id AND pc.chapter_id=NEW.chapter_id "
+        "AND pc.status='APPROVED' AND pc.content_hash=a.production_contract_hash "
+        "AND pc.production_contract_id=(SELECT pc2.production_contract_id "
+        "FROM chapter_production_contracts pc2 "
+        "WHERE pc2.book_id=NEW.book_id AND pc2.chapter_id=NEW.chapter_id "
+        "AND pc2.status='APPROVED' ORDER BY pc2.created_at DESC LIMIT 1) "
+        "AND pc.architecture_revision_id=a.architecture_revision_id "
+        "AND pc.architecture_revision_hash=a.architecture_revision_hash "
+        "AND pc.chapter_contract_revision_id=a.chapter_contract_revision_id "
+        "AND pc.chapter_contract_revision_hash=a.chapter_contract_revision_hash "
+        "AND EXISTS (SELECT 1 FROM book_uniqueness_ledger u "
+        "WHERE u.ledger_id=(SELECT u2.ledger_id FROM book_uniqueness_ledger u2 "
+        "WHERE u2.book_id=NEW.book_id AND u2.chapter_id=NEW.chapter_id "
+        "ORDER BY u2.created_at DESC LIMIT 1) "
+        "AND u.status='PASS' "
+        "AND u.architecture_revision_id=a.architecture_revision_id "
+        "AND u.architecture_revision_hash=a.architecture_revision_hash "
+        "AND u.chapter_contract_revision_id=a.chapter_contract_revision_id "
+        "AND u.chapter_contract_revision_hash=a.chapter_contract_revision_hash)"
+        ") THEN RAISE(ABORT, 'WRITING_NOT_ALLOWED') END; "
+        "SELECT CASE WHEN "
+        "COALESCE((SELECT target_characters FROM book_context_settings "
+        "WHERE book_id=NEW.book_id),0) > 0 "
+        "AND COALESCE((SELECT SUM(LENGTH(COALESCE(json_extract(r.content_json,'$.text'),''))) "
+        "FROM manuscript_units u JOIN authority_heads h "
+        "ON h.entity_id=u.authority_entity_id JOIN revisions r "
+        "ON r.revision_id=h.revision_id WHERE u.book_id=NEW.book_id),0) >= "
+        "0.4 * (SELECT target_characters FROM book_context_settings "
+        "WHERE book_id=NEW.book_id) "
+        "AND NOT EXISTS (SELECT 1 FROM production_checkpoints p "
+        "WHERE p.checkpoint_id=(SELECT p2.checkpoint_id FROM production_checkpoints p2 "
+        "WHERE p2.book_id=NEW.book_id AND p2.kind='MID_BOOK' "
+        "ORDER BY p2.created_at DESC LIMIT 1) "
+        "AND p.kind='MID_BOOK' AND p.status!='BLOCKING') "
+        "THEN RAISE(ABORT, 'WRITING_NOT_ALLOWED: MID_BOOK_AUDIT_REQUIRED') END; "
+        "END"
+    )
+
+    op.execute(
+        "CREATE TRIGGER require_adversarial_review_before_master "
+        "BEFORE INSERT ON literary_masters BEGIN "
+        "SELECT CASE WHEN NOT EXISTS ("
+        "SELECT 1 FROM production_checkpoints p "
+        "WHERE p.checkpoint_id=(SELECT p2.checkpoint_id FROM production_checkpoints p2 "
+        "WHERE p2.book_id=NEW.book_id AND p2.kind='ADVERSARIAL_REVIEW' "
+        "ORDER BY p2.created_at DESC LIMIT 1) "
+        "AND p.kind='ADVERSARIAL_REVIEW' AND p.status!='BLOCKING' "
+        "AND p.executor_identity IS NOT NULL "
+        "AND json_extract(p.findings_json,'$.independent')=1"
+        ") THEN RAISE(ABORT, 'ADVERSARIAL_REVIEW_REQUIRED') END; "
+        "END"
     )
 
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER IF EXISTS require_adversarial_review_before_master")
+    op.execute("DROP TRIGGER IF EXISTS require_current_writing_admission")
     op.execute("DROP TRIGGER IF EXISTS protect_approved_prod_contract_update")
     op.execute("DROP TRIGGER IF EXISTS protect_approved_definition_update")
     for table in ("series_closures", "chapter_admissions"):
@@ -325,16 +442,34 @@ def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS protect_used_accepted_asset_status")
 
     op.drop_table("series_closures")
-    op.drop_index("ix_production_checkpoints_book_kind", table_name="production_checkpoints")
+    op.drop_index(
+        "ix_production_checkpoints_book_kind",
+        table_name="production_checkpoints",
+    )
     op.drop_table("production_checkpoints")
-    op.drop_index("ix_admissions_chapter_created", table_name="chapter_admissions")
+    op.drop_index(
+        "ix_admissions_chapter_created",
+        table_name="chapter_admissions",
+    )
     op.drop_table("chapter_admissions")
-    op.drop_index("ix_uniqueness_chapter_created", table_name="book_uniqueness_ledger")
+    op.drop_index(
+        "ix_uniqueness_chapter_created",
+        table_name="book_uniqueness_ledger",
+    )
     op.drop_table("book_uniqueness_ledger")
-    op.drop_index("ix_prod_contract_chapter_status", table_name="chapter_production_contracts")
+    op.drop_index(
+        "ix_prod_contract_chapter_status",
+        table_name="chapter_production_contracts",
+    )
     op.drop_table("chapter_production_contracts")
-    op.drop_index("ix_series_canon_series_status", table_name="series_canon_assets")
+    op.drop_index(
+        "ix_series_canon_series_status",
+        table_name="series_canon_assets",
+    )
     op.drop_table("series_canon_assets")
-    op.drop_index("ix_definition_packs_book_status", table_name="definition_packs")
+    op.drop_index(
+        "ix_definition_packs_book_status",
+        table_name="definition_packs",
+    )
     op.drop_table("definition_packs")
     op.execute("DELETE FROM schema_metadata WHERE version = '0016'")
