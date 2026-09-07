@@ -377,7 +377,9 @@ class SeriesProductionService:
         with engine.connect() as connection:
             return connection.execute(text(sql), params).mappings().one_or_none()
 
-    def _heads(self, engine: Engine, book_id: str, chapter_id: str | None = None) -> tuple[Any, Any | None]:
+    def _heads(
+        self, engine: Engine, book_id: str, chapter_id: str | None = None
+    ) -> tuple[Any, Any | None]:
         project = self.projects.get_project(book_id)
         architecture = project.architecture
         if architecture is None or architecture.authority_status not in {"APPROVED", "LOCKED"}:
@@ -412,7 +414,9 @@ class SeriesProductionService:
             approved_at=cast(str | None, row["approved_at"]),
         )
 
-    def create_definition_pack(self, book_id: str, request: DefinitionPackCreateRequest) -> DefinitionPackView:
+    def create_definition_pack(
+        self, book_id: str, request: DefinitionPackCreateRequest
+    ) -> DefinitionPackView:
         engine = self._engine(book_id)
         try:
             payload = request.content.model_dump(mode="json")
@@ -422,7 +426,9 @@ class SeriesProductionService:
             with engine.begin() as connection:
                 revision = int(
                     connection.execute(
-                        text("SELECT COALESCE(MAX(revision),0)+1 FROM definition_packs WHERE book_id=:book_id"),
+                        text(
+                            "SELECT COALESCE(MAX(revision),0)+1 FROM definition_packs WHERE book_id=:book_id"
+                        ),
                         {"book_id": book_id},
                     ).scalar_one()
                 )
@@ -482,7 +488,9 @@ class SeriesProductionService:
             raise SeriesProductionGateError("only a DRAFT Definition Pack can be approved")
         blockers = current.content.blockers()
         if blockers:
-            raise SeriesProductionGateError("Definition Pack requires REWORK: " + ", ".join(blockers))
+            raise SeriesProductionGateError(
+                "Definition Pack requires REWORK: " + ", ".join(blockers)
+            )
         engine = self._engine(book_id)
         try:
             with engine.begin() as connection:
@@ -507,7 +515,9 @@ class SeriesProductionService:
             chapter_contract_revision_id=str(row["chapter_contract_revision_id"]),
             chapter_contract_revision_hash=str(row["chapter_contract_revision_hash"]),
             content_hash=str(row["content_hash"]),
-            content=ChapterProductionContractContent.model_validate(self._loads(row["content_json"], {})),
+            content=ChapterProductionContractContent.model_validate(
+                self._loads(row["content_json"], {})
+            ),
             status=str(row["status"]),
             created_by=str(row["created_by"]),
             created_at=str(row["created_at"]),
@@ -594,7 +604,9 @@ class SeriesProductionService:
         self._require_human(request.actor_kind)
         current = self.get_production_contract(book_id, chapter_id, contract_id)
         if current.status != "DRAFT":
-            raise SeriesProductionGateError("only a DRAFT Chapter Production Contract can be approved")
+            raise SeriesProductionGateError(
+                "only a DRAFT Chapter Production Contract can be approved"
+            )
         blockers = current.content.blockers()
         if blockers:
             raise SeriesProductionGateError(
@@ -617,7 +629,9 @@ class SeriesProductionService:
                 chapter.revision_hash,
             )
             if bound != current_authority:
-                raise SeriesProductionGateError("Chapter Production Contract is stale against current authority")
+                raise SeriesProductionGateError(
+                    "Chapter Production Contract is stale against current authority"
+                )
             with engine.begin() as connection:
                 connection.execute(
                     text(
@@ -632,7 +646,9 @@ class SeriesProductionService:
 
     def create_canon_asset(self, request: SeriesCanonAssetCreateRequest) -> SeriesCanonAssetView:
         if request.book_id is None:
-            raise SeriesProductionGateError("book_id is required in the first executable Series Canon slice")
+            raise SeriesProductionGateError(
+                "book_id is required in the first executable Series Canon slice"
+            )
         engine = self._engine(request.book_id)
         try:
             asset_id = new_ulid()
@@ -667,7 +683,9 @@ class SeriesProductionService:
     def get_canon_asset(self, book_id: str, asset_id: str) -> SeriesCanonAssetView:
         engine = self._engine(book_id)
         try:
-            row = self._row(engine, "SELECT * FROM series_canon_assets WHERE asset_id=:id", {"id": asset_id})
+            row = self._row(
+                engine, "SELECT * FROM series_canon_assets WHERE asset_id=:id", {"id": asset_id}
+            )
             if row is None:
                 raise SeriesProductionError("Series Canon asset not found")
             return SeriesCanonAssetView(
@@ -790,7 +808,9 @@ class SeriesProductionService:
         self._require_human(request.actor_kind)
         blockers = request.checks.blockers()
         if blockers:
-            raise SeriesProductionGateError("Chapter admission checks require REWORK: " + ", ".join(blockers))
+            raise SeriesProductionGateError(
+                "Chapter admission checks require REWORK: " + ", ".join(blockers)
+            )
         definition = self.latest_approved_definition(book_id)
         if definition is None:
             raise SeriesProductionGateError("current approved Definition Pack is required")
@@ -800,7 +820,9 @@ class SeriesProductionService:
             assert chapter is not None
             contract = self.latest_approved_production_contract(book_id, chapter_id)
             if contract is None:
-                raise SeriesProductionGateError("current approved Chapter Production Contract is required")
+                raise SeriesProductionGateError(
+                    "current approved Chapter Production Contract is required"
+                )
             if (
                 contract.architecture_revision_id,
                 contract.architecture_revision_hash,
@@ -982,7 +1004,9 @@ class SeriesProductionService:
                 definition_id=definition.definition_id if definition is not None else None,
                 architecture_revision_id=architecture.revision_id,
                 chapter_contract_revision_id=chapter.revision_id,
-                production_contract_id=contract.production_contract_id if contract is not None else None,
+                production_contract_id=contract.production_contract_id
+                if contract is not None
+                else None,
             )
         finally:
             engine.dispose()
@@ -1061,11 +1085,18 @@ class SeriesProductionService:
         finally:
             engine.dispose()
 
-    def close_series_book(self, book_id: str, request: SeriesClosureRequest) -> SeriesClosureView:
+    def close_series_book(
+        self, book_id: str, request: SeriesClosureRequest
+    ) -> SeriesClosureView:
         self._require_human(request.actor_kind)
         context = self.contexts.get_context(book_id)
-        if context.series_profile is None or context.series_profile.profile_id != request.series_profile_id:
-            raise SeriesProductionGateError("Series Closure must use the book's bound Series Profile")
+        if (
+            context.series_profile is None
+            or context.series_profile.profile_id != request.series_profile_id
+        ):
+            raise SeriesProductionGateError(
+                "Series Closure must use the book's bound Series Profile"
+            )
         engine = self._engine(book_id)
         try:
             master = self._row(
@@ -1083,9 +1114,13 @@ class SeriesProductionService:
             proven_used = set(cast(list[str], request.evidence.get("used_asset_ids", [])))
             proven_released = set(cast(list[str], request.evidence.get("released_asset_ids", [])))
             if not set(request.used_asset_ids) <= proven_used:
-                raise SeriesProductionGateError("used assets require exact Literary Master evidence")
+                raise SeriesProductionGateError(
+                    "used assets require exact Literary Master evidence"
+                )
             if not set(request.released_asset_ids) <= proven_released:
-                raise SeriesProductionGateError("released reservations require explicit closure evidence")
+                raise SeriesProductionGateError(
+                    "released reservations require explicit closure evidence"
+                )
             for asset_id in request.used_asset_ids:
                 self.transition_canon_asset(
                     book_id,
