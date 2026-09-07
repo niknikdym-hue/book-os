@@ -50,11 +50,27 @@ beforeEach(() => {
   invokeMock.mockReset();
 });
 
-it("shows authenticated Local Core health and creates a native book project", async () => {
+function commonGet(request: { method: string; path: string }) {
+  if (request.method === "GET" && request.path === "/api/anti-junk") return [];
+  if (request.method === "GET" && request.path === "/api/launch/readiness") {
+    return {
+      openai_credential_state: "AVAILABLE",
+      configured_model: "gpt-5.6-sol",
+      anti_junk_entry_count: 0,
+      external_calls: 0,
+      paid_calls: 0,
+    };
+  }
+  return undefined;
+}
+
+it("показывает реальный каталог тем, отражает выбор и создаёт проект книги", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
       const request = (args as { request: { method: string; path: string } }).request;
+      const common = commonGet(request);
+      if (common !== undefined) return common;
       if (request.method === "GET" && request.path === "/api/projects") return [];
       if (request.method === "POST" && request.path === "/api/projects") return project();
     }
@@ -62,24 +78,55 @@ it("shows authenticated Local Core health and creates a native book project", as
   });
 
   render(<App />);
-  expect(await screen.findByText("Local Core healthy")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Create New Book" }));
-  fireEvent.change(screen.getByLabelText("Working title"), {
+  expect(await screen.findByText("Локальное ядро: работает")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Создать новую книгу" }));
+
+  const businessButton = screen.getByRole("button", { name: "Бизнес, доступно" });
+  const startupButton = screen.getByRole("button", {
+    name: "Стартапы и создание бизнеса, доступно",
+  });
+  const strategyButton = screen.getByRole("button", { name: "Стратегия, доступно" });
+
+  expect(businessButton).toBeEnabled();
+  expect(startupButton).toBeEnabled();
+  expect(strategyButton).toBeEnabled();
+  expect(startupButton).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.getByRole("button", { name: "Финансы и инвестиции, в разработке" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Психология и саморазвитие, в разработке" }),
+  ).toBeDisabled();
+
+  fireEvent.click(businessButton);
+  fireEvent.click(strategyButton);
+
+  expect(strategyButton).toHaveAttribute("aria-pressed", "true");
+  expect(startupButton).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByText("Бизнес → Стратегия")).toBeInTheDocument();
+  expect(screen.getByText("Выбрано ✓")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText("Рабочее название"), {
     target: { value: "Operating Book" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+  fireEvent.click(screen.getByRole("button", { name: "Создать проект книги" }));
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Book Contract" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "BOOK OS ведёт по шагам" })).toBeInTheDocument();
+  expect(screen.getAllByText("Опишите идею книги").length).toBeGreaterThan(0);
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
-      request: expect.objectContaining({ method: "POST", path: "/api/projects" }),
+      request: expect.objectContaining({
+        method: "POST",
+        path: "/api/projects",
+        body: expect.objectContaining({ primary_subtype: "Strategy" }),
+      }),
     }),
   );
 });
 
-it("routes Book Contract draft and approval through the token-safe native bridge", async () => {
+it("показывает автору следующий шаг и сохраняет human gate контракта книги", async () => {
   const summary = {
     book_id: project().book_id,
     working_title: project().working_title,
@@ -91,6 +138,8 @@ it("routes Book Contract draft and approval through the token-safe native bridge
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
       const request = (args as { request: { method: string; path: string } }).request;
+      const common = commonGet(request);
+      if (common !== undefined) return common;
       if (request.method === "GET" && request.path === "/api/projects") return [summary];
       if (request.method === "GET" && request.path === `/api/projects/${summary.book_id}`)
         return project("DRAFT");
@@ -103,11 +152,12 @@ it("routes Book Contract draft and approval through the token-safe native bridge
   });
 
   render(<App />);
-  await screen.findByText("Local Core healthy");
+  await screen.findByText("Локальное ядро: работает");
   fireEvent.click(await screen.findByRole("button", { name: /Operating Book/ }));
-  expect(await screen.findByText("DRAFT")).toBeInTheDocument();
+  expect(await screen.findByText("ЧЕРНОВИК")).toBeInTheDocument();
+  expect(screen.getByText("Проверьте предложенный контракт книги")).toBeInTheDocument();
 
-  fireEvent.click(screen.getAllByRole("button", { name: "Save Draft" })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: "Сохранить черновик" })[0]);
   await waitFor(() =>
     expect(invokeMock).toHaveBeenCalledWith(
       "core_api",
@@ -120,8 +170,8 @@ it("routes Book Contract draft and approval through the token-safe native bridge
     ),
   );
 
-  fireEvent.click(screen.getAllByRole("button", { name: "Approve Book Contract" })[0]);
-  expect(await screen.findByText("APPROVED")).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: "Утвердить контракт книги" })[0]);
+  expect(await screen.findByText("УТВЕРЖДЕНО")).toBeInTheDocument();
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({

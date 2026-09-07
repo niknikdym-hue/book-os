@@ -82,9 +82,9 @@ test("starts a pilot only with an explicit human owner", async () => {
   });
 
   render(<PilotPanel project={project} />);
-  const button = await screen.findByText("Start real-book pilot");
+  const button = await screen.findByText("Начать реальный пилот книги");
   expect(button).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Human pilot owner"), { target: { value: "Elena" } });
+  fireEvent.change(screen.getByLabelText("Владелец пилота"), { target: { value: "Elena" } });
   expect(button).toBeEnabled();
   fireEvent.click(button);
   expect(await screen.findByLabelText("Pilot evidence summary")).toHaveTextContent("1/12");
@@ -120,18 +120,18 @@ test("shows fail-closed blockers and zero-call OpenAI preflight", async () => {
   expect(await screen.findByText("LITERARY_MASTER_MISSING")).toBeInTheDocument();
   expect(screen.queryByLabelText("Final human GO NO-GO decision")).not.toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText("Writer model"), { target: { value: "writer-model" } });
-  fireEvent.change(screen.getByLabelText("Evaluator model"), {
+  fireEvent.change(screen.getByLabelText("Модель Writer"), { target: { value: "writer-model" } });
+  fireEvent.change(screen.getByLabelText("Модель Evaluator"), {
     target: { value: "evaluator-model" },
   });
-  fireEvent.change(screen.getByLabelText("Max requests"), { target: { value: "3" } });
-  fireEvent.change(screen.getByLabelText("Max input tokens"), { target: { value: "1000" } });
-  fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "500" } });
-  fireEvent.change(screen.getByLabelText("Max cost USD"), { target: { value: "1.25" } });
-  fireEvent.click(screen.getByText("Check OpenAI readiness — zero calls"));
-  expect(await screen.findByText(/OpenAI credential:/)).toHaveTextContent("AVAILABLE");
-  expect(screen.getByText(/OpenAI credential:/)).toHaveTextContent("external calls: 0");
-  expect(screen.getByText(/OpenAI credential:/)).toHaveTextContent("paid calls: 0");
+  fireEvent.change(screen.getByLabelText("Максимум запросов"), { target: { value: "3" } });
+  fireEvent.change(screen.getByLabelText("Максимум входных токенов"), { target: { value: "1000" } });
+  fireEvent.change(screen.getByLabelText("Максимум выходных токенов"), { target: { value: "500" } });
+  fireEvent.change(screen.getByLabelText("Максимальная стоимость, USD"), { target: { value: "1.25" } });
+  fireEvent.click(screen.getByText("Проверить готовность OpenAI — без запросов"));
+  expect(await screen.findByText(/Ключ OpenAI:/)).toHaveTextContent("AVAILABLE");
+  expect(screen.getByText(/Ключ OpenAI:/)).toHaveTextContent("внешних вызовов: 0");
+  expect(screen.getByText(/Ключ OpenAI:/)).toHaveTextContent("платных вызовов: 0");
 });
 
 test("shows final decision only when evidence is ready and records a HUMAN decision", async () => {
@@ -153,11 +153,11 @@ test("shows final decision only when evidence is ready and records a HUMAN decis
 
   render(<PilotPanel project={project} />);
   expect(await screen.findByLabelText("Final human GO NO-GO decision")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Human actor"), { target: { value: "Elena" } });
-  fireEvent.change(screen.getByLabelText("Human decision reason"), {
+  fireEvent.change(screen.getByLabelText("Кто выполняет действие"), { target: { value: "Elena" } });
+  fireEvent.change(screen.getByLabelText("Причина решения человека"), {
     target: { value: "Quality threshold passed." },
   });
-  fireEvent.click(screen.getByText("Record final human decision"));
+  fireEvent.click(screen.getByText("Зафиксировать финальное решение человека"));
   await waitFor(() =>
     expect(vi.mocked(coreApi)).toHaveBeenCalledWith(
       "POST",
@@ -214,10 +214,10 @@ test("resolves an open categorized observation as HUMAN", async () => {
 
   render(<PilotPanel project={project} />);
   expect(await screen.findByText(/Synthetic false positive/)).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Human actor"), { target: { value: "Elena" } });
-  fireEvent.change(screen.getByLabelText("Human resolution reason"), {
+  fireEvent.change(screen.getByLabelText("Кто выполняет действие"), { target: { value: "Elena" } });
+  fireEvent.change(screen.getByLabelText("Причина закрытия человеком"), {
     target: { value: "Reviewed and dismissed." },
   });
-  fireEvent.click(screen.getByText("Resolve as HUMAN"));
+  fireEvent.click(screen.getByText("Закрыть решением человека"));
   await waitFor(() => expect(screen.queryByText(/Synthetic false positive/)).not.toBeInTheDocument());
 });

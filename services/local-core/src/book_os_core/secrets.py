@@ -13,6 +13,10 @@ class SecretNotFound(RuntimeError):
     pass
 
 
+class SecretWriteError(RuntimeError):
+    pass
+
+
 @dataclass
 class DictSecretStore:
     """In-memory test/development secret store. Never serialize its values."""
@@ -54,3 +58,28 @@ class MacOSKeychainSecretStore:
         if not secret:
             raise SecretNotFound(name)
         return secret
+
+    def set_secret(self, name: str, value: str) -> None:
+        secret = value.strip()
+        if not secret:
+            raise SecretWriteError("secret must not be blank")
+        service = f"{self.service_prefix}.{name}"
+        result = subprocess.run(
+            [
+                "/usr/bin/security",
+                "add-generic-password",
+                "-U",
+                "-a",
+                self.account,
+                "-s",
+                service,
+                "-w",
+                secret,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise SecretWriteError("macOS Keychain refused credential update")
