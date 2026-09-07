@@ -1,11 +1,11 @@
-# BOOK OS — AUDIO-NATIVE AUTHORING, EXISTING-TEXT AUDIO ADAPTATION & SERIES v0.2
+# BOOK OS — AUDIO-NATIVE AUTHORING, EXISTING-TEXT AUDIO ADAPTATION & SERIES v0.2.1
 
 **Status:** ACCEPTED PRODUCT / EDITORIAL DESIGN
-**Version:** 0.2.0
+**Version:** 0.2.1
 **Original decision date:** 2026-09-02
-**Amended:** 2026-09-03
+**Amended:** 2026-09-07
 
-This version supersedes v0.1 inside the still-open authority PR #23. It preserves the accepted audio-native and series design and adds a strict separation between creating a book from zero and creating an audio edition from an existing text book.
+This version supersedes v0.1 inside the still-open authority PR #23. It preserves the accepted audio-native and series design, adds a strict separation between creating a book from zero and preparing recording text from an existing text book, and incorporates the binding universal recording-text output contract from the Owner decision.
 
 ## 1. Product topology: two different workflows, never one selector
 
@@ -21,9 +21,9 @@ Only this workflow has the delivery-profile choice:
 - `AUDIO_FIRST` — planned and written from the first stage for listening;
 - `DUAL_TEXT_AUDIO` — created from the first stage so the same intellectual work is professionally usable in both text and audio editions.
 
-### Workflow B — prepare an audio edition from an existing text book
+### Workflow B — prepare text for recording from an existing text book
 
-The user already has an approved/imported text book. That text is the source authority. BOOK OS derives a separate audio script from an exact source revision.
+The user already has an approved/imported text book. That text is the source authority. BOOK OS derives a separate textual recording script from an exact source revision. Workflow B does not create an audio file, perform narration or execute TTS.
 
 Only this workflow has the audio-adaptation choice:
 
@@ -83,7 +83,7 @@ When a concept genuinely needs a visual object such as a table, chart, formula, 
 
 The core argument must remain understandable without forcing the listener to look at a page.
 
-## 3. Workflow B — audio edition from an existing text book
+## 3. Workflow B — recording script from an existing text book
 
 ### 3.1 Source authority and immutability
 
@@ -302,6 +302,8 @@ Add/retain a first-class evaluation dimension: `LISTENABILITY`.
 
 It should produce evidence with exact locations, never a single magic score.
 
+BookBench vocabulary is normative: the dimension state is `PASS | ATTENTION | BLOCKING`, and finding severity is `INFO | ATTENTION | BLOCKING`. Any `BLOCKING` `LISTENABILITY` dimension or finding blocks release. `ATTENTION` is reviewable and may proceed only through the existing explicit HUMAN finding/waiver decision path; it must never be silently averaged away. Therefore a mandatory `LISTENABILITY` pass means no unresolved `BLOCKING` state or finding and an explicit disposition for every `ATTENTION` finding.
+
 Minimum finding families:
 
 - `VISUAL_DEPENDENCY_UNRESOLVED`;
@@ -350,19 +352,25 @@ A substantially rewritten audio script can be valid. Semantic drift cannot be si
 
 BOOK OS and Audio Studio remain separate products.
 
-### 6.1 Workflow A handoff
+### 6.1 Universal recording-text output contract
+
+Clean UTF-8 `.txt` is the required **output format** for the approved recording text of every audio version: `AUDIO_FIRST`, the audio side of `DUAL_TEXT_AUDIO`, `SOURCE_FAITHFUL` and `LISTENING_ADAPTATION`. Before handoff, the human-approved text must be available as a readable UTF-8 `.txt` payload intended for downstream narration or TTS in Audio Studio.
+
+This is never a required source/import format for an original or existing book; source ingestion is a separate concern. Hashes, provenance, delivery profile or adaptation mode, transformation/coverage maps, authority data, pronunciation metadata and the production-handoff manifest remain separate structured metadata/artifacts and must not pollute the readable TXT.
+
+### 6.2 Workflow A handoff
 
 For `AUDIO_FIRST` and the audio side of `DUAL_TEXT_AUDIO`:
 
-`BOOK OS Literary Master → immutable Production Handoff → Audio Studio → Audio Edition Master`
+`BOOK OS Literary Master → clean UTF-8 TXT recording text + immutable Production Handoff → Audio Studio → Audio Edition Master`
 
 The Literary Master has already passed required literary listenability gates before handoff.
 
-### 6.2 Workflow B handoff
+### 6.3 Workflow B handoff
 
 For an audio edition derived from an existing text book:
 
-`BOOK OS Text Literary Master (immutable source) → BOOK OS AudioScript (derived + human-approved) → immutable Production Handoff → Audio Studio → Audio Edition Master`
+`BOOK OS Text Literary Master (immutable source) → BOOK OS AudioScript (derived + human-approved) → clean UTF-8 TXT recording text + immutable Production Handoff → Audio Studio → Audio Edition Master`
 
 Audio Studio still owns:
 
@@ -375,6 +383,20 @@ Audio Studio still owns:
 - Audio Edition Master.
 
 BOOK OS owns literary/editorial listenability and semantic/source fidelity of the AudioScript.
+
+### 6.4 Immutable release-manifest bindings
+
+The immutable Literary Master or AudioScript release manifest must freeze the exact revision, hash or immutable snapshot of every authority and evaluation input used to justify that release, as applicable:
+
+- delivery profile;
+- approved AudioScript, adaptation mode and exact source identity;
+- every material visual-dependency disposition;
+- series membership, `SeriesContract` and series-order authority;
+- pronunciation/name ledger when release-relevant;
+- the `LISTENABILITY`, `SOURCE_FIDELITY` or `SEMANTIC_FIDELITY` evaluation snapshots, findings and HUMAN waivers used by the gate;
+- applicable `SeriesBench` evaluation snapshots, findings and HUMAN waivers.
+
+These bindings must be recoverable from the immutable release manifest itself. A mutable current object, latest-state lookup or unversioned pointer cannot establish the state that justified release.
 
 BOOK OS handoff should add, when available:
 
@@ -494,7 +516,7 @@ BOOK OS must not start with one mixed audio selector. The user first chooses wha
 **Что вы хотите сделать?**
 
 - `Создать книгу с нуля`;
-- `Подготовить аудиоверсию готовой книги`.
+- `Подготовить текст для аудиозаписи готовой книги`.
 
 These open different workflows and different state machines.
 
@@ -524,7 +546,7 @@ If `Книга в серии`:
 
 ### 11.3 Workflow B — existing-text audio panel
 
-Only after `Подготовить аудиоверсию готовой книги`:
+Only after `Подготовить текст для аудиозаписи готовой книги`:
 
 1. select/import the source text book or exact approved source revision;
 2. show source identity and confirm it will remain unchanged;
@@ -606,7 +628,7 @@ Normal gates + mandatory `LISTENABILITY` pass + zero unresolved blocked visual d
 
 ### Workflow A — `DUAL_TEXT_AUDIO`
 
-Normal gates + mandatory `LISTENABILITY` pass + explicit audio disposition for every material visual dependency.
+Normal gates + mandatory `LISTENABILITY` pass + explicit audio disposition for every material visual dependency + zero unresolved material visual dependencies with disposition `BLOCKED`. An explicit `BLOCKED` disposition does not satisfy release readiness.
 
 ### Workflow B — `SOURCE_FAITHFUL`
 
@@ -647,7 +669,7 @@ This capability does not:
 
 Implementation is complete only when all of the following exist:
 
-1. product entry exposes two separate top-level actions: `Создать книгу с нуля` and `Подготовить аудиоверсию готовой книги`;
+1. product entry exposes two separate top-level actions: `Создать книгу с нуля` and `Подготовить текст для аудиозаписи готовой книги`;
 2. Workflow A alone exposes `Текст / Аудио — основной формат / Текст + аудио`;
 3. Workflow B alone exposes `По оригиналу, с адаптацией для аудио / Сохранить суть и концепцию, переписать для аудио`;
 4. canonical storage persists workflow identity separately from delivery profile/adaptation mode;
@@ -664,7 +686,8 @@ Implementation is complete only when all of the following exist:
 15. Series Memory can inspect prior volumes without chat history;
 16. SeriesBench detects material cross-volume repetition/contradiction;
 17. Literary Master/AudioScript release applies the correct workflow/profile/adaptation/series gates;
-18. Audio handoff includes required workflow/profile-or-adaptation/source/pronunciation/visual-disposition metadata without moving TTS logic upstream;
+18. every `AUDIO_FIRST`, audio side of `DUAL_TEXT_AUDIO`, `SOURCE_FAITHFUL` and `LISTENING_ADAPTATION` handoff includes a separate clean UTF-8 `.txt` recording-text payload; its hashes, provenance, profile/adaptation mode, transformation map, authority, pronunciation and handoff-manifest metadata remain separate;
 19. automated tests cover TEXT_FIRST, AUDIO_FIRST, DUAL_TEXT_AUDIO, SOURCE_FAITHFUL, LISTENING_ADAPTATION, ordered series and unordered series;
 20. tests prove a strongly rewritten `LISTENING_ADAPTATION` can pass when meaning/concept/evidence remain intact and fail when semantic drift is introduced;
-21. no paid/provider calls are made by CI tests.
+21. no paid/provider calls are made by CI tests;
+22. release manifests freeze and can recover the exact applicable profile, AudioScript/source, visual-disposition, series/order/contract, pronunciation-ledger and evaluation/finding/HUMAN-waiver inputs used by the release gate.

@@ -18,22 +18,24 @@ Read in this order:
 4. `decisions/2026-09-06-operation-level-model-routing.md` — Owner decision: no single-model monopoly; route the best executor per editorial operation using task-specific evidence, quality/risk and cost.
 5. `decisions/2026-09-06-author-series-length-style-publishing-controls.md` — Owner pre-pilot decision: Author/Series hierarchy, target length in characters, inspectable Style Profiles with previews, annotation limits and verified platform taxonomy.
 6. `decisions/2026-09-07-series-production-and-chapter-admission.md` — Owner decision: living Series Canon, Book Uniqueness Ledger, Definition Pack, AI-substitution gate, chapter-specific writing admission, mid-book audit, adversarial review and Series Closure.
-7. `IMPLEMENTATION_ROADMAP_v0.2.md` — current execution roadmap.
-8. `tasks/TASK_011_REAL_BOOK_PILOT.md` — current real-book pilot contract and GO/NO-GO evidence rules.
-9. `CORE_ONTOLOGY.md` — first-class entities and invariants.
-10. `PRODUCT_SPEC_v0.1.md` — product scope, user experience and MVP success.
-11. `EDITORIAL_PROTOCOLS_v0.1.md` — Book/Chapter Contracts, agent roles and human acceptance. Interpret any global-writing assumption through the superseding 2026-09-07 chapter-admission decision.
-12. `RESEARCH_AND_CLAIMS_v0.1.md` — Research Engine, Claim Ledger and evidence policy.
-13. `MODEL_GATEWAY_v0.1.md` — provider-neutral execution gateway. Interpret any old regional wording through the superseding 2026-08-29 decision and operation-level routing through the 2026-09-06 Owner decision.
-14. `BOOK_MEMORY_v0.1.md` — whole-book memory and retrieval.
-15. `BOOKBENCH_v0.1.md` — quality/eval system and AI-prose pathology detection.
-16. `TECHNICAL_ARCHITECTURE_v0.1.md` — local-first technical architecture and stack.
-17. `SECURITY_AVAILABILITY_v0.1.md` — security/privacy/backup baseline. Any former Russia-specific launch gate is historical unless reaffirmed by newer authority.
-18. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
-19. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — security, rights, supply-chain, recovery, performance and release hardening.
-20. `TASK_EXECUTION_PROTOCOL_v0.1.md` — task necessity, efficiency, scope, evidence and acceptance rules.
-21. `tasks/` — bounded task history/current contracts.
-22. Recent accepted PRs, exact HEADs, CI runs, review threads and `main`.
+7. `decisions/2026-09-02-audio-native-and-series.md` — binding Owner decision for separate audio workflows and the universal UTF-8 TXT recording-text output contract.
+8. `AUDIO_NATIVE_AND_SERIES_v0.1.md` — accepted detailed audio-native, existing-text recording-script and series design (amendment version 0.2.1; filename preserved).
+9. `IMPLEMENTATION_ROADMAP_v0.2.md` — current execution roadmap.
+10. `tasks/TASK_011_REAL_BOOK_PILOT.md` — current real-book pilot contract and GO/NO-GO evidence rules.
+11. `CORE_ONTOLOGY.md` — first-class entities and invariants.
+12. `PRODUCT_SPEC_v0.1.md` — product scope, user experience and MVP success.
+13. `EDITORIAL_PROTOCOLS_v0.1.md` — Book/Chapter Contracts, agent roles and human acceptance. Interpret any global-writing assumption through the superseding 2026-09-07 chapter-admission decision.
+14. `RESEARCH_AND_CLAIMS_v0.1.md` — Research Engine, Claim Ledger and evidence policy.
+15. `MODEL_GATEWAY_v0.1.md` — provider-neutral execution gateway. Interpret any old regional wording through the superseding 2026-08-29 decision and operation-level routing through the 2026-09-06 Owner decision.
+16. `BOOK_MEMORY_v0.1.md` — whole-book memory and retrieval.
+17. `BOOKBENCH_v0.1.md` — quality/eval system and AI-prose pathology detection.
+18. `TECHNICAL_ARCHITECTURE_v0.1.md` — local-first technical architecture and stack.
+19. `SECURITY_AVAILABILITY_v0.1.md` — security/privacy/backup baseline. Any former Russia-specific launch gate is historical unless reaffirmed by newer authority.
+20. `AUDIO_HANDOFF_v0.1.md` — immutable integration boundary with Audio Studio.
+21. `PRE_IMPLEMENTATION_HARDENING_v0.1.md` — security, rights, supply-chain, recovery, performance and release hardening.
+22. `TASK_EXECUTION_PROTOCOL_v0.1.md` — task necessity, efficiency, scope, evidence and acceptance rules.
+23. `tasks/` — bounded task history/current contracts.
+24. Recent accepted PRs, exact HEADs, CI runs, review threads and `main`.
 
 Chat history is optional working context. It is never authority.
 
@@ -98,7 +100,8 @@ The historical work remains available as salvage evidence only.
 | Versioning / provenance | `CORE_ONTOLOGY.md`, `TECHNICAL_ARCHITECTURE_v0.1.md` |
 | Technology stack / build-vs-buy | `TECHNICAL_ARCHITECTURE_v0.1.md`, `BOOK_OS_AUTHORITY.md` |
 | Security / privacy / recovery | `SECURITY_AVAILABILITY_v0.1.md`, newer explicit decisions |
-| Literary Master / downstream audio | `BOOK_OS_AUTHORITY.md`, `AUDIO_HANDOFF_v0.1.md` |
+| Literary Master / downstream audio | `BOOK_OS_AUTHORITY.md`, `AUDIO_HANDOFF_v0.1.md`, `AUDIO_NATIVE_AND_SERIES_v0.1.md`, `decisions/2026-09-02-audio-native-and-series.md` |
+| Audio-native authoring / existing-text recording scripts / series | `AUDIO_NATIVE_AND_SERIES_v0.1.md`, `decisions/2026-09-02-audio-native-and-series.md` |
 | Current MVP/pilot acceptance | `PROJECT_STATE.md`, `TASK_011_REAL_BOOK_PILOT.md`, `decisions/2026-09-06-author-series-length-style-publishing-controls.md`, `decisions/2026-09-07-series-production-and-chapter-admission.md` |
 | Task necessity / bounded delivery | `TASK_EXECUTION_PROTOCOL_v0.1.md` |
 

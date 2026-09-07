@@ -133,4 +133,4 @@ Existing book projects remain `TEXT_FIRST` + standalone unless the human explici
 
 No TTS-specific transformation may silently mutate a Literary Master or an approved AudioScript.
 
-Detailed design authority: `docs/AUDIO_NATIVE_AND_SERIES_v0.1.md`; this decision amendment is binding where it defines the universal UTF-8 TXT audio-version text output contract.
+Detailed design authority: `docs/AUDIO_NATIVE_AND_SERIES_v0.1.md`, amendment version `0.2.1`; this decision amendment is binding where it defines the universal UTF-8 TXT audio-version text output contract.
