@@ -436,9 +436,7 @@ class OpenAIResponsesAdapter:
             "output_usd_per_million": output_price,
             "long_context_pricing": long_context_pricing,
             "long_context_input_token_threshold": cls._LONG_CONTEXT_INPUT_TOKEN_THRESHOLD,
-            "reasoning_effort": (
-                reasoning.get("effort") if isinstance(reasoning, dict) else None
-            ),
+            "reasoning_effort": (reasoning.get("effort") if isinstance(reasoning, dict) else None),
             "pricing_source_date": cls._PRICING_SOURCE_DATE,
         }
 
