@@ -89,7 +89,7 @@ def test_planner_creates_drafts_only_and_preserves_human_gates(tmp_path: Path) -
     )
     assert contract_run.project.book_contract is not None
     assert contract_run.project.book_contract.status == "DRAFT"
-    assert contract_run.project.book_contract.authority_status is None
+    assert contract_run.project.book_contract.authority_status == "DRAFT"
 
     with pytest.raises(PlanningGateError, match="Book Contract"):
         planner.propose_architecture(
@@ -104,7 +104,7 @@ def test_planner_creates_drafts_only_and_preserves_human_gates(tmp_path: Path) -
     )
     assert architecture_run.project.architecture is not None
     assert architecture_run.project.architecture.status == "DRAFT"
-    assert architecture_run.project.architecture.authority_status is None
+    assert architecture_run.project.architecture.authority_status == "DRAFT"
 
     with pytest.raises(PlanningGateError, match="Architecture"):
         planner.propose_chapter_contract(
@@ -125,4 +125,4 @@ def test_planner_creates_drafts_only_and_preserves_human_gates(tmp_path: Path) -
     )
     assert selected.chapter_contract is not None
     assert selected.chapter_contract.status == "DRAFT"
-    assert selected.chapter_contract.authority_status is None
+    assert selected.chapter_contract.authority_status == "DRAFT"

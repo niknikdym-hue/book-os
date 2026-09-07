@@ -64,7 +64,7 @@ function commonGet(request: { method: string; path: string }) {
   return undefined;
 }
 
-it("показывает локальное ядро и создаёт проект книги через нативный мост", async () => {
+it("показывает реальный каталог тем, отражает выбор и создаёт проект книги", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
@@ -80,22 +80,53 @@ it("показывает локальное ядро и создаёт прое�
   render(<App />);
   expect(await screen.findByText("Локальное ядро: работает")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Создать новую книгу" }));
+
+  const businessButton = screen.getByRole("button", { name: "Бизнес, доступно" });
+  const startupButton = screen.getByRole("button", {
+    name: "Стартапы и создание бизнеса, доступно",
+  });
+  const strategyButton = screen.getByRole("button", { name: "Стратегия, доступно" });
+
+  expect(businessButton).toBeEnabled();
+  expect(startupButton).toBeEnabled();
+  expect(strategyButton).toBeEnabled();
+  expect(startupButton).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.getByRole("button", { name: "Финансы и инвестиции, в разработке" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Психология и саморазвитие, в разработке" }),
+  ).toBeDisabled();
+
+  fireEvent.click(businessButton);
+  fireEvent.click(strategyButton);
+
+  expect(strategyButton).toHaveAttribute("aria-pressed", "true");
+  expect(startupButton).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByText("Бизнес → Стратегия")).toBeInTheDocument();
+  expect(screen.getByText("Выбрано ✓")).toBeInTheDocument();
+
   fireEvent.change(screen.getByLabelText("Рабочее название"), {
     target: { value: "Operating Book" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Создать проект книги" }));
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Контракт книги" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "BOOK OS ведёт по шагам" })).toBeInTheDocument();
+  expect(screen.getAllByText("Опишите идею книги").length).toBeGreaterThan(0);
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
-      request: expect.objectContaining({ method: "POST", path: "/api/projects" }),
+      request: expect.objectContaining({
+        method: "POST",
+        path: "/api/projects",
+        body: expect.objectContaining({ primary_subtype: "Strategy" }),
+      }),
     }),
   );
 });
 
-it("сохраняет и утверждает контракт книги только через token-safe native bridge", async () => {
+it("показывает автору следующий шаг и сохраняет human gate контракта книги", async () => {
   const summary = {
     book_id: project().book_id,
     working_title: project().working_title,
@@ -124,6 +155,7 @@ it("сохраняет и утверждает контракт книги то�
   await screen.findByText("Локальное ядро: работает");
   fireEvent.click(await screen.findByRole("button", { name: /Operating Book/ }));
   expect(await screen.findByText("ЧЕРНОВИК")).toBeInTheDocument();
+  expect(screen.getByText("Проверьте предложенный контракт книги")).toBeInTheDocument();
 
   fireEvent.click(screen.getAllByRole("button", { name: "Сохранить черновик" })[0]);
   await waitFor(() =>

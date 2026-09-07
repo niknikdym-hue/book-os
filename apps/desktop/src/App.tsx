@@ -4,13 +4,20 @@ import { coreApi } from "./api";
 import { AntiJunkPanel } from "./AntiJunkPanel";
 import { ArchitectureEditor } from "./ArchitectureEditor";
 import { BookBenchPanel } from "./BookBenchPanel";
+import { BookJourney } from "./BookJourney";
 import { BookMemoryPanel } from "./BookMemoryPanel";
+import { BookStartPanel } from "./BookStartPanel";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
 import { LaunchPlanningPanel } from "./LaunchPlanningPanel";
 import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
 import { PilotPanel } from "./PilotPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import {
+  BUSINESS_SUBTYPES,
+  subtypeLabel,
+  type BusinessSubtype,
+} from "./bookCatalog";
 import type {
   ArchitectureChapter,
   BookArchitecturePayload,
@@ -20,32 +27,6 @@ import type {
   ProjectSummary,
   ProjectView,
 } from "./types";
-
-const BUSINESS_SUBTYPES = [
-  "Entrepreneurship",
-  "Strategy",
-  "Leadership",
-  "Management",
-  "Teams & Culture",
-  "Marketing & Brand",
-  "Sales & Negotiation",
-  "Finance & Investing",
-  "Product, Innovation & Technology",
-  "Career & Professional Development",
-] as const;
-
-const SUBTYPE_LABELS: Record<(typeof BUSINESS_SUBTYPES)[number], string> = {
-  Entrepreneurship: "Предпринимательство",
-  Strategy: "Стратегия",
-  Leadership: "Лидерство",
-  Management: "Управление",
-  "Teams & Culture": "Команды и культура",
-  "Marketing & Brand": "Маркетинг и бренд",
-  "Sales & Negotiation": "Продажи и переговоры",
-  "Finance & Investing": "Финансы и инвестиции",
-  "Product, Innovation & Technology": "Продукт, инновации и технологии",
-  "Career & Professional Development": "Карьера и профессиональное развитие",
-};
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "ЧЕРНОВИК",
@@ -74,8 +55,8 @@ function stageLabel(value: string) {
   return STAGE_LABELS[value] ?? value.replaceAll("_", " ");
 }
 
-function subtypeLabel(value: string) {
-  return (SUBTYPE_LABELS as Record<string, string>)[value] ?? value;
+function approved(value?: string | null) {
+  return value === "APPROVED" || value === "LOCKED";
 }
 
 const emptyBookContract: BookContractPayload = {
@@ -171,9 +152,7 @@ export function App() {
   const [project, setProject] = useState<ProjectView | null>(null);
   const [showNewBook, setShowNewBook] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [primarySubtype, setPrimarySubtype] = useState<(typeof BUSINESS_SUBTYPES)[number]>(
-    BUSINESS_SUBTYPES[0],
-  );
+  const [primarySubtype, setPrimarySubtype] = useState<BusinessSubtype>(BUSINESS_SUBTYPES[0]);
   const [secondarySubtype, setSecondarySubtype] = useState("");
   const [bookContract, setBookContract] = useState<BookContractPayload>(clone(emptyBookContract));
   const [architecture, setArchitecture] = useState<BookArchitecturePayload>(clone(emptyArchitecture));
@@ -326,6 +305,10 @@ export function App() {
       ? "Локальное ядро недоступно"
       : "Проверка локального ядра…";
 
+  const contractApproved = approved(project?.book_contract?.authority_status);
+  const architectureApproved = approved(project?.architecture?.authority_status);
+  const chapterReady = approved(selectedChapter?.chapter_contract?.authority_status);
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -367,54 +350,18 @@ export function App() {
         </aside>
 
         <section className="content">
-          <AntiJunkPanel />
-
           {showNewBook && (
-            <section className="panel new-book">
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">КНИГА С НУЛЯ</p>
-                  <h2>Новая книга Business Nonfiction</h2>
-                </div>
-                <button className="ghost" onClick={() => setShowNewBook(false)}>
-                  Закрыть
-                </button>
-              </div>
-              <label className="field">
-                <span>Рабочее название</span>
-                <input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} />
-              </label>
-              <div className="two-columns">
-                <label className="field">
-                  <span>Основная категория</span>
-                  <select
-                    value={primarySubtype}
-                    onChange={(event) =>
-                      setPrimarySubtype(event.target.value as (typeof BUSINESS_SUBTYPES)[number])
-                    }
-                  >
-                    {BUSINESS_SUBTYPES.map((value) => (
-                      <option key={value} value={value}>{SUBTYPE_LABELS[value]}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Вторая категория — необязательно</span>
-                  <select
-                    value={secondarySubtype}
-                    onChange={(event) => setSecondarySubtype(event.target.value)}
-                  >
-                    <option value="">Нет</option>
-                    {BUSINESS_SUBTYPES.filter((value) => value !== primarySubtype).map((value) => (
-                      <option key={value} value={value}>{SUBTYPE_LABELS[value]}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <button className="primary" onClick={() => void createProject()} disabled={busy}>
-                Создать проект книги
-              </button>
-            </section>
+            <BookStartPanel
+              newTitle={newTitle}
+              setNewTitle={setNewTitle}
+              primarySubtype={primarySubtype}
+              setPrimarySubtype={setPrimarySubtype}
+              secondarySubtype={secondarySubtype}
+              setSecondarySubtype={setSecondarySubtype}
+              busy={busy}
+              onCreate={() => void createProject()}
+              onClose={() => setShowNewBook(false)}
+            />
           )}
 
           {!project && !showNewBook && (
@@ -422,9 +369,15 @@ export function App() {
               <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО BOOK OS</p>
               <h2>Создайте первую реальную книгу</h2>
               <p>
-                Контракты, архитектура, версии, исследования, решения редактора и качество хранятся
-                локально как состояние проекта книги, а не как память чата.
+                Выберите доступное направление, опишите идею, а дальше BOOK OS будет показывать один
+                следующий шаг: контракт, архитектуру, главы, написание, редактуру и финальную проверку.
               </p>
+              <ol className="hero-steps">
+                <li>Выберите направление и тему.</li>
+                <li>Дайте идею книги своими словами.</li>
+                <li>Проверяйте и утверждайте ключевые предложения BOOK OS.</li>
+                <li>Дойдите по маршруту до Literary Master.</li>
+              </ol>
               <button className="primary" onClick={() => setShowNewBook(true)}>
                 Создать новую книгу
               </button>
@@ -438,7 +391,7 @@ export function App() {
                   <p className="eyebrow">ДЕЛОВОЙ НОН-ФИКШЕН</p>
                   <h2>{project.working_title}</h2>
                   <p className="muted">
-                    {subtypeLabel(project.primary_subtype)}
+                    Бизнес → {subtypeLabel(project.primary_subtype)}
                     {project.secondary_subtype ? ` · ${subtypeLabel(project.secondary_subtype)}` : ""}
                   </p>
                 </div>
@@ -448,82 +401,93 @@ export function App() {
                 </div>
               </section>
 
+              <BookJourney project={project} chapter={selectedChapter} />
               <LaunchPlanningPanel project={project} chapter={selectedChapter} onProject={hydrate} />
 
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">ЧЕЛОВЕЧЕСКОЕ РЕШЕНИЕ 1</p>
-                    <h3>Контракт книги</h3>
+              {project.book_contract && (
+                <section className="panel" id="book-contract">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">ЧЕЛОВЕЧЕСКОЕ РЕШЕНИЕ 1</p>
+                      <h3>Контракт книги</h3>
+                    </div>
+                    <StatusBadge status={project.book_contract.status} />
                   </div>
-                  <StatusBadge status={project.book_contract?.status} />
-                </div>
-                <div className="form-grid">
-                  {(
-                    [
-                      ["reader", "Читатель"],
-                      ["reader_problem", "Проблема читателя"],
-                      ["central_promise", "Главное обещание книги"],
-                      ["central_thesis", "Центральный тезис"],
-                      ["unique_angle", "Уникальный угол"],
-                      ["reader_trajectory", "Траектория читателя"],
-                      ["evidence_policy", "Правила доказательности"],
-                      ["voice_genre_constraints", "Голос и жанровые ограничения"],
-                    ] as const
-                  ).map(([key, label]) => (
+                  <p className="muted">
+                    Проверьте предложение BOOK OS. Исправьте формулировки при необходимости и
+                    утверждайте только тот контракт, по которому действительно хотите писать всю книгу.
+                  </p>
+                  <div className="form-grid">
+                    {(
+                      [
+                        ["reader", "Читатель"],
+                        ["reader_problem", "Проблема читателя"],
+                        ["central_promise", "Главное обещание книги"],
+                        ["central_thesis", "Центральный тезис"],
+                        ["unique_angle", "Уникальный угол"],
+                        ["reader_trajectory", "Траектория читателя"],
+                        ["evidence_policy", "Правила доказательности"],
+                        ["voice_genre_constraints", "Голос и жанровые ограничения"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Field
+                        key={key}
+                        label={label}
+                        value={bookContract[key]}
+                        onChange={(value) =>
+                          setBookContract((current) => ({ ...current, [key]: value }))
+                        }
+                      />
+                    ))}
                     <Field
-                      key={key}
-                      label={label}
-                      value={bookContract[key]}
+                      label="Что книга сознательно не делает"
+                      hint="Один пункт на строку"
+                      value={bookContract.explicit_exclusions.join("\n")}
                       onChange={(value) =>
-                        setBookContract((current) => ({ ...current, [key]: value }))
+                        setBookContract((current) => ({
+                          ...current,
+                          explicit_exclusions: lines(value),
+                        }))
                       }
                     />
-                  ))}
-                  <Field
-                    label="Что книга сознательно не делает"
-                    hint="Один пункт на строку"
-                    value={bookContract.explicit_exclusions.join("\n")}
-                    onChange={(value) =>
-                      setBookContract((current) => ({
-                        ...current,
-                        explicit_exclusions: lines(value),
-                      }))
-                    }
-                  />
-                  <Field
-                    label="Критерии готовности"
-                    hint="Один пункт на строку"
-                    value={bookContract.readiness_criteria.join("\n")}
-                    onChange={(value) =>
-                      setBookContract((current) => ({
-                        ...current,
-                        readiness_criteria: lines(value),
-                      }))
-                    }
+                    <Field
+                      label="Критерии готовности"
+                      hint="Один пункт на строку"
+                      value={bookContract.readiness_criteria.join("\n")}
+                      onChange={(value) =>
+                        setBookContract((current) => ({
+                          ...current,
+                          readiness_criteria: lines(value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="actions">
+                    <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
+                      Сохранить черновик
+                    </button>
+                    <button className="primary" onClick={() => void approveBookContract()} disabled={busy}>
+                      Утвердить контракт книги
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {(contractApproved || project.architecture) && (
+                <div id="architecture">
+                  <ArchitectureEditor
+                    architecture={architecture}
+                    setArchitecture={setArchitecture}
+                    statusBadge={<StatusBadge status={project.architecture?.status} />}
+                    busy={busy}
+                    onSave={() => void saveArchitecture()}
+                    onApprove={() => void approveArchitecture()}
                   />
                 </div>
-                <div className="actions">
-                  <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
-                    Сохранить черновик
-                  </button>
-                  <button className="primary" onClick={() => void approveBookContract()} disabled={busy}>
-                    Утвердить контракт книги
-                  </button>
-                </div>
-              </section>
+              )}
 
-              <ArchitectureEditor
-                architecture={architecture}
-                setArchitecture={setArchitecture}
-                statusBadge={<StatusBadge status={project.architecture?.status} />}
-                busy={busy}
-                onSave={() => void saveArchitecture()}
-                onApprove={() => void approveArchitecture()}
-              />
-
-              {project.chapters.length > 0 && (
-                <section className="panel">
+              {architectureApproved && project.chapters.length > 0 && (
+                <section className="panel" id="chapter-contract">
                   <div className="panel-heading">
                     <div>
                       <p className="eyebrow">ЧЕЛОВЕЧЕСКОЕ РЕШЕНИЕ 3</p>
@@ -531,6 +495,10 @@ export function App() {
                     </div>
                     <StatusBadge status={selectedChapter?.chapter_contract?.status} />
                   </div>
+                  <p className="muted">
+                    Сначала зафиксируйте функцию и границы главы. Только после этого Writer получает
+                    право создавать её систематический черновик.
+                  </p>
                   <label className="field">
                     <span>Глава</span>
                     <select
@@ -603,14 +571,54 @@ export function App() {
                 </section>
               )}
 
-              <DraftingPanel project={project} chapter={selectedChapter} />
-              <ResearchPanel project={project} chapter={selectedChapter} />
-              <BookMemoryPanel project={project} chapter={selectedChapter} />
-              <EditorialPanel project={project} chapter={selectedChapter} />
-              <BookBenchPanel project={project} />
-              <LiteraryMasterPanel project={project} />
-              <PilotPanel project={project} />
+              {chapterReady && <DraftingPanel project={project} chapter={selectedChapter} />}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Проверка фактов и источников</summary>
+                  <ResearchPanel project={project} chapter={selectedChapter} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Редактура книги</summary>
+                  <EditorialPanel project={project} chapter={selectedChapter} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>BookBench · контроль качества</summary>
+                  <BookBenchPanel project={project} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Literary Master · финальная версия</summary>
+                  <LiteraryMasterPanel project={project} />
+                </details>
+              )}
+
+              <details className="utility-drawer">
+                <summary>Настройки текста · Словарь мусора</summary>
+                <AntiJunkPanel />
+              </details>
+
+              <details className="utility-drawer">
+                <summary>Дополнительные инструменты и диагностика</summary>
+                <BookMemoryPanel project={project} chapter={selectedChapter} />
+                <PilotPanel project={project} />
+              </details>
             </>
+          )}
+
+          {!project && (
+            <details className="utility-drawer global-settings">
+              <summary>Настройки текста · Словарь мусора</summary>
+              <AntiJunkPanel />
+            </details>
           )}
         </section>
       </div>

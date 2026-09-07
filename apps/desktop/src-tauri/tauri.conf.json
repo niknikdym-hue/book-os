@@ -1,1 +1,29 @@
-{"productName":"BOOK OS","version":"0.1.0","identifier":"com.bookos.desktop","build":{"beforeDevCommand":"pnpm dev","devUrl":"http://localhost:1420","frontendDist":"../dist"},"app":{"windows":[{"title":"BOOK OS","width":900,"height":620}]},"bundle":{"active":false,"icon":[]}}
+{
+  "productName": "BOOK OS",
+  "version": "0.1.0",
+  "identifier": "com.bookos.desktop",
+  "mainBinaryName": "BOOK OS",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "BOOK OS",
+        "width": 900,
+        "height": 620
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["icons/icon.png"],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

@@ -95,6 +95,7 @@ _SYSTEM_VALUES: tuple[tuple[str, AntiJunkKind], ...] = (
     ("в конечном итоге", "BANNED_TEMPLATE"),
     ("другими словами", "BANNED_TEMPLATE"),
     ("на самом деле", "CONTEXT_REVIEW"),
+    ("по-взрослому", "CONTEXT_REVIEW"),
     ("важно помнить", "BANNED_TEMPLATE"),
     ("следует понимать", "BANNED_TEMPLATE"),
     ("в этом контексте", "BANNED_TEMPLATE"),

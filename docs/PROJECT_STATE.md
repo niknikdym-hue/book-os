@@ -1,8 +1,8 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** REAL BUSINESS NONFICTION PILOT READY — OWNER CREATIVE GATE  
-**Version:** 1.8.0  
-**Date:** 2026-08-31  
+**Status:** TASK 014 ACCEPTED — STACKED DECISIONS RECONCILIATION / REAL BOOK PILOT  
+**Version:** 1.9.0  
+**Date:** 2026-09-07  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
 ## Current phase
@@ -13,19 +13,20 @@ The current execution sequence is governed by:
 
 - `docs/decisions/2026-08-29-global-openai-first.md`;
 - `docs/IMPLEMENTATION_ROADMAP_v0.2.md`;
-- `docs/tasks/TASK_011_REAL_BOOK_PILOT.md`.
+- `docs/tasks/TASK_011_REAL_BOOK_PILOT.md`;
+- the accepted Task 014 launch workspace now merged into `main`.
 
 The former Russia/no-VPN provider-lane requirement is SUPERSEDED and removed from the current program. PR #12 is historical/salvage evidence only and must not be resumed as a launch gate.
 
 ## Canonical main checkpoint
 
-Latest accepted `main` checkpoint after macOS launch hardening:
+Latest accepted `main` checkpoint after Task 014 acceptance:
 
-- merge commit: `b9263e04144219815726b0d25ca234ae5df77ebc`;
-- Task 012 accepted implementation HEAD: `802b955e190f6960ebcec478d0c17750bef459b9`;
-- authoritative Task 012 CI: `33324568459` — all canonical jobs SUCCESS;
-- review threads: resolved;
-- canonical schema: Alembic `0010`.
+- merge commit: `73d3aab9b57604ab8c4dec8a3fec8562008157d4`;
+- Task 014 accepted implementation HEAD: `02ab05e90924a0f9aa7a4c1d201d1c6707bf9a17`;
+- authoritative Task 014 CI: `34098133448` — `local-core`, `desktop`, `tauri-smoke`, `macos-native-launch`, and `secret-scan` all SUCCESS;
+- review threads: 0 unresolved;
+- canonical schema: Alembic `0015`.
 
 ## Accepted milestones
 
@@ -40,6 +41,8 @@ Latest accepted `main` checkpoint after macOS launch hardening:
 - Task 010 — Literary Master + exports — ACCEPTED AND MERGED; accepted HEAD `51e3a97bf67b37a28a0c6c697baa94bcbec6c960`; authoritative CI `33270571416`; merge PR #14 commit `580f0123e50fe9f05a380528da734b3c8f10155a`.
 - **Task 011 tooling — Real Business Nonfiction pilot instrumentation — ACCEPTED AND MERGED:** accepted HEAD `74d292a621def1c729698ff16aca7a981880ed7a`; authoritative CI `33310462832`; draft PR #15 closed without merge solely because of the known ready-for-review connector bug; exact accepted transfer PR #16 merged unchanged; merge commit `017cfe59dca02ef1c482b3560d6462f26629a693`.
 - **Task 012 — macOS launch hardening — ACCEPTED AND MERGED:** accepted HEAD `802b955e190f6960ebcec478d0c17750bef459b9`; authoritative CI `33324568459`; desktop/local-core/Tauri/secret-scan all PASS; two review blockers fixed and resolved; PR #17 merge commit `b9263e04144219815726b0d25ca234ae5df77ebc`.
+- **Task 013 — visible macOS Desktop app — ACCEPTED AND MERGED:** accepted HEAD `8683f86670e9f9ac721c1815989f12972c9e3187`; PR #19 merge commit `4ac6ee06232935fe5acacf68615332d7211aaffe`.
+- **Task 014 — Russian first-book launch workspace — ACCEPTED AND MERGED:** accepted HEAD `02ab05e90924a0f9aa7a4c1d201d1c6707bf9a17`; authoritative CI `34098133448`; all five canonical jobs SUCCESS; zero unresolved review threads; merge commit `73d3aab9b57604ab8c4dec8a3fec8562008157d4`.
 
 Do not return to accepted milestones without a concrete regression.
 
@@ -61,7 +64,14 @@ The system now has:
 - fail-closed Literary Master and deterministic export/handoff;
 - private-local pilot stage/event/observation instrumentation;
 - fail-closed HUMAN-only GO/NO-GO evidence readiness/final decision;
-- macOS startup hardening so Local Core initialization does not block first window rendering and the Python child remains owned through readiness/shutdown.
+- hardened macOS startup and owned Local Core lifecycle;
+- a normal install/update path for `~/Desktop/BOOK OS.app` plus CI proof for both packaged and installed app frontend mount and healthy Local Core;
+- Russian first-book launch workspace with guided author flow and current Alembic schema `0015`;
+- bounded Planner with DRAFT-only generated authority and HUMAN approval gates;
+- in-app OpenAI Keychain setup and fresh explicit paid-call permission with positive per-request cost caps;
+- blind Sol↔Astra Book Contract comparison with hidden model identity until human preference is recorded;
+- fail-closed GPT-5.6 long-context pricing guard: requests above the 272K estimated-input threshold use conservative 2× input / 1.5× output pricing before HTTP, with deterministic zero-HTTP over-cap regression coverage;
+- anti-junk/negative-first enforcement, including context-review distinctions, without weakening human authority.
 
 ## Literary Master capability
 
@@ -80,7 +90,7 @@ BOOK OS has a fail-closed final release capability that:
 
 Task 011 **tooling** is accepted. This does **not** mean BOOK OS product GO has been declared.
 
-The remaining validation is the actual private real-book pilot. Evidence is not complete until one real book reaches LOCKED Literary Master and the human Owner records `GO | CONDITIONAL_GO | NO_GO` from the resulting evidence.
+The remaining product validation is the actual private real-book pilot. Evidence is not complete until one real book reaches LOCKED Literary Master and the human Owner records `GO | CONDITIONAL_GO | NO_GO` from the resulting evidence.
 
 The real manuscript, research corpus and private evaluation content remain local/private and are never committed to the public repository.
 
@@ -101,15 +111,15 @@ No Yandex/GigaChat live promotion is required. No regional provider lane blocks 
 
 ## Current critical path
 
-`real Business Nonfiction pilot → Literary Master → HUMAN GO/CONDITIONAL_GO/NO_GO`
+`reconcile open stacked authority/UX work against accepted Task 014 main → real Business Nonfiction pilot → Literary Master → HUMAN GO/CONDITIONAL_GO/NO_GO`
 
-There is **no additional infrastructure milestone** required before starting the first complete book unless a concrete regression is discovered during the pilot.
+The open stacked PRs #21, #22 and #23 are not accepted merely because Task 014 is merged. They must be rebased/normalized against current `main` and reviewed independently. This reconciliation is not a new infrastructure milestone and must not weaken the real-book pilot priority.
 
 ## Immediate next permitted action
 
-Start one real new Business Nonfiction project in the accepted local BOOK OS desktop and record the private pilot against that book.
+Reconcile the open stacked PRs #21, #22 and #23 against accepted `main` without importing stale Task 014 assumptions, then proceed to one real new Business Nonfiction project in the accepted local BOOK OS desktop and record the private pilot against that book.
 
-The first genuine Owner input gate is creative, not technical:
+For the actual pilot, the genuine Owner input gate remains creative:
 
 - confirm/select the real book idea;
 - confirm the intended reader.
@@ -139,6 +149,8 @@ The actual pilot must measure more than code-path completion:
 Task 010 was developed and accepted in draft PR #13. The connected GitHub ready-for-review GraphQL action failed on a platform schema error, so accepted exact HEAD `51e3a97...` was transferred unchanged to non-draft PR #14 solely to complete the merge.
 
 Task 011 used the same validated transfer pattern after the same connector bug: draft PR #15 was closed without merge and exact accepted HEAD `74d292a...` was transferred unchanged to PR #16 and merged.
+
+Task 014 final delivery used a Central Brain Git-object transport because Codex repeatedly produced the correct narrow four-file fix locally but lacked an authenticated GitHub push path. The transported blobs exactly matched the Codex-reviewed target blobs before the atomic branch commit.
 
 ## Superseded former M8
 
@@ -170,6 +182,15 @@ No regional provider availability blocks the real-book pilot or GO/NO-GO.
 - paid/model calls require an explicit bounded pilot budget before execution.
 
 ## Change log
+
+### 1.9.0 — 2026-09-07
+- Recorded Task 013 visible macOS Desktop app as ACCEPTED AND MERGED; accepted HEAD `8683f86670e9f9ac721c1815989f12972c9e3187`, merge `4ac6ee06232935fe5acacf68615332d7211aaffe`.
+- Recorded Task 014 Russian first-book launch workspace as ACCEPTED AND MERGED; accepted HEAD `02ab05e90924a0f9aa7a4c1d201d1c6707bf9a17`, authoritative CI `34098133448`, merge `73d3aab9b57604ab8c4dec8a3fec8562008157d4`.
+- Advanced canonical schema checkpoint to `0015`.
+- Recorded the fail-closed GPT-5.6 >272K cost tier guard and deterministic pre-HTTP over-cap regression.
+- Restored and proved both packaged and installed Desktop-app launch/readiness behavior.
+- Preserved blind Sol↔Astra comparison, anti-junk/CONTEXT_REVIEW, Planner DRAFT/HUMAN gates, Keychain and paid-call protections.
+- Set the next repository action to bounded reconciliation of open stacked PRs #21/#22/#23 before the real-book pilot proceeds.
 
 ### 1.8.0 — 2026-08-31
 - Recorded Task 011 pilot tooling as ACCEPTED AND MERGED via exact accepted transfer PR #16; accepted HEAD `74d292a621def1c729698ff16aca7a981880ed7a`, CI `33310462832`, merge `017cfe59dca02ef1c482b3560d6462f26629a693`.
