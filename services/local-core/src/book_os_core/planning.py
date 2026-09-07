@@ -194,9 +194,9 @@ class PlanningService:
         authority_inputs: list[AuthorityInputRef],
         authoritative_context: dict[str, Any],
         request_payload: dict[str, Any],
-        reasoning_effort: ReasoningEffort | None,
         max_output_tokens: int,
         max_cost_usd: float,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, Any], str | None]:
         engine = self._engine(book_id)
         run_id = new_ulid()
@@ -281,9 +281,9 @@ class PlanningService:
                 "reader_hint": request.reader_hint.strip(),
             },
             request_payload=request.model_dump(mode="json"),
-            reasoning_effort=request.reasoning_effort,
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
+            reasoning_effort=request.reasoning_effort,
         )
         try:
             proposal = BookContractProposalOutput.model_validate(raw)
@@ -350,9 +350,9 @@ class PlanningService:
                 "planning_note": request.planning_note.strip(),
             },
             request_payload=request.model_dump(mode="json"),
-            reasoning_effort=request.reasoning_effort,
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
+            reasoning_effort=request.reasoning_effort,
         )
         try:
             proposal = BookArchitectureProposalOutput.model_validate(raw)
@@ -462,9 +462,9 @@ class PlanningService:
                 "planning_note": request.planning_note.strip(),
             },
             request_payload=request.model_dump(mode="json"),
-            reasoning_effort=request.reasoning_effort,
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
+            reasoning_effort=request.reasoning_effort,
         )
         try:
             proposal = ChapterContractProposalOutput.model_validate(raw)
