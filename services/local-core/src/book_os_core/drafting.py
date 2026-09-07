@@ -19,6 +19,7 @@ from .model_gateway import (
     ModelGateway,
     ModelOutputError,
     ModelTaskRequest,
+    ReasoningEffort,
     SectionDraftOutput,
 )
 from .model_gateway_anti_junk import AntiJunkModelGateway
@@ -41,6 +42,7 @@ class DraftSectionRequest(BaseModel):
     model: str | None = None
     selection_mode: Literal["AUTO", "MANUAL"] = "AUTO"
     selection_scope: Literal["OPERATION", "BOOK"] | None = None
+    reasoning_effort: ReasoningEffort | None = None
     untrusted_context: list[str] = Field(default_factory=list)
     max_output_tokens: int = Field(default=3500, ge=100, le=12000)
     max_cost_usd: float | None = Field(default=None, ge=0)
@@ -56,6 +58,7 @@ class DraftRunView(BaseModel):
     selection_mode: str = "AUTO"
     selection_scope: str | None = None
     routing_rationale: str | None = None
+    reasoning_effort: ReasoningEffort | None = None
     prompt_id: str
     prompt_version: str
     prompt_hash: str
@@ -141,6 +144,17 @@ class DraftingService:
             "max_characters": context.max_characters,
             "characters_unit": context.characters_unit,
         }
+
+    @staticmethod
+    def _reasoning_from_usage(
+        usage: dict[str, Any], requested: ReasoningEffort | None = None
+    ) -> ReasoningEffort | None:
+        guard = usage.get("cost_guard")
+        if isinstance(guard, dict):
+            effort = guard.get("reasoning_effort")
+            if effort in {"low", "medium", "high", "xhigh", "max"}:
+                return cast(ReasoningEffort, effort)
+        return requested
 
     def generate_section_draft(
         self, book_id: str, chapter_id: str, request: DraftSectionRequest
@@ -277,8 +291,10 @@ class DraftingService:
                     "selection_mode": choice.selection_mode,
                     "selection_scope": choice.selection_scope,
                     "routing_rationale": choice.rationale,
+                    "requested_reasoning_effort": request.reasoning_effort,
                     "book_context_hashes": context_hashes,
                 },
+                reasoning_effort=request.reasoning_effort,
                 max_output_tokens=request.max_output_tokens,
                 max_cost_usd=request.max_cost_usd,
             )
@@ -344,6 +360,7 @@ class DraftingService:
         }
         serialized = canonical_json(revision_payload)
         digest = content_hash(revision_payload)
+        reasoning_effort = self._reasoning_from_usage(result.usage, model_request.reasoning_effort)
         transformation = canonical_json(
             {
                 "run_id": run_id,
@@ -354,6 +371,7 @@ class DraftingService:
                 "selection_mode": choice.selection_mode,
                 "selection_scope": choice.selection_scope,
                 "routing_rationale": choice.rationale,
+                "reasoning_effort": reasoning_effort,
                 "book_context_hashes": cast(
                     dict[str, JSONValue], model_request.task_payload.get("book_context_hashes", {})
                 ),
@@ -488,6 +506,7 @@ class DraftingService:
             selection_mode=choice.selection_mode,
             selection_scope=choice.selection_scope,
             routing_rationale=choice.rationale,
+            reasoning_effort=reasoning_effort,
             prompt_id=model_request.prompt_id,
             prompt_version=model_request.prompt_version,
             prompt_hash=model_request.prompt_hash,
@@ -569,6 +588,7 @@ class DraftingService:
                     content = cast(dict[str, Any], revision["content"])
                     text_value = cast(str | None, content.get("text"))
                     notes = cast(list[str], content.get("notes", []))
+                usage = json.loads(cast(str, row["usage_json"]))
                 results.append(
                     DraftRunView(
                         task_id=cast(str, row["task_id"]),
@@ -580,6 +600,7 @@ class DraftingService:
                         selection_mode=cast(str, row["selection_mode"]),
                         selection_scope=cast(str | None, row["selection_scope"]),
                         routing_rationale=cast(str | None, row["routing_rationale"]),
+                        reasoning_effort=self._reasoning_from_usage(usage),
                         prompt_id=cast(str, row["prompt_id"]),
                         prompt_version=cast(str, row["prompt_version"]),
                         prompt_hash=cast(str, row["prompt_hash"]),
@@ -592,7 +613,7 @@ class DraftingService:
                         text=text_value,
                         notes=notes,
                         provider_run_id=cast(str | None, row["provider_run_id"]),
-                        usage=json.loads(cast(str, row["usage_json"])),
+                        usage=usage,
                         error_code=cast(str | None, row["error_code"]),
                         error_message=cast(str | None, row["error_message"]),
                     )

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .book_context import BookContextService
-from .model_gateway import AuthorityInputRef, ModelGateway
+from .model_gateway import AuthorityInputRef, ModelGateway, ReasoningEffort
 from .planning import PlanningGateError, PlanningService
 from .prompts import PromptTemplate
 
@@ -59,6 +59,7 @@ class ContextAwarePlanningService(PlanningService):
         request_payload: dict[str, Any],
         max_output_tokens: int,
         max_cost_usd: float,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, Any], str | None]:
         book_context = self._book_context_payload(book_id)
         return super()._run(
@@ -100,4 +101,5 @@ class ContextAwarePlanningService(PlanningService):
             },
             max_output_tokens=max_output_tokens,
             max_cost_usd=max_cost_usd,
+            reasoning_effort=reasoning_effort,
         )
