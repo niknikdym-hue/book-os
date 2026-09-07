@@ -86,6 +86,7 @@ def test_openai_responses_adapter_is_mocked_structured_and_secret_safe() -> None
     assert body["model"] == "test-model"
     assert body["text"]["format"]["type"] == "json_schema"
     assert body["text"]["format"]["strict"] is True
+    assert "reasoning" not in body
     serialized = json.dumps(body)
     assert "super-secret-test-value" not in serialized
     assert "IGNORE ALL RULES" in serialized
@@ -127,7 +128,7 @@ def test_openai_long_context_pricing_blocks_before_http() -> None:
     )
     bounded = request("openai", "gpt-5.6-sol").model_copy(
         update={
-            "authoritative_context": ["x" * 272_000],
+            "authoritative_context": {"chapter_contract": {"blob": "x" * 272_000}},
             "max_output_tokens": 1000,
             "max_cost_usd": 1.50,
         }
@@ -167,7 +168,8 @@ def test_openai_cost_cap_allows_bounded_call_and_records_audit() -> None:
     assert guard["max_cost_usd"] == 0.50
     assert guard["preflight_upper_bound_usd"] <= 0.50
     assert guard["estimated_actual_cost_usd"] == 0.006
-    assert guard["pricing_source_date"] == "2026-09-03"
+    assert guard["reasoning_effort"] is None
+    assert guard["pricing_source_date"] == "2026-09-07"
 
 
 def test_openai_cost_cap_rejects_unpriced_model_before_http() -> None:
@@ -187,6 +189,122 @@ def test_openai_cost_cap_rejects_unpriced_model_before_http() -> None:
     )
 
     with pytest.raises(ModelBudgetError, match="unpriced OpenAI model"):
+        adapter.generate(bounded, SECTION_DRAFT_V1)
+    assert calls == []
+
+
+def test_openai_astra_defaults_to_high_reasoning_and_records_official_pricing() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(http_request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp_astra_ok",
+                "output_text": json.dumps({"text": "Astra draft", "notes": []}),
+                "usage": {"input_tokens": 1000, "output_tokens": 100},
+            },
+        )
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "astra-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "gpt-6-astra").model_copy(
+        update={"max_output_tokens": 1000, "max_cost_usd": 0.50}
+    )
+    result = adapter.generate(bounded, SECTION_DRAFT_V1)
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["model"] == "gpt-6-astra"
+    assert body["reasoning"] == {"effort": "high"}
+    guard = result.usage["cost_guard"]
+    assert guard["input_usd_per_million"] == 10.0
+    assert guard["output_usd_per_million"] == 50.0
+    assert guard["reasoning_effort"] == "high"
+    assert guard["estimated_actual_cost_usd"] == 0.015
+    assert guard["pricing_source_date"] == "2026-09-07"
+    assert OpenAIResponsesAdapter.pricing_registered("gpt-6-astra") is True
+
+
+def test_openai_astra_explicit_reasoning_override_is_emitted() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(http_request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp_astra_xhigh",
+                "output_text": json.dumps({"text": "Astra draft", "notes": []}),
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            },
+        )
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "astra-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "gpt-6-astra").model_copy(
+        update={
+            "reasoning_effort": "xhigh",
+            "max_output_tokens": 500,
+            "max_cost_usd": 0.50,
+        }
+    )
+    adapter.generate(bounded, SECTION_DRAFT_V1)
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["reasoning"] == {"effort": "xhigh"}
+
+
+def test_openai_astra_cost_cap_blocks_before_http() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        calls.append(http_request)
+        return httpx.Response(500)
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "astra-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "gpt-6-astra").model_copy(
+        update={"max_output_tokens": 2600, "max_cost_usd": 0.01}
+    )
+
+    with pytest.raises(ModelBudgetError, match="exceeds cap"):
+        adapter.generate(bounded, SECTION_DRAFT_V1)
+    assert calls == []
+
+
+def test_openai_astra_long_context_tier_blocks_before_http() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        calls.append(http_request)
+        return httpx.Response(500)
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "astra-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "gpt-6-astra").model_copy(
+        update={
+            "authoritative_context": {"chapter_contract": {"blob": "x" * 272_000}},
+            "max_output_tokens": 1000,
+            "max_cost_usd": 3.0,
+        }
+    )
+
+    with pytest.raises(ModelBudgetError, match="exceeds cap"):
         adapter.generate(bounded, SECTION_DRAFT_V1)
     assert calls == []
 
