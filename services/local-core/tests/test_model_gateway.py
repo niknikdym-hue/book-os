@@ -113,6 +113,31 @@ def test_openai_cost_cap_blocks_before_http_when_worst_case_exceeds_cap() -> Non
     assert calls == []
 
 
+def test_openai_long_context_pricing_blocks_before_http() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        calls.append(http_request)
+        return httpx.Response(500)
+
+    adapter = OpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "budget-test-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+    bounded = request("openai", "gpt-5.6-sol").model_copy(
+        update={
+            "authoritative_context": ["x" * 272_000],
+            "max_output_tokens": 1000,
+            "max_cost_usd": 1.50,
+        }
+    )
+
+    with pytest.raises(ModelBudgetError, match="exceeds cap"):
+        adapter.generate(bounded, SECTION_DRAFT_V1)
+    assert calls == []
+
+
 def test_openai_cost_cap_allows_bounded_call_and_records_audit() -> None:
     calls: list[httpx.Request] = []
 

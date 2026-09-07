@@ -301,6 +301,9 @@ class OpenAIResponsesAdapter:
         "gpt-5.6-luna": (0.2, 1.2),
     }
     _INPUT_TOKEN_OVERHEAD = 4096
+    _LONG_CONTEXT_INPUT_TOKEN_THRESHOLD = 272_000
+    _LONG_CONTEXT_INPUT_PRICE_MULTIPLIER = 2.0
+    _LONG_CONTEXT_OUTPUT_PRICE_MULTIPLIER = 1.5
 
     def __init__(
         self,
@@ -389,6 +392,10 @@ class OpenAIResponsesAdapter:
             body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
         input_token_upper_bound = len(serialized) + cls._INPUT_TOKEN_OVERHEAD
+        long_context_pricing = input_token_upper_bound > cls._LONG_CONTEXT_INPUT_TOKEN_THRESHOLD
+        if long_context_pricing:
+            input_price *= cls._LONG_CONTEXT_INPUT_PRICE_MULTIPLIER
+            output_price *= cls._LONG_CONTEXT_OUTPUT_PRICE_MULTIPLIER
         preflight_upper_bound_usd = (
             input_token_upper_bound * input_price + request.max_output_tokens * output_price
         ) / 1_000_000
@@ -404,6 +411,8 @@ class OpenAIResponsesAdapter:
             "max_output_tokens": request.max_output_tokens,
             "input_usd_per_million": input_price,
             "output_usd_per_million": output_price,
+            "long_context_pricing": long_context_pricing,
+            "long_context_input_token_threshold": cls._LONG_CONTEXT_INPUT_TOKEN_THRESHOLD,
             "pricing_source_date": cls._PRICING_SOURCE_DATE,
         }
 

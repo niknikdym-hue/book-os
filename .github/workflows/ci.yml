@@ -57,7 +57,7 @@ jobs:
       - name: Build production macOS app bundle
         working-directory: apps/desktop
         run: pnpm tauri build --bundles app
-      - name: Launch packaged app and verify frontend plus local core
+      - name: Launch packaged and installed Desktop apps with frontend plus local core
         env:
           RUST_BACKTRACE: '1'
         run: |
@@ -67,6 +67,11 @@ jobs:
           FRONTEND_MARKER="$RUNNER_TEMP/book-os-frontend-ready"
           CORE_MARKER="$RUNNER_TEMP/book-os-core-ready"
           CORE_STARTUP_LOG="$HOME/Library/Application Support/com.bookos.desktop/local-core-startup.log"
+          DESKTOP_APP="$HOME/Desktop/BOOK OS.app"
+          DESKTOP_EXEC="$DESKTOP_APP/Contents/MacOS/BOOK OS"
+          DESKTOP_LOG="$RUNNER_TEMP/book-os-desktop-launch.log"
+          DESKTOP_FRONTEND_MARKER="$RUNNER_TEMP/book-os-desktop-frontend-ready"
+          DESKTOP_CORE_MARKER="$RUNNER_TEMP/book-os-desktop-core-ready"
 
           dump_logs() {
             echo "=== BOOK OS NATIVE LOG ==="
@@ -115,6 +120,49 @@ jobs:
           grep -F "healthy" "$CORE_MARKER"
           grep -F "BOOK OS frontend ready" "$LOG"
           grep -F "BOOK OS local core healthy" "$LOG"
+          cat "$CORE_STARTUP_LOG"
+
+          test -x "$DESKTOP_EXEC"
+          /usr/bin/plutil -lint "$DESKTOP_APP/Contents/Info.plist"
+          /usr/bin/codesign --verify --deep --strict "$DESKTOP_APP"
+          grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$LOG"
+
+          cleanup
+          rm -f "$DESKTOP_FRONTEND_MARKER" "$DESKTOP_CORE_MARKER" "$CORE_STARTUP_LOG"
+
+          BOOK_OS_FRONTEND_READY_FILE="$DESKTOP_FRONTEND_MARKER" \
+          BOOK_OS_CORE_READY_FILE="$DESKTOP_CORE_MARKER" \
+          "$DESKTOP_EXEC" >"$DESKTOP_LOG" 2>&1 &
+          PID=$!
+
+          for _ in {1..300}; do
+            if [ -s "$DESKTOP_FRONTEND_MARKER" ] && [ -s "$DESKTOP_CORE_MARKER" ]; then
+              break
+            fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              LOG="$DESKTOP_LOG" dump_logs
+              echo "Installed BOOK OS Desktop app exited before frontend/core readiness"
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          if [ ! -s "$DESKTOP_FRONTEND_MARKER" ]; then
+            LOG="$DESKTOP_LOG" dump_logs
+            echo "Installed BOOK OS Desktop app stayed alive but the frontend never mounted"
+            exit 1
+          fi
+          if [ ! -s "$DESKTOP_CORE_MARKER" ]; then
+            LOG="$DESKTOP_LOG" dump_logs
+            echo "Installed BOOK OS Desktop app stayed alive but the local core never became healthy"
+            exit 1
+          fi
+
+          grep -F "ready" "$DESKTOP_FRONTEND_MARKER"
+          grep -F "healthy" "$DESKTOP_CORE_MARKER"
+          grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$DESKTOP_LOG"
+          grep -F "BOOK OS frontend ready" "$DESKTOP_LOG"
+          grep -F "BOOK OS local core healthy" "$DESKTOP_LOG"
           cat "$CORE_STARTUP_LOG"
   secret-scan:
     runs-on: ubuntu-latest
