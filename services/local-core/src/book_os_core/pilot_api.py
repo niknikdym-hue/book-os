@@ -7,6 +7,10 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .anti_junk import AntiJunkService
+from .launch_api import build_launch_router
+from .model_gateway import ModelGateway, OpenAIResponsesAdapter
+from .model_gateway_anti_junk import AntiJunkModelGateway
 from .pilot import (
     FinalDecision,
     PilotError,
@@ -49,6 +53,12 @@ class PilotFinalDecisionRequest(BaseModel):
 def build_pilot_router(data_dir: Path, require_token: Callable[..., None]) -> APIRouter:
     service = PilotService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
+    anti_junk = AntiJunkService(data_dir)
+    launch_gateway = AntiJunkModelGateway(
+        ModelGateway({"openai": OpenAIResponsesAdapter(MacOSKeychainSecretStore())}),
+        anti_junk,
+    )
+    router.include_router(build_launch_router(data_dir, require_token, launch_gateway))
 
     def raise_http(exc: PilotError) -> None:
         if isinstance(exc, PilotNotFound):

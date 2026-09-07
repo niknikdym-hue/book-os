@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from .anti_junk import AntiJunkService
 from .authority import AuthorityService, canonical_json, content_hash, new_ulid
 from .authority_types import JSONValue, utc_now
+from .book_context import BookContextService
 from .db import create_database
 from .model_gateway import (
     AuthorityInputRef,
@@ -20,8 +21,10 @@ from .model_gateway import (
     ModelTaskRequest,
     SectionDraftOutput,
 )
-from .prompts import SECTION_DRAFT_V1
+from .model_gateway_anti_junk import AntiJunkModelGateway
+from .model_routing import PROVIDERS, ModelRoutingService, RoutingChoice
 from .projects import ProjectService
+from .prompts import SECTION_DRAFT_V1
 
 
 class DraftingError(RuntimeError):
@@ -36,6 +39,8 @@ class DraftSectionRequest(BaseModel):
     section_objective: str = Field(min_length=1, max_length=4000)
     provider: str = "openai"
     model: str | None = None
+    selection_mode: Literal["AUTO", "MANUAL"] = "AUTO"
+    selection_scope: Literal["OPERATION", "BOOK"] | None = None
     untrusted_context: list[str] = Field(default_factory=list)
     max_output_tokens: int = Field(default=3500, ge=100, le=12000)
     max_cost_usd: float | None = Field(default=None, ge=0)
@@ -48,6 +53,9 @@ class DraftRunView(BaseModel):
     run_status: str
     provider: str
     model: str
+    selection_mode: str = "AUTO"
+    selection_scope: str | None = None
+    routing_rationale: str | None = None
     prompt_id: str
     prompt_version: str
     prompt_hash: str
@@ -68,21 +76,71 @@ class DraftRunView(BaseModel):
 class DraftingService:
     def __init__(self, data_dir: Path, gateway: ModelGateway):
         self._projects = ProjectService(data_dir)
-        self._gateway = gateway
+        self._gateway = AntiJunkModelGateway(gateway, AntiJunkService(data_dir))
+        self._routing = ModelRoutingService(data_dir)
+        self._contexts = BookContextService(data_dir)
 
     def _engine(self, book_id: str) -> Engine:
         self._projects.get_project(book_id)
         return create_database(self._projects.projects_dir / book_id / "project.sqlite")
 
     @staticmethod
-    def _resolved_model(request: DraftSectionRequest) -> str:
-        if request.model and request.model.strip():
-            return request.model.strip()
-        if request.provider == "openai":
-            configured = os.environ.get("BOOK_OS_OPENAI_MODEL", "").strip()
-            if configured:
-                return configured
-        raise DraftingGateError("model must be explicitly selected/configured")
+    def _test_or_custom_choice(request: DraftSectionRequest) -> RoutingChoice:
+        if not request.model or not request.model.strip():
+            raise DraftingGateError(
+                "model must be explicitly selected for an unregistered provider"
+            )
+        return RoutingChoice(
+            provider=request.provider,
+            provider_label=request.provider,
+            model=request.model.strip(),
+            selection_mode="MANUAL",
+            selection_scope="OPERATION",
+            operation="SECTION_DRAFT",
+            rationale="Explicit unregistered adapter used outside the product provider registry",
+        )
+
+    def _resolve_choice(self, book_id: str, request: DraftSectionRequest) -> RoutingChoice:
+        if request.provider not in PROVIDERS:
+            return self._test_or_custom_choice(request)
+        return self._routing.resolve(
+            book_id,
+            "SECTION_DRAFT",
+            provider=request.provider,
+            selection_mode=request.selection_mode,
+            selection_scope=request.selection_scope,
+            model=request.model,
+        )
+
+    def _book_context_payload(self, book_id: str, *, required: bool) -> dict[str, Any] | None:
+        context = self._contexts.get_context(book_id)
+        if not context.ready_for_planning:
+            if required:
+                raise DraftingGateError(
+                    "approved Author/Style context and target length are required before Writer"
+                )
+            return None
+        return {
+            "author_profile": (
+                context.author_profile.model_dump(mode="json")
+                if context.author_profile is not None
+                else None
+            ),
+            "series_profile": (
+                context.series_profile.model_dump(mode="json")
+                if context.series_profile is not None
+                else None
+            ),
+            "style_profile": (
+                context.style_profile.model_dump(mode="json")
+                if context.style_profile is not None
+                else None
+            ),
+            "target_characters": context.target_characters,
+            "min_characters": context.min_characters,
+            "max_characters": context.max_characters,
+            "characters_unit": context.characters_unit,
+        }
 
     def generate_section_draft(
         self, book_id: str, chapter_id: str, request: DraftSectionRequest
@@ -90,11 +148,14 @@ class DraftingService:
         engine = self._engine(book_id)
         authority = AuthorityService(engine)
         prompt = SECTION_DRAFT_V1
-        model = self._resolved_model(request)
-        now = utc_now()
         task_id = new_ulid()
         run_id = new_ulid()
         try:
+            choice = self._resolve_choice(book_id, request)
+            book_context = self._book_context_payload(
+                book_id, required=choice.provider in PROVIDERS
+            )
+            now = utc_now()
             with engine.connect() as connection:
                 chapter = (
                     connection.execute(
@@ -152,27 +213,53 @@ class DraftingService:
                 connection.execute(
                     text(
                         "INSERT INTO model_runs(run_id,task_id,provider,model,status,prompt_id,"
-                        "prompt_version,prompt_hash,usage_json,created_at) VALUES (:run_id,:task_id,"
-                        ":provider,:model,'RUNNING',:prompt_id,:prompt_version,:prompt_hash,'{}',:created_at)"
+                        "prompt_version,prompt_hash,usage_json,selection_mode,selection_scope,"
+                        "routing_rationale,created_at) VALUES (:run_id,:task_id,:provider,:model,"
+                        "'RUNNING',:prompt_id,:prompt_version,:prompt_hash,'{}',:selection_mode,"
+                        ":selection_scope,:routing_rationale,:created_at)"
                     ),
                     {
                         "run_id": run_id,
                         "task_id": task_id,
-                        "provider": request.provider,
-                        "model": model,
+                        "provider": choice.provider,
+                        "model": choice.model,
                         "prompt_id": prompt.prompt_id,
                         "prompt_version": prompt.version,
                         "prompt_hash": prompt.prompt_hash,
+                        "selection_mode": choice.selection_mode,
+                        "selection_scope": choice.selection_scope,
+                        "routing_rationale": choice.rationale,
                         "created_at": now,
                     },
                 )
+
+            context_hashes = {
+                "author_profile_hash": (
+                    book_context["author_profile"]["content_hash"]
+                    if book_context and book_context["author_profile"]
+                    else None
+                ),
+                "series_profile_hash": (
+                    book_context["series_profile"]["content_hash"]
+                    if book_context and book_context["series_profile"]
+                    else None
+                ),
+                "style_profile_hash": (
+                    book_context["style_profile"]["content_hash"]
+                    if book_context and book_context["style_profile"]
+                    else None
+                ),
+            }
+            authoritative_context: dict[str, Any] = {"chapter_contract": contract_content}
+            if book_context is not None:
+                authoritative_context["book_context"] = book_context
 
             model_request = ModelTaskRequest(
                 task_id=task_id,
                 task_type="SECTION_DRAFT",
                 role="WRITER",
-                provider=request.provider,
-                model=model,
+                provider=choice.provider,
+                model=choice.model,
                 prompt_id=prompt.prompt_id,
                 prompt_version=prompt.version,
                 prompt_hash=prompt.prompt_hash,
@@ -184,8 +271,14 @@ class DraftingService:
                         entity_type="chapter.contract",
                     )
                 ],
-                authoritative_context={"chapter_contract": contract_content},
+                authoritative_context=authoritative_context,
                 untrusted_context=request.untrusted_context,
+                task_payload={
+                    "selection_mode": choice.selection_mode,
+                    "selection_scope": choice.selection_scope,
+                    "routing_rationale": choice.rationale,
+                    "book_context_hashes": context_hashes,
+                },
                 max_output_tokens=request.max_output_tokens,
                 max_cost_usd=request.max_cost_usd,
             )
@@ -217,6 +310,7 @@ class DraftingService:
                 model_request=model_request,
                 result=result,
                 output=output,
+                choice=choice,
             )
         except Exception as exc:
             self._persist_failure(engine, task_id, run_id, exc)
@@ -235,6 +329,7 @@ class DraftingService:
         model_request: ModelTaskRequest,
         result: ModelAdapterResult,
         output: SectionDraftOutput,
+        choice: RoutingChoice,
     ) -> DraftRunView:
         now = utc_now()
         unit_id = new_ulid()
@@ -256,6 +351,12 @@ class DraftingService:
                 "prompt_version": model_request.prompt_version,
                 "prompt_hash": model_request.prompt_hash,
                 "provider_run_id": result.provider_run_id,
+                "selection_mode": choice.selection_mode,
+                "selection_scope": choice.selection_scope,
+                "routing_rationale": choice.rationale,
+                "book_context_hashes": cast(
+                    dict[str, JSONValue], model_request.task_payload.get("book_context_hashes", {})
+                ),
             }
         )
         with engine.begin() as connection:
@@ -384,6 +485,9 @@ class DraftingService:
             run_status="SUCCEEDED",
             provider=model_request.provider,
             model=model_request.model,
+            selection_mode=choice.selection_mode,
+            selection_scope=choice.selection_scope,
+            routing_rationale=choice.rationale,
             prompt_id=model_request.prompt_id,
             prompt_version=model_request.prompt_version,
             prompt_hash=model_request.prompt_hash,
@@ -438,11 +542,12 @@ class DraftingService:
                             "SELECT t.task_id,t.status AS task_status,t.input_revision_id,"
                             "t.input_revision_hash,t.prompt_id,t.prompt_version,t.prompt_hash,"
                             "r.run_id,r.status AS run_status,r.provider,r.model,r.provider_run_id,"
-                            "r.usage_json,r.error_code,r.error_message,t.output_unit_id,"
-                            "u.authority_entity_id FROM bounded_tasks t JOIN model_runs r "
-                            "ON r.task_id=t.task_id LEFT JOIN manuscript_units u "
-                            "ON u.unit_id=t.output_unit_id WHERE t.book_id=:book_id "
-                            "AND t.chapter_id=:chapter_id ORDER BY t.created_at DESC"
+                            "r.selection_mode,r.selection_scope,r.routing_rationale,r.usage_json,"
+                            "r.error_code,r.error_message,t.output_unit_id,u.authority_entity_id "
+                            "FROM bounded_tasks t JOIN model_runs r ON r.task_id=t.task_id "
+                            "LEFT JOIN manuscript_units u ON u.unit_id=t.output_unit_id "
+                            "WHERE t.book_id=:book_id AND t.chapter_id=:chapter_id "
+                            "ORDER BY t.created_at DESC"
                         ),
                         {"book_id": book_id, "chapter_id": chapter_id},
                     ).mappings()
@@ -472,6 +577,9 @@ class DraftingService:
                         run_status=cast(str, row["run_status"]),
                         provider=cast(str, row["provider"]),
                         model=cast(str, row["model"]),
+                        selection_mode=cast(str, row["selection_mode"]),
+                        selection_scope=cast(str | None, row["selection_scope"]),
+                        routing_rationale=cast(str | None, row["routing_rationale"]),
                         prompt_id=cast(str, row["prompt_id"]),
                         prompt_version=cast(str, row["prompt_version"]),
                         prompt_hash=cast(str, row["prompt_hash"]),

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from .anti_junk import AntiJunkService
 from .authority import AuthorityService, new_ulid
 from .authority_types import utc_now
 from .bookbench_registry import CheckSpec, get_check, registry_hash
@@ -323,6 +324,7 @@ class BookBenchService:
         model_gateway: ModelGateway | None = None,
     ):
         self.projects_dir = data_dir / "projects"
+        self.anti_junk = AntiJunkService(data_dir)
         self.embedding_gateway = embedding_gateway
         self.model_gateway = model_gateway
 
@@ -1032,6 +1034,58 @@ class BookBenchService:
             },
         )
 
+    def _check_prose_anti_junk(self, snapshot: EvaluationSnapshotView) -> _CheckResult:
+        units = self._manuscript_targets(snapshot)
+        findings: list[_FindingDraft] = []
+        banned_count = 0
+        review_count = 0
+        for unit in units:
+            for hit in self.anti_junk.scan(unit.text):
+                kind = str(hit["kind"])
+                if kind == "BANNED_TEMPLATE":
+                    banned_count += 1
+                else:
+                    review_count += 1
+                findings.append(
+                    _FindingDraft(
+                        target=unit,
+                        category=(
+                            "PROSE_ANTI_JUNK_TEMPLATE"
+                            if kind == "BANNED_TEMPLATE"
+                            else "PROSE_ANTI_JUNK_CONTEXT_REVIEW"
+                        ),
+                        location=f"chars:{hit['start']}-{hit['end']}",
+                        evidence={
+                            "entry_id": hit["entry_id"],
+                            "dictionary_value": hit["value"],
+                            "match": hit["match"],
+                            "kind": kind,
+                            "source": hit["source"],
+                            "detector_version": "prose-anti-junk-v0.1",
+                        },
+                        severity="ATTENTION",
+                        confidence=1.0 if kind == "BANNED_TEMPLATE" else 0.75,
+                        recommended_action=(
+                            "Переформулировать мысль прямо и конкретно; не использовать "
+                            "шаблонную нейросетевую/рекламную рамку."
+                            if kind == "BANNED_TEMPLATE"
+                            else "Проверить контекст: оставить слово только если буквальный смысл необходим."
+                        ),
+                    )
+                )
+        return _CheckResult(
+            findings=findings,
+            metrics={
+                "banned_template_hit_count": banned_count,
+                "context_review_hit_count": review_count,
+                "dictionary_entry_count": len(self.anti_junk.list_entries()),
+            },
+            output={
+                "detector_version": "prose-anti-junk-v0.1",
+                "claim": "dictionary/pattern quality signals only; no AI-authorship inference",
+            },
+        )
+
     def _check_opening_ending(self, snapshot: EvaluationSnapshotView) -> _CheckResult:
         units_by_chapter: dict[str, list[SnapshotTargetView]] = defaultdict(list)
         for unit in self._manuscript_targets(snapshot):
@@ -1087,6 +1141,7 @@ class BookBenchService:
             "deterministic.evidence": self._check_evidence,
             "deterministic.contract_structure": self._check_contract_structure,
             "deterministic.ai_prose_pathology": self._check_ai_prose,
+            "deterministic.prose_anti_junk": self._check_prose_anti_junk,
             "deterministic.opening_ending_transition": self._check_opening_ending,
         }
         try:
@@ -1244,6 +1299,7 @@ class BookBenchService:
             "deterministic.evidence",
             "deterministic.contract_structure",
             "deterministic.ai_prose_pathology",
+            "deterministic.prose_anti_junk",
             "deterministic.opening_ending_transition",
         )
         return [self.run_check(book_id, snapshot_id, check_id) for check_id in check_ids]

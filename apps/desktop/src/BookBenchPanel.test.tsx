@@ -171,32 +171,32 @@ function mockApi() {
 test("run shows exact finding evidence and explicit editorial handoff", async () => {
   mockApi();
   render(<BookBenchPanel project={project} />);
-  fireEvent.click(screen.getByText("Build exact snapshot"));
-  expect(await screen.findByText("Exact snapshot ready")).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Run deterministic"));
+  fireEvent.click(screen.getByText("Создать точный снимок"));
+  expect(await screen.findByText("Точный снимок готов")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Запустить детерминированные проверки"));
   expect(await screen.findByText("FALSE_CONTRAST_TEMPLATE")).toBeInTheDocument();
   expect(screen.getAllByText(/revision:x chars:1-12/)).toHaveLength(2);
-  fireEvent.click(screen.getByText("Send to Editorial Inbox"));
-  expect(await screen.findByText(/Sent to Editorial Inbox/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Передать в редактуру"));
+  expect(await screen.findByText(/Передано в редактуру/)).toBeInTheDocument();
 });
 
-test("scorecards remain per-dimension with dataset identity and no overall score", async () => {
+test("scorecards remain per-dimension with dataset identity and Без магического общего балла", async () => {
   mockApi();
   render(<BookBenchPanel project={project} />);
-  fireEvent.click(screen.getByText("Compare fake configs"));
+  fireEvent.click(screen.getByText("Сравнить тестовые конфигурации"));
   expect(await screen.findByLabelText("Dataset identity")).toHaveTextContent("Dataset v2");
   expect(await screen.findByLabelText("Configuration scorecards")).toBeInTheDocument();
-  expect(screen.getAllByText(/no overall score/i).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Без магического общего балла/i).length).toBeGreaterThan(0);
 });
 
 test("chapter target, pairwise, voice fingerprint and independence controls are operational", async () => {
   mockApi();
   render(<BookBenchPanel project={project} />);
 
-  fireEvent.change(screen.getByLabelText("Evaluation scope"), { target: { value: "CHAPTER" } });
-  expect(screen.getByLabelText("Chapter target")).toHaveValue("C1");
-  fireEvent.click(screen.getByText("Build exact snapshot"));
-  await screen.findByText("Exact snapshot ready");
+  fireEvent.change(screen.getByLabelText("Область проверки"), { target: { value: "CHAPTER" } });
+  expect(screen.getByLabelText("Глава")).toHaveValue("C1");
+  fireEvent.click(screen.getByText("Создать точный снимок"));
+  await screen.findByText("Точный снимок готов");
   await waitFor(() =>
     expect(vi.mocked(coreApi)).toHaveBeenCalledWith(
       "POST",
@@ -205,18 +205,18 @@ test("chapter target, pairwise, voice fingerprint and independence controls are 
     ),
   );
 
-  fireEvent.click(screen.getByText("Run semantic"));
-  expect(await screen.findByLabelText("Semantic configuration")).toHaveTextContent("candidates only");
+  fireEvent.click(screen.getByText("Запустить семантические проверки"));
+  expect(await screen.findByLabelText("Semantic configuration")).toHaveTextContent("только кандидаты");
 
-  fireEvent.click(screen.getByText("Run judge"));
+  fireEvent.click(screen.getByText("Запустить модельную оценку"));
   expect(await screen.findByLabelText("Judge independence")).toHaveTextContent("INDEPENDENT");
 
-  fireEvent.click(screen.getByText("Run pairwise"));
-  expect(await screen.findByLabelText("Pairwise result")).toHaveTextContent("Pairwise seed 42");
+  fireEvent.click(screen.getByText("Сравнить два варианта"));
+  expect(await screen.findByLabelText("Pairwise result")).toHaveTextContent("Seed сравнения 42");
 
-  fireEvent.click(screen.getByText("Create Voice Fingerprint"));
-  expect(await screen.findByText(/Voice Fingerprint created/)).toBeInTheDocument();
-  await waitFor(() => expect(screen.getByLabelText("Selected fingerprint")).toHaveValue("VF"));
-  fireEvent.click(screen.getByText("Compare Voice Fingerprint"));
-  expect(await screen.findByLabelText("Voice comparison")).toHaveTextContent("diagnostic only");
+  fireEvent.click(screen.getByText("Create Профиль авторского голоса"));
+  expect(await screen.findByText(/Профиль авторского голоса создан/)).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByLabelText("Выбранный профиль")).toHaveValue("VF"));
+  fireEvent.click(screen.getByText("Compare Профиль авторского голоса"));
+  expect(await screen.findByLabelText("Voice comparison")).toHaveTextContent("только диагностика");
 });

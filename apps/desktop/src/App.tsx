@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { coreApi } from "./api";
+import { AntiJunkPanel } from "./AntiJunkPanel";
+import { ArchitectureEditor } from "./ArchitectureEditor";
 import { BookBenchPanel } from "./BookBenchPanel";
+import { BookJourney } from "./BookJourney";
 import { BookMemoryPanel } from "./BookMemoryPanel";
+import { BookStartPanel } from "./BookStartPanel";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
+import { LaunchPlanningPanel } from "./LaunchPlanningPanel";
 import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
 import { PilotPanel } from "./PilotPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import {
+  BUSINESS_SUBTYPES,
+  subtypeLabel,
+  type BusinessSubtype,
+} from "./bookCatalog";
 import type {
   ArchitectureChapter,
   BookArchitecturePayload,
@@ -18,18 +28,36 @@ import type {
   ProjectView,
 } from "./types";
 
-const BUSINESS_SUBTYPES = [
-  "Entrepreneurship",
-  "Strategy",
-  "Leadership",
-  "Management",
-  "Teams & Culture",
-  "Marketing & Brand",
-  "Sales & Negotiation",
-  "Finance & Investing",
-  "Product, Innovation & Technology",
-  "Career & Professional Development",
-] as const;
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: "ЧЕРНОВИК",
+  PROPOSED: "ПРЕДЛОЖЕНО",
+  REVIEWED: "ПРОВЕРЕНО",
+  APPROVED: "УТВЕРЖДЕНО",
+  LOCKED: "ЗАФИКСИРОВАНО",
+  SUPERSEDED: "ЗАМЕНЕНО",
+};
+
+const STAGE_LABELS: Record<string, string> = {
+  "BOOK DEFINITION": "ОПРЕДЕЛЕНИЕ КНИГИ",
+  ARCHITECTURE: "АРХИТЕКТУРА",
+  WRITING: "НАПИСАНИЕ",
+  "WHOLE-BOOK EDIT": "СКВОЗНАЯ РЕДАКТУРА",
+  "FINAL REVIEW": "ФИНАЛЬНАЯ ПРОВЕРКА",
+  "LITERARY MASTER": "ЛИТЕРАТУРНЫЙ МАСТЕР",
+};
+
+function statusLabel(value?: string | null) {
+  if (!value) return "НЕ НАЧАТО";
+  return STATUS_LABELS[value] ?? value.replaceAll("_", " ");
+}
+
+function stageLabel(value: string) {
+  return STAGE_LABELS[value] ?? value.replaceAll("_", " ");
+}
+
+function approved(value?: string | null) {
+  return value === "APPROVED" || value === "LOCKED";
+}
 
 const emptyBookContract: BookContractPayload = {
   reader: "",
@@ -113,7 +141,7 @@ function Field({
 }
 
 function StatusBadge({ status }: { status?: string | null }) {
-  return <span className={`badge ${status?.toLowerCase() ?? "empty"}`}>{status ?? "NOT STARTED"}</span>;
+  return <span className={`badge ${status?.toLowerCase() ?? "empty"}`}>{statusLabel(status)}</span>;
 }
 
 export function App() {
@@ -124,9 +152,7 @@ export function App() {
   const [project, setProject] = useState<ProjectView | null>(null);
   const [showNewBook, setShowNewBook] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [primarySubtype, setPrimarySubtype] = useState<(typeof BUSINESS_SUBTYPES)[number]>(
-    BUSINESS_SUBTYPES[0],
-  );
+  const [primarySubtype, setPrimarySubtype] = useState<BusinessSubtype>(BUSINESS_SUBTYPES[0]);
   const [secondarySubtype, setSecondarySubtype] = useState("");
   const [bookContract, setBookContract] = useState<BookContractPayload>(clone(emptyBookContract));
   const [architecture, setArchitecture] = useState<BookArchitecturePayload>(clone(emptyArchitecture));
@@ -273,41 +299,26 @@ export function App() {
     }
   }
 
-  function updateArchitectureChapter(index: number, patch: Partial<ArchitectureChapter>) {
-    setArchitecture((current) => {
-      const next = clone(current);
-      next.parts[0].chapters[index] = { ...next.parts[0].chapters[index], ...patch };
-      return next;
-    });
-  }
-
-  function moveChapter(index: number, delta: number) {
-    setArchitecture((current) => {
-      const next = clone(current);
-      const target = index + delta;
-      if (target < 0 || target >= next.parts[0].chapters.length) return current;
-      const [item] = next.parts[0].chapters.splice(index, 1);
-      next.parts[0].chapters.splice(target, 0, item);
-      return next;
-    });
-  }
-
   const healthLabel = health
-    ? `Local Core ${health.status}`
+    ? `Локальное ядро: ${health.status === "healthy" ? "работает" : health.status}`
     : error && !project
-      ? "Local Core unavailable"
-      : "Checking Local Core…";
+      ? "Локальное ядро недоступно"
+      : "Проверка локального ядра…";
+
+  const contractApproved = approved(project?.book_contract?.authority_status);
+  const architectureApproved = approved(project?.architecture?.authority_status);
+  const chapterReady = approved(selectedChapter?.chapter_contract?.authority_status);
 
   return (
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">LOCAL-FIRST EDITORIAL SYSTEM</p>
+          <p className="eyebrow">ЛОКАЛЬНАЯ РЕДАКЦИОННО-АВТОРСКАЯ СИСТЕМА</p>
           <h1>BOOK OS</h1>
         </div>
         <div className="health-block">
           <span className={health ? "health" : "health error"}>{healthLabel}</span>
-          {health && <small>Core {health.version}</small>}
+          {health && <small>Версия ядра {health.version}</small>}
         </div>
       </header>
 
@@ -316,12 +327,12 @@ export function App() {
       <div className="workspace">
         <aside className="sidebar">
           <div className="sidebar-heading">
-            <h2>Projects</h2>
+            <h2>Книги</h2>
             <button className="primary small" onClick={() => setShowNewBook(true)} disabled={busy}>
-              + New Book
+              + Новая
             </button>
           </div>
-          {projects.length === 0 && <p className="muted">No book projects yet.</p>}
+          {projects.length === 0 && <p className="muted">Проектов книг пока нет.</p>}
           <nav>
             {projects.map((item) => (
               <button
@@ -331,8 +342,8 @@ export function App() {
                 disabled={busy}
               >
                 <strong>{item.working_title}</strong>
-                <span>{item.primary_subtype}</span>
-                <small>{item.workflow_stage}</small>
+                <span>{subtypeLabel(item.primary_subtype)}</span>
+                <small>{stageLabel(item.workflow_stage)}</small>
               </button>
             ))}
           </nav>
@@ -340,63 +351,35 @@ export function App() {
 
         <section className="content">
           {showNewBook && (
-            <section className="panel new-book">
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">BOOK FROM ZERO</p>
-                  <h2>New Business Nonfiction Book</h2>
-                </div>
-                <button className="ghost" onClick={() => setShowNewBook(false)}>
-                  Close
-                </button>
-              </div>
-              <label className="field">
-                <span>Working title</span>
-                <input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} />
-              </label>
-              <div className="two-columns">
-                <label className="field">
-                  <span>Primary subtype</span>
-                  <select
-                    value={primarySubtype}
-                    onChange={(event) =>
-                      setPrimarySubtype(event.target.value as (typeof BUSINESS_SUBTYPES)[number])
-                    }
-                  >
-                    {BUSINESS_SUBTYPES.map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Secondary subtype (optional)</span>
-                  <select
-                    value={secondarySubtype}
-                    onChange={(event) => setSecondarySubtype(event.target.value)}
-                  >
-                    <option value="">None</option>
-                    {BUSINESS_SUBTYPES.filter((value) => value !== primarySubtype).map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <button className="primary" onClick={() => void createProject()} disabled={busy}>
-                Create project
-              </button>
-            </section>
+            <BookStartPanel
+              newTitle={newTitle}
+              setNewTitle={setNewTitle}
+              primarySubtype={primarySubtype}
+              setPrimarySubtype={setPrimarySubtype}
+              secondarySubtype={secondarySubtype}
+              setSecondarySubtype={setSecondarySubtype}
+              busy={busy}
+              onCreate={() => void createProject()}
+              onClose={() => setShowNewBook(false)}
+            />
           )}
 
           {!project && !showNewBook && (
             <section className="hero panel">
-              <p className="eyebrow">M2 WORKSPACE</p>
-              <h2>Create a real book project</h2>
+              <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО BOOK OS</p>
+              <h2>Создайте первую реальную книгу</h2>
               <p>
-                BOOK OS now keeps contracts, architecture and approval history as durable local
-                authority — not chat memory.
+                Выберите доступное направление, опишите идею, а дальше BOOK OS будет показывать один
+                следующий шаг: контракт, архитектуру, главы, написание, редактуру и финальную проверку.
               </p>
+              <ol className="hero-steps">
+                <li>Выберите направление и тему.</li>
+                <li>Дайте идею книги своими словами.</li>
+                <li>Проверяйте и утверждайте ключевые предложения BOOK OS.</li>
+                <li>Дойдите по маршруту до Literary Master.</li>
+              </ol>
               <button className="primary" onClick={() => setShowNewBook(true)}>
-                Create New Book
+                Создать новую книгу
               </button>
             </section>
           )}
@@ -405,231 +388,119 @@ export function App() {
             <>
               <section className="project-header panel">
                 <div>
-                  <p className="eyebrow">{project.domain.replaceAll("_", " ")}</p>
+                  <p className="eyebrow">ДЕЛОВОЙ НОН-ФИКШЕН</p>
                   <h2>{project.working_title}</h2>
                   <p className="muted">
-                    {project.primary_subtype}
-                    {project.secondary_subtype ? ` · ${project.secondary_subtype}` : ""}
+                    Бизнес → {subtypeLabel(project.primary_subtype)}
+                    {project.secondary_subtype ? ` · ${subtypeLabel(project.secondary_subtype)}` : ""}
                   </p>
                 </div>
                 <div className="stage">
-                  <small>Current stage</small>
-                  <strong>{project.workflow_stage}</strong>
+                  <small>Текущий этап</small>
+                  <strong>{stageLabel(project.workflow_stage)}</strong>
                 </div>
               </section>
 
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">HUMAN GATE 1</p>
-                    <h3>Book Contract</h3>
-                  </div>
-                  <StatusBadge status={project.book_contract?.status} />
-                </div>
-                <div className="form-grid">
-                  {(
-                    [
-                      ["reader", "Reader"],
-                      ["reader_problem", "Reader problem"],
-                      ["central_promise", "Central promise"],
-                      ["central_thesis", "Central thesis"],
-                      ["unique_angle", "Unique angle"],
-                      ["reader_trajectory", "Reader trajectory"],
-                      ["evidence_policy", "Evidence policy"],
-                      ["voice_genre_constraints", "Voice / genre constraints"],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <Field
-                      key={key}
-                      label={label}
-                      value={bookContract[key]}
-                      onChange={(value) =>
-                        setBookContract((current) => ({ ...current, [key]: value }))
-                      }
-                    />
-                  ))}
-                  <Field
-                    label="Explicit exclusions"
-                    hint="One item per line"
-                    value={bookContract.explicit_exclusions.join("\n")}
-                    onChange={(value) =>
-                      setBookContract((current) => ({
-                        ...current,
-                        explicit_exclusions: lines(value),
-                      }))
-                    }
-                  />
-                  <Field
-                    label="Readiness criteria"
-                    hint="One item per line"
-                    value={bookContract.readiness_criteria.join("\n")}
-                    onChange={(value) =>
-                      setBookContract((current) => ({
-                        ...current,
-                        readiness_criteria: lines(value),
-                      }))
-                    }
-                  />
-                </div>
-                <div className="actions">
-                  <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
-                    Save Draft
-                  </button>
-                  <button className="primary" onClick={() => void approveBookContract()} disabled={busy}>
-                    Approve Book Contract
-                  </button>
-                </div>
-              </section>
+              <BookJourney project={project} chapter={selectedChapter} />
+              <LaunchPlanningPanel project={project} chapter={selectedChapter} onProject={hydrate} />
 
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">HUMAN GATE 2</p>
-                    <h3>Book Architecture</h3>
-                  </div>
-                  <StatusBadge status={project.architecture?.status} />
-                </div>
-                <div className="form-grid">
-                  <Field
-                    label="Intellectual progression"
-                    value={architecture.intellectual_progression}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, intellectual_progression: value }))
-                    }
-                  />
-                  <Field
-                    label="Concept allocation"
-                    value={architecture.concept_allocation}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, concept_allocation: value }))
-                    }
-                  />
-                  <Field
-                    label="Promise / thesis coverage"
-                    value={architecture.promise_thesis_coverage}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, promise_thesis_coverage: value }))
-                    }
-                  />
-                  <Field
-                    label="Major transitions"
-                    value={architecture.major_transitions}
-                    onChange={(value) =>
-                      setArchitecture((current) => ({ ...current, major_transitions: value }))
-                    }
-                  />
-                  <Field
-                    label="Part title"
-                    value={architecture.parts[0].title}
-                    onChange={(value) =>
-                      setArchitecture((current) => {
-                        const next = clone(current);
-                        next.parts[0].title = value;
-                        return next;
-                      })
-                    }
-                  />
-                  <Field
-                    label="Part purpose"
-                    value={architecture.parts[0].purpose}
-                    onChange={(value) =>
-                      setArchitecture((current) => {
-                        const next = clone(current);
-                        next.parts[0].purpose = value;
-                        return next;
-                      })
-                    }
-                  />
-                </div>
-                <div className="chapter-plans">
-                  <div className="subheading">
-                    <h4>Ordered chapters</h4>
-                    <button
-                      className="ghost"
-                      onClick={() =>
-                        setArchitecture((current) => {
-                          const next = clone(current);
-                          next.parts[0].chapters.push(newArchitectureChapter());
-                          return next;
-                        })
-                      }
-                    >
-                      + Add chapter
-                    </button>
-                  </div>
-                  {architecture.parts[0].chapters.map((chapter, index) => (
-                    <div className="chapter-plan" key={chapter.chapter_id ?? `new-${index}`}>
-                      <div className="chapter-order">
-                        <strong>Chapter {index + 1}</strong>
-                        <button className="icon" onClick={() => moveChapter(index, -1)} disabled={index === 0}>
-                          ↑
-                        </button>
-                        <button
-                          className="icon"
-                          onClick={() => moveChapter(index, 1)}
-                          disabled={index === architecture.parts[0].chapters.length - 1}
-                        >
-                          ↓
-                        </button>
-                      </div>
-                      <label className="field">
-                        <span>Title</span>
-                        <input
-                          value={chapter.title}
-                          onChange={(event) =>
-                            updateArchitectureChapter(index, { title: event.target.value })
-                          }
-                        />
-                      </label>
-                      <Field
-                        label="Purpose"
-                        value={chapter.purpose}
-                        onChange={(value) => updateArchitectureChapter(index, { purpose: value })}
-                      />
-                      <Field
-                        label="Distinct contribution"
-                        value={chapter.new_contribution}
-                        onChange={(value) =>
-                          updateArchitectureChapter(index, { new_contribution: value })
-                        }
-                      />
-                      <Field
-                        label="Dependencies"
-                        hint="One chapter ID/reference per line"
-                        value={chapter.dependencies.join("\n")}
-                        onChange={(value) =>
-                          updateArchitectureChapter(index, { dependencies: lines(value) })
-                        }
-                      />
-                      <Field
-                        label="Transition"
-                        value={chapter.transition}
-                        onChange={(value) => updateArchitectureChapter(index, { transition: value })}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="actions">
-                  <button className="secondary" onClick={() => void saveArchitecture()} disabled={busy}>
-                    Save Draft
-                  </button>
-                  <button className="primary" onClick={() => void approveArchitecture()} disabled={busy}>
-                    Approve Architecture
-                  </button>
-                </div>
-              </section>
-
-              {project.chapters.length > 0 && (
-                <section className="panel">
+              {project.book_contract && (
+                <section className="panel" id="book-contract">
                   <div className="panel-heading">
                     <div>
-                      <p className="eyebrow">HUMAN GATE 3</p>
-                      <h3>Chapter Contract</h3>
+                      <p className="eyebrow">ЧЕЛОВЕЧЕСКОЕ РЕШЕНИЕ 1</p>
+                      <h3>Контракт книги</h3>
+                    </div>
+                    <StatusBadge status={project.book_contract.status} />
+                  </div>
+                  <p className="muted">
+                    Проверьте предложение BOOK OS. Исправьте формулировки при необходимости и
+                    утверждайте только тот контракт, по которому действительно хотите писать всю книгу.
+                  </p>
+                  <div className="form-grid">
+                    {(
+                      [
+                        ["reader", "Читатель"],
+                        ["reader_problem", "Проблема читателя"],
+                        ["central_promise", "Главное обещание книги"],
+                        ["central_thesis", "Центральный тезис"],
+                        ["unique_angle", "Уникальный угол"],
+                        ["reader_trajectory", "Траектория читателя"],
+                        ["evidence_policy", "Правила доказательности"],
+                        ["voice_genre_constraints", "Голос и жанровые ограничения"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Field
+                        key={key}
+                        label={label}
+                        value={bookContract[key]}
+                        onChange={(value) =>
+                          setBookContract((current) => ({ ...current, [key]: value }))
+                        }
+                      />
+                    ))}
+                    <Field
+                      label="Что книга сознательно не делает"
+                      hint="Один пункт на строку"
+                      value={bookContract.explicit_exclusions.join("\n")}
+                      onChange={(value) =>
+                        setBookContract((current) => ({
+                          ...current,
+                          explicit_exclusions: lines(value),
+                        }))
+                      }
+                    />
+                    <Field
+                      label="Критерии готовности"
+                      hint="Один пункт на строку"
+                      value={bookContract.readiness_criteria.join("\n")}
+                      onChange={(value) =>
+                        setBookContract((current) => ({
+                          ...current,
+                          readiness_criteria: lines(value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="actions">
+                    <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
+                      Сохранить черновик
+                    </button>
+                    <button className="primary" onClick={() => void approveBookContract()} disabled={busy}>
+                      Утвердить контракт книги
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {(contractApproved || project.architecture) && (
+                <div id="architecture">
+                  <ArchitectureEditor
+                    architecture={architecture}
+                    setArchitecture={setArchitecture}
+                    statusBadge={<StatusBadge status={project.architecture?.status} />}
+                    busy={busy}
+                    onSave={() => void saveArchitecture()}
+                    onApprove={() => void approveArchitecture()}
+                  />
+                </div>
+              )}
+
+              {architectureApproved && project.chapters.length > 0 && (
+                <section className="panel" id="chapter-contract">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">ЧЕЛОВЕЧЕСКОЕ РЕШЕНИЕ 3</p>
+                      <h3>Контракт главы</h3>
                     </div>
                     <StatusBadge status={selectedChapter?.chapter_contract?.status} />
                   </div>
+                  <p className="muted">
+                    Сначала зафиксируйте функцию и границы главы. Только после этого Writer получает
+                    право создавать её систематический черновик.
+                  </p>
                   <label className="field">
-                    <span>Chapter</span>
+                    <span>Глава</span>
                     <select
                       value={selectedChapterId ?? ""}
                       onChange={(event) => setSelectedChapterId(event.target.value)}
@@ -644,13 +515,13 @@ export function App() {
                   <div className="form-grid">
                     {(
                       [
-                        ["chapter_purpose", "Chapter purpose"],
-                        ["new_contribution", "New contribution"],
-                        ["reader_prior_state", "Reader prior state"],
-                        ["reader_after_state", "Reader after state"],
-                        ["opening_requirements", "Opening requirements"],
-                        ["ending_requirements", "Ending requirements"],
-                        ["transition_requirements", "Transition requirements"],
+                        ["chapter_purpose", "Функция главы"],
+                        ["new_contribution", "Новый вклад"],
+                        ["reader_prior_state", "Что читатель понимает до главы"],
+                        ["reader_after_state", "Что читатель понимает после главы"],
+                        ["opening_requirements", "Требования к началу"],
+                        ["ending_requirements", "Требования к финалу"],
+                        ["transition_requirements", "Требования к переходу"],
                       ] as const
                     ).map(([key, label]) => (
                       <Field
@@ -664,16 +535,16 @@ export function App() {
                     ))}
                     {(
                       [
-                        ["required_claims", "Required claims"],
-                        ["required_or_permitted_research", "Required / permitted research"],
-                        ["required_scenes_examples", "Required scenes / examples"],
-                        ["reserved_elsewhere", "Reserved elsewhere"],
+                        ["required_claims", "Обязательные утверждения"],
+                        ["required_or_permitted_research", "Нужное/разрешённое исследование"],
+                        ["required_scenes_examples", "Нужные сцены и примеры"],
+                        ["reserved_elsewhere", "Что должно остаться в других главах"],
                       ] as const
                     ).map(([key, label]) => (
                       <Field
                         key={key}
                         label={label}
-                        hint="One item per line"
+                        hint="Один пункт на строку"
                         value={chapterContract[key].join("\n")}
                         onChange={(value) =>
                           setChapterContract((current) => ({ ...current, [key]: lines(value) }))
@@ -687,26 +558,67 @@ export function App() {
                       onClick={() => void saveChapterContract()}
                       disabled={busy || !selectedChapter}
                     >
-                      Save Draft
+                      Сохранить черновик
                     </button>
                     <button
                       className="primary"
                       onClick={() => void approveChapterContract()}
                       disabled={busy || !selectedChapter}
                     >
-                      Approve Chapter Contract
+                      Утвердить контракт главы
                     </button>
                   </div>
                 </section>
               )}
-              <DraftingPanel project={project} chapter={selectedChapter} />
-              <ResearchPanel project={project} chapter={selectedChapter} />
-              <BookMemoryPanel project={project} chapter={selectedChapter} />
-              <EditorialPanel project={project} chapter={selectedChapter} />
-              <BookBenchPanel project={project} />
-              <LiteraryMasterPanel project={project} />
-              <PilotPanel project={project} />
+
+              {chapterReady && <DraftingPanel project={project} chapter={selectedChapter} />}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Проверка фактов и источников</summary>
+                  <ResearchPanel project={project} chapter={selectedChapter} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Редактура книги</summary>
+                  <EditorialPanel project={project} chapter={selectedChapter} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>BookBench · контроль качества</summary>
+                  <BookBenchPanel project={project} />
+                </details>
+              )}
+
+              {chapterReady && (
+                <details className="workflow-drawer">
+                  <summary>Literary Master · финальная версия</summary>
+                  <LiteraryMasterPanel project={project} />
+                </details>
+              )}
+
+              <details className="utility-drawer">
+                <summary>Настройки текста · Словарь мусора</summary>
+                <AntiJunkPanel />
+              </details>
+
+              <details className="utility-drawer">
+                <summary>Дополнительные инструменты и диагностика</summary>
+                <BookMemoryPanel project={project} chapter={selectedChapter} />
+                <PilotPanel project={project} />
+              </details>
             </>
+          )}
+
+          {!project && (
+            <details className="utility-drawer global-settings">
+              <summary>Настройки текста · Словарь мусора</summary>
+              <AntiJunkPanel />
+            </details>
           )}
         </section>
       </div>
