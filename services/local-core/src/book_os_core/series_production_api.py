@@ -40,9 +40,7 @@ def build_series_production_router(
         payload: DefinitionPackCreateRequest,
     ) -> dict[str, object]:
         try:
-            return service.create_definition_pack(book_id, payload).model_dump(
-                mode="json"
-            )
+            return service.create_definition_pack(book_id, payload).model_dump(mode="json")
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
@@ -56,39 +54,30 @@ def build_series_production_router(
             raise_http(exc)
         raise AssertionError("unreachable")
 
-    @router.post(
-        "/api/projects/{book_id}/production/definition-packs/"
-        "{definition_id}/approve"
-    )
+    @router.post("/api/projects/{book_id}/production/definition-packs/{definition_id}/approve")
     def approve_definition(
         book_id: str,
         definition_id: str,
         payload: DefinitionPackApprovalRequest,
     ) -> dict[str, object]:
         try:
-            return service.approve_definition_pack(
-                book_id,
-                definition_id,
-                payload,
-            ).model_dump(mode="json")
+            return service.approve_definition_pack(book_id, definition_id, payload).model_dump(
+                mode="json"
+            )
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
 
-    @router.post(
-        "/api/projects/{book_id}/chapters/{chapter_id}/production-contracts"
-    )
+    @router.post("/api/projects/{book_id}/chapters/{chapter_id}/production-contracts")
     def create_production_contract(
         book_id: str,
         chapter_id: str,
         payload: ChapterProductionContractCreateRequest,
     ) -> dict[str, object]:
         try:
-            return service.create_production_contract(
-                book_id,
-                chapter_id,
-                payload,
-            ).model_dump(mode="json")
+            return service.create_production_contract(book_id, chapter_id, payload).model_dump(
+                mode="json"
+            )
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
@@ -126,20 +115,16 @@ def build_series_production_router(
             raise_http(exc)
         raise AssertionError("unreachable")
 
-    @router.post(
-        "/api/projects/{book_id}/series-canon/assets/{asset_id}/transition"
-    )
+    @router.post("/api/projects/{book_id}/series-canon/assets/{asset_id}/transition")
     def transition_canon_asset(
         book_id: str,
         asset_id: str,
         payload: SeriesCanonTransitionRequest,
     ) -> dict[str, object]:
         try:
-            return service.transition_canon_asset(
-                book_id,
-                asset_id,
-                payload,
-            ).model_dump(mode="json")
+            return service.transition_canon_asset(book_id, asset_id, payload).model_dump(
+                mode="json"
+            )
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
@@ -151,24 +136,15 @@ def build_series_production_router(
         payload: UniquenessEvidenceRequest,
     ) -> dict[str, object]:
         try:
-            return service.record_uniqueness(
-                book_id,
-                chapter_id,
-                payload,
-            ).model_dump(mode="json")
+            return service.record_uniqueness(book_id, chapter_id, payload).model_dump(mode="json")
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
 
     @router.get("/api/projects/{book_id}/chapters/{chapter_id}/admission")
-    def admission_status(
-        book_id: str,
-        chapter_id: str,
-    ) -> dict[str, object]:
+    def admission_status(book_id: str, chapter_id: str) -> dict[str, object]:
         try:
-            return service.admission_status(book_id, chapter_id).model_dump(
-                mode="json"
-            )
+            return service.admission_status(book_id, chapter_id).model_dump(mode="json")
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
@@ -180,11 +156,7 @@ def build_series_production_router(
         payload: ChapterAdmissionRequest,
     ) -> dict[str, object]:
         try:
-            return service.admit_chapter(
-                book_id,
-                chapter_id,
-                payload,
-            ).model_dump(mode="json")
+            return service.admit_chapter(book_id, chapter_id, payload).model_dump(mode="json")
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
@@ -195,16 +167,12 @@ def build_series_production_router(
         payload: ProductionCheckpointRequest,
     ) -> dict[str, object]:
         try:
-            return service.record_checkpoint(book_id, payload).model_dump(
-                mode="json"
-            )
+            return service.record_checkpoint(book_id, payload).model_dump(mode="json")
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
 
-    @router.get(
-        "/api/projects/{book_id}/production/adversarial-review-gate"
-    )
+    @router.get("/api/projects/{book_id}/production/adversarial-review-gate")
     def adversarial_gate(book_id: str) -> dict[str, object]:
         try:
             ready, blockers = service.adversarial_review_gate(book_id)
@@ -219,9 +187,7 @@ def build_series_production_router(
         payload: SeriesClosureRequest,
     ) -> dict[str, object]:
         try:
-            return service.close_series_book(book_id, payload).model_dump(
-                mode="json"
-            )
+            return service.close_series_book(book_id, payload).model_dump(mode="json")
         except SeriesProductionError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
