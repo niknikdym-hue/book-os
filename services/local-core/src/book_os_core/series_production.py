@@ -1085,9 +1085,7 @@ class SeriesProductionService:
         finally:
             engine.dispose()
 
-    def close_series_book(
-        self, book_id: str, request: SeriesClosureRequest
-    ) -> SeriesClosureView:
+    def close_series_book(self, book_id: str, request: SeriesClosureRequest) -> SeriesClosureView:
         self._require_human(request.actor_kind)
         context = self.contexts.get_context(book_id)
         if (
