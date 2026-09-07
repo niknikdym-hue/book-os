@@ -18,7 +18,7 @@ from .blind_model_compare import (
 )
 from .book_context import BookContextService
 from .context_planning import ContextAwarePlanningService
-from .model_gateway import ModelGateway
+from .model_gateway import ModelGateway, OpenAIResponsesAdapter
 from .model_routing import ModelRoutingError, ModelRoutingService
 from .planning import (
     ArchitecturePlanningRequest,
@@ -85,13 +85,28 @@ def build_launch_router(
 
     @router.get("/api/launch/readiness")
     def launch_readiness() -> dict[str, object]:
+        providers = routing.provider_registry()
+        openai_credential_state = credential_state("openai_api_key")
+        astra_registered = any(
+            provider.id == "openai" and any(model.id == "gpt-6-astra" for model in provider.models)
+            for provider in providers
+        )
         return {
-            "openai_credential_state": credential_state("openai_api_key"),
+            "openai_credential_state": openai_credential_state,
             "yandex_credential_state": credential_state(
                 "yandex_ai_studio_api_key", "yandex_folder_id"
             ),
             "configured_model": os.environ.get("BOOK_OS_OPENAI_MODEL", "").strip() or None,
-            "providers": [item.model_dump(mode="json") for item in routing.provider_registry()],
+            "providers": [item.model_dump(mode="json") for item in providers],
+            "astra": {
+                "model": "gpt-6-astra",
+                "model_registered": astra_registered,
+                "pricing_registered": OpenAIResponsesAdapter.pricing_registered("gpt-6-astra"),
+                "credential_state": openai_credential_state,
+                "default_reasoning_effort": "high",
+                "external_calls": 0,
+                "paid_calls": 0,
+            },
             "anti_junk_entry_count": len(anti_junk.list_entries()),
             "external_calls": 0,
             "paid_calls": 0,

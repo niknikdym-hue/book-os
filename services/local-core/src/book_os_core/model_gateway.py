@@ -11,6 +11,9 @@ from .prompts import PromptTemplate
 from .secrets import SecretStore
 
 
+ReasoningEffort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
 class ModelProviderError(RuntimeError):
     pass
 
@@ -125,6 +128,7 @@ class ModelTaskRequest(BaseModel):
     authoritative_context: dict[str, Any]
     untrusted_context: list[str] = Field(default_factory=list)
     task_payload: dict[str, Any] = Field(default_factory=dict)
+    reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int = Field(default=3500, ge=100, le=12000)
     max_cost_usd: float | None = Field(default=None, ge=0)
 
@@ -293,8 +297,9 @@ class DeterministicFakeAdapter:
 
 class OpenAIResponsesAdapter:
     provider_name = "openai"
-    _PRICING_SOURCE_DATE = "2026-09-03"
+    _PRICING_SOURCE_DATE = "2026-09-07"
     _PRICING_USD_PER_MILLION: dict[str, tuple[float, float]] = {
+        "gpt-6-astra": (10.0, 50.0),
         "gpt-5.6-sol": (4.0, 20.0),
         "gpt-5.6": (4.0, 20.0),
         "gpt-5.6-terra": (2.0, 12.0),
@@ -304,6 +309,7 @@ class OpenAIResponsesAdapter:
     _LONG_CONTEXT_INPUT_TOKEN_THRESHOLD = 272_000
     _LONG_CONTEXT_INPUT_PRICE_MULTIPLIER = 2.0
     _LONG_CONTEXT_OUTPUT_PRICE_MULTIPLIER = 1.5
+    _ASTRA_DEFAULT_REASONING_EFFORT: ReasoningEffort = "high"
 
     def __init__(
         self,
@@ -332,6 +338,18 @@ class OpenAIResponsesAdapter:
             return BookBenchPairwiseOutput.model_json_schema()
         return SectionDraftOutput.model_json_schema()
 
+    @classmethod
+    def pricing_registered(cls, model: str) -> bool:
+        return model in cls._PRICING_USD_PER_MILLION
+
+    @classmethod
+    def _reasoning_effort(cls, request: ModelTaskRequest) -> ReasoningEffort | None:
+        if request.reasoning_effort is not None:
+            return request.reasoning_effort
+        if request.model == "gpt-6-astra":
+            return cls._ASTRA_DEFAULT_REASONING_EFFORT
+        return None
+
     def _body(self, request: ModelTaskRequest, prompt: PromptTemplate) -> dict[str, Any]:
         user_payload = {
             "task_type": request.task_type,
@@ -341,7 +359,7 @@ class OpenAIResponsesAdapter:
             "untrusted_context": request.untrusted_context,
             "task_payload": request.task_payload,
         }
-        return {
+        body: dict[str, Any] = {
             "model": request.model,
             "store": False,
             "input": [
@@ -369,6 +387,10 @@ class OpenAIResponsesAdapter:
             },
             "max_output_tokens": request.max_output_tokens,
         }
+        reasoning_effort = self._reasoning_effort(request)
+        if reasoning_effort is not None:
+            body["reasoning"] = {"effort": reasoning_effort}
+        return body
 
     @classmethod
     def _pricing(cls, model: str) -> tuple[float, float]:
@@ -404,6 +426,7 @@ class OpenAIResponsesAdapter:
                 "worst-case OpenAI request cost "
                 f"${preflight_upper_bound_usd:.6f} exceeds cap ${request.max_cost_usd:.6f}"
             )
+        reasoning = body.get("reasoning")
         return {
             "max_cost_usd": request.max_cost_usd,
             "preflight_upper_bound_usd": round(preflight_upper_bound_usd, 6),
@@ -413,6 +436,7 @@ class OpenAIResponsesAdapter:
             "output_usd_per_million": output_price,
             "long_context_pricing": long_context_pricing,
             "long_context_input_token_threshold": cls._LONG_CONTEXT_INPUT_TOKEN_THRESHOLD,
+            "reasoning_effort": (reasoning.get("effort") if isinstance(reasoning, dict) else None),
             "pricing_source_date": cls._PRICING_SOURCE_DATE,
         }
 

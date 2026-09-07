@@ -21,6 +21,7 @@ from .model_gateway import (
     ModelGateway,
     ModelOutputError,
     ModelTaskRequest,
+    ReasoningEffort,
 )
 from .projects import (
     BookArchitecturePayload,
@@ -50,6 +51,7 @@ class BookContractPlanningRequest(BaseModel):
     reader_hint: str = Field(default="", max_length=4000)
     provider: str = "openai"
     model: str | None = None
+    reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int = Field(default=2600, ge=500, le=8000)
     max_cost_usd: float = Field(gt=0)
 
@@ -58,6 +60,7 @@ class ArchitecturePlanningRequest(BaseModel):
     planning_note: str = Field(default="", max_length=4000)
     provider: str = "openai"
     model: str | None = None
+    reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int = Field(default=5000, ge=1000, le=12000)
     max_cost_usd: float = Field(gt=0)
 
@@ -66,6 +69,7 @@ class ChapterContractPlanningRequest(BaseModel):
     planning_note: str = Field(default="", max_length=4000)
     provider: str = "openai"
     model: str | None = None
+    reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int = Field(default=3200, ge=500, le=8000)
     max_cost_usd: float = Field(gt=0)
 
@@ -75,6 +79,7 @@ class PlanningProposalView(BaseModel):
     run_kind: str
     provider: str
     model: str
+    reasoning_effort: ReasoningEffort | None = None
     provider_run_id: str | None
     prompt_id: str
     prompt_version: str
@@ -191,6 +196,7 @@ class PlanningService:
         request_payload: dict[str, Any],
         max_output_tokens: int,
         max_cost_usd: float,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, Any], str | None]:
         engine = self._engine(book_id)
         run_id = new_ulid()
@@ -221,6 +227,7 @@ class PlanningService:
                     section_objective=objective,
                     authority_inputs=authority_inputs,
                     authoritative_context=authoritative_context,
+                    reasoning_effort=reasoning_effort,
                     max_output_tokens=max_output_tokens,
                     max_cost_usd=max_cost_usd,
                 ),
@@ -276,6 +283,7 @@ class PlanningService:
             request_payload=request.model_dump(mode="json"),
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
+            reasoning_effort=request.reasoning_effort,
         )
         try:
             proposal = BookContractProposalOutput.model_validate(raw)
@@ -290,6 +298,7 @@ class PlanningService:
             run_kind="BOOK_CONTRACT_PROPOSAL",
             provider=request.provider,
             model=model,
+            reasoning_effort=request.reasoning_effort,
             provider_run_id=provider_run_id,
             prompt_id=BOOK_CONTRACT_PROPOSAL_V1.prompt_id,
             prompt_version=BOOK_CONTRACT_PROPOSAL_V1.version,
@@ -343,6 +352,7 @@ class PlanningService:
             request_payload=request.model_dump(mode="json"),
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
+            reasoning_effort=request.reasoning_effort,
         )
         try:
             proposal = BookArchitectureProposalOutput.model_validate(raw)
@@ -380,6 +390,7 @@ class PlanningService:
             run_kind="ARCHITECTURE_PROPOSAL",
             provider=request.provider,
             model=model,
+            reasoning_effort=request.reasoning_effort,
             provider_run_id=provider_run_id,
             prompt_id=ARCHITECTURE_PROPOSAL_V1.prompt_id,
             prompt_version=ARCHITECTURE_PROPOSAL_V1.version,
@@ -453,6 +464,7 @@ class PlanningService:
             request_payload=request.model_dump(mode="json"),
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
+            reasoning_effort=request.reasoning_effort,
         )
         try:
             proposal = ChapterContractProposalOutput.model_validate(raw)
@@ -467,6 +479,7 @@ class PlanningService:
             run_kind="CHAPTER_CONTRACT_PROPOSAL",
             provider=request.provider,
             model=model,
+            reasoning_effort=request.reasoning_effort,
             provider_run_id=provider_run_id,
             prompt_id=CHAPTER_CONTRACT_PROPOSAL_V1.prompt_id,
             prompt_version=CHAPTER_CONTRACT_PROPOSAL_V1.version,
