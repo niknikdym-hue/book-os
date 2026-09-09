@@ -10,7 +10,9 @@ from book_os_core.prompts import SECTION_DRAFT_V1
 from book_os_core.secrets import DictSecretStore
 
 
-def _request(*, revision_hash: str = "a" * 64, objective: str = "Explain the mechanism") -> ModelTaskRequest:
+def _request(
+    *, revision_hash: str = "a" * 64, objective: str = "Explain the mechanism"
+) -> ModelTaskRequest:
     return ModelTaskRequest(
         task_id="01JTASK0000000000000000000",
         task_type="SECTION_DRAFT",
