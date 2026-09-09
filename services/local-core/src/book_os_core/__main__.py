@@ -11,7 +11,10 @@ from .app import create_app
 from .context_api import build_context_router
 from .launch_api import build_launch_router
 from .model_gateway import ModelGateway
-from .provider_adapters import BookOSOpenAIResponsesAdapter, YandexChatCompletionsAdapter
+from .openai_production import OpenAIProductionResponsesAdapter
+from .openai_research import OpenAIWebSearchAdapter, ProductionResearchGateway
+from .provider_adapters import YandexChatCompletionsAdapter
+from .research_adapters import CrossrefAdapter, OpenAlexAdapter, SemanticScholarAdapter
 from .secrets import MacOSKeychainSecretStore
 
 
@@ -38,11 +41,24 @@ def main() -> None:
     secret_store = MacOSKeychainSecretStore()
     gateway = ModelGateway(
         {
-            "openai": BookOSOpenAIResponsesAdapter(secret_store),
+            "openai": OpenAIProductionResponsesAdapter(secret_store),
             "yandex": YandexChatCompletionsAdapter(secret_store),
         }
     )
-    app = create_app(token, data_dir, gateway=gateway)
+    research_gateway = ProductionResearchGateway(
+        {
+            "openalex": OpenAlexAdapter(),
+            "crossref": CrossrefAdapter(mailto=os.environ.get("BOOK_OS_CROSSREF_MAILTO")),
+            "semantic_scholar": SemanticScholarAdapter(),
+            "openai_web": OpenAIWebSearchAdapter(secret_store),
+        }
+    )
+    app = create_app(
+        token,
+        data_dir,
+        gateway=gateway,
+        research_gateway=research_gateway,
+    )
 
     def require_token(authorization: str | None = Header(default=None)) -> None:
         if (
