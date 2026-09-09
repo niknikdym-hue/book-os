@@ -62,7 +62,7 @@ class OpenAIWebSearchAdapter:
                     "content": [{"type": "input_text", "text": query}],
                 },
             ],
-            "tools": [{"type": "web_search_preview", "search_context_size": "low"}],
+            "tools": [{"type": "web_search", "search_context_size": "low"}],
             "tool_choice": "required",
             "include": ["web_search_call.action.sources"],
             "max_tool_calls": 1,
