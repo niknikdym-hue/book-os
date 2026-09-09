@@ -14,6 +14,7 @@ from .projects import ProjectService
 
 SelectionMode = Literal["AUTO", "MANUAL"]
 SelectionScope = Literal["OPERATION", "BOOK"]
+WorkLevel = Literal["medium", "high", "xhigh"]
 
 
 class ModelRoutingError(RuntimeError):
@@ -29,6 +30,7 @@ class ProviderView(BaseModel):
     id: str
     label: str
     models: list[ProviderModel]
+    work_levels: list[WorkLevel]
 
 
 class RoutingChoice(BaseModel):
@@ -52,11 +54,12 @@ class ProviderSpec:
     label: str
     models: tuple[tuple[str, str], ...]
     auto: dict[str, str]
+    work_levels: tuple[WorkLevel, ...] = ()
 
 
 PROVIDERS: dict[str, ProviderSpec] = {
     "openai": ProviderSpec(
-        label="AI Pro",
+        label="OpenAI",
         models=(
             ("gpt-6-astra", "GPT-6 Astra"),
             ("gpt-5.6-sol", "GPT-5.6 Sol"),
@@ -71,6 +74,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
             "STYLE_PREVIEW": "gpt-5.6-terra",
             "ANNOTATION": "gpt-5.6-terra",
         },
+        work_levels=("medium", "high", "xhigh"),
     ),
     "yandex": ProviderSpec(
         label="AI Ya",
@@ -102,7 +106,14 @@ class ModelRoutingService:
         result: list[ProviderView] = []
         for provider_id, spec in PROVIDERS.items():
             models = [ProviderModel(id=model_id, label=label) for model_id, label in spec.models]
-            result.append(ProviderView(id=provider_id, label=spec.label, models=models))
+            result.append(
+                ProviderView(
+                    id=provider_id,
+                    label=spec.label,
+                    models=models,
+                    work_levels=list(spec.work_levels),
+                )
+            )
         return result
 
     def _engine(self, book_id: str) -> Engine:
@@ -122,6 +133,14 @@ class ModelRoutingService:
         valid = {model_id for model_id, _ in spec.models}
         if model not in valid:
             raise ModelRoutingError(f"model {model} is not registered for provider {provider}")
+
+    @classmethod
+    def validate_work_level(cls, provider: str, work_level: str) -> None:
+        spec = cls._provider(provider)
+        if work_level not in spec.work_levels:
+            raise ModelRoutingError(
+                f"work level {work_level} is not registered for provider {provider}"
+            )
 
     def get_book_pin(self, book_id: str) -> BookModelPinView | None:
         engine = self._engine(book_id)
