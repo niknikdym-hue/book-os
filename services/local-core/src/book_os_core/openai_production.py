@@ -59,8 +59,12 @@ class OpenAIProductionResponsesAdapter(BookOSOpenAIResponsesAdapter):
         ).encode("utf-8")
         input_token_upper_bound = len(serialized) + cls._INPUT_TOKEN_OVERHEAD
         long_context_pricing = input_token_upper_bound > cls._LONG_CONTEXT_INPUT_TOKEN_THRESHOLD
-        context_multiplier = cls._LONG_CONTEXT_INPUT_PRICE_MULTIPLIER if long_context_pricing else 1.0
-        output_multiplier = cls._LONG_CONTEXT_OUTPUT_PRICE_MULTIPLIER if long_context_pricing else 1.0
+        context_multiplier = (
+            cls._LONG_CONTEXT_INPUT_PRICE_MULTIPLIER if long_context_pricing else 1.0
+        )
+        output_multiplier = (
+            cls._LONG_CONTEXT_OUTPUT_PRICE_MULTIPLIER if long_context_pricing else 1.0
+        )
 
         uncached_input_price = input_price * context_multiplier
         cached_input_price = input_price * cls._CACHED_INPUT_MULTIPLIER * context_multiplier
@@ -121,20 +125,21 @@ class OpenAIProductionResponsesAdapter(BookOSOpenAIResponsesAdapter):
         output_tokens = result.get("output_tokens")
         details = result.get("input_tokens_details")
         cached_tokens = details.get("cached_tokens", 0) if isinstance(details, dict) else 0
-        cache_write_tokens = details.get("cache_write_tokens", 0) if isinstance(details, dict) else 0
+        cache_write_tokens = (
+            details.get("cache_write_tokens", 0) if isinstance(details, dict) else 0
+        )
 
-        numeric_input = (
-            isinstance(input_tokens, (int, float)) and not isinstance(input_tokens, bool)
+        numeric_input = isinstance(input_tokens, (int, float)) and not isinstance(
+            input_tokens, bool
         )
-        numeric_output = (
-            isinstance(output_tokens, (int, float)) and not isinstance(output_tokens, bool)
+        numeric_output = isinstance(output_tokens, (int, float)) and not isinstance(
+            output_tokens, bool
         )
-        numeric_cached = (
-            isinstance(cached_tokens, (int, float)) and not isinstance(cached_tokens, bool)
+        numeric_cached = isinstance(cached_tokens, (int, float)) and not isinstance(
+            cached_tokens, bool
         )
-        numeric_write = (
-            isinstance(cache_write_tokens, (int, float))
-            and not isinstance(cache_write_tokens, bool)
+        numeric_write = isinstance(cache_write_tokens, (int, float)) and not isinstance(
+            cache_write_tokens, bool
         )
 
         if numeric_input and numeric_output:
