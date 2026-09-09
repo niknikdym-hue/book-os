@@ -1,8 +1,8 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.5.0  
-**Date:** 2026-09-03  
+**Version:** 0.6.0  
+**Date:** 2026-09-09  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -14,7 +14,7 @@ Chats are disposable working sessions and may contain drafts, hypotheses, reject
 
 Accepted decisions are not silently overwritten. A changed decision is versioned and/or explicitly superseded; Git history and decision records preserve prior state.
 
-This v0.5 consolidation preserves accepted product decisions and adds the Owner's explicit non-negotiable quality/technology rule: BOOK OS must target the highest professional book quality realistically achievable and must use the strongest current methods that materially improve quality or reliability. Technical functionality alone is never acceptance evidence for manuscript quality.
+This v0.6 consolidation preserves all accepted v0.5 product decisions and adds the Owner's explicit native macOS application/runtime-independence invariant: the installed product must be a self-contained macOS application and must not depend on GitHub, source repositories, development runtimes or Terminal for normal use.
 
 ### Current supersession rule
 
@@ -318,31 +318,44 @@ Fine-tuning is explicitly not the starting strategy.
 
 A book is modeled as a versioned graph of intent, content, evidence, editorial work, authority/provenance, evaluations and release — not as one mutable text file.
 
-## 19. Local-first technical direction — ACCEPTED
+## 19. Native macOS application and runtime independence — ACCEPTED / NON-NEGOTIABLE
 
-BOOK OS v0.1 is a local-first desktop product.
+BOOK OS is a **normal self-contained macOS desktop application**, not a developer checkout, repository launcher or browser-dependent product.
 
-Canonical book state/authority remains locally accessible and recoverable. External AI/research services are replaceable execution dependencies.
+Owner-approved product requirements:
 
-Accepted technical baseline is in `TECHNICAL_ARCHITECTURE_v0.1.md`:
+1. BOOK OS installs as `BOOK OS.app` in **Applications** (`/Applications`).
+2. BOOK OS launches by ordinary double-click like a normal Mac application.
+3. Everything required for normal local operation ships inside the application bundle or its signed installer payload.
+4. After installation, normal use must **not require GitHub, any repository checkout, Python, Node.js, Rust, Codex, Terminal, shell scripts or a development environment**.
+5. Production distributions must be signed with an appropriate **Developer ID** identity and **notarized by Apple**; ad-hoc signing is not sufficient for the intended end-user distribution path.
+6. BOOK OS may support secure in-app updates. The update channel must use signed artifacts and must not make GitHub a runtime dependency; a developer-controlled endpoint/object storage/CDN may be used.
+7. Books, canonical book state, author/series/style settings and other durable working data are stored **locally on the user's Mac** by default and remain accessible without a repository or cloud service.
+8. Internet access is required only for explicitly invoked external capabilities such as AI/model APIs, research/network APIs and, if enabled by the user, software updates or backup/synchronization. Loss of internet must not prevent the application itself from launching or prevent normal local reading/editing/local checks that do not inherently require a network service.
 
-- Tauri 2 + React/TypeScript desktop;
-- Python 3.12 local editorial-core sidecar;
-- FastAPI/Pydantic;
-- SQLite canonical state + FTS5;
-- local rebuildable semantic index;
-- provider/research adapters;
-- no heavy distributed infrastructure in v0.1 without measured need.
+### Packaging consequence
 
-Current accepted runtime also includes macOS launch hardening from Task 012: Local Core startup may not block first window rendering; the Python child remains owned through startup/shutdown; readiness is emitted only after Uvicorn startup.
+The current development-time design in which the desktop binary locates a Python venv and source tree outside the application bundle is **not an acceptable production runtime architecture** and must be replaced.
 
-## 20. No-chat dependency — ACCEPTED
+The production Local Core must be bundled as a self-contained sidecar/runtime payload inside the application distribution. The chosen implementation may use a packaged Python executable/server or another equivalent self-contained mechanism, provided the end user is not required to install or manage Python or any other development runtime.
 
-Project development: GitHub `main` + authority/spec/state/tasks/tests/evals is recoverable without chat history.
+The standard direct-distribution target is a signed/notarized macOS app delivered through a conventional installer experience such as a DMG. App Store distribution may be evaluated separately later, but is not required for this invariant.
+
+### Cloud and hosting boundary
+
+Yandex Cloud or another controlled storage/CDN may be used for distribution, update metadata/artifacts or optional backup/synchronization **only when useful**. No such cloud is allowed to become mandatory for launching BOOK OS or accessing the user's local books.
+
+External model/provider services remain replaceable execution dependencies behind provider-neutral gateways. Current production code may expose specific providers, but no provider brand becomes architectural authority merely because it is currently integrated.
+
+## 20. No-chat / no-repository runtime dependency — ACCEPTED
+
+Project development authority remains recoverable from GitHub `main` + authority/spec/state/tasks/tests/evals without chat history.
+
+That development rule must **not** leak into the installed product. GitHub and repository checkouts are development/source-control infrastructure only; the installed BOOK OS application must not contact or require them for launch, local book access or normal local operation.
 
 Product: durable book state, tasks, outputs, decisions and authority are first-class local objects. A conversational interface may exist, but conversation transcript is never required hidden state.
 
-A successor must be able to recover from `README → PROJECT_STATE → DESIGN_INDEX → current decision/task/HEAD`.
+A successor developer must be able to recover the project from `README → PROJECT_STATE → DESIGN_INDEX → current decision/task/HEAD`; an end user must not need any of those development artifacts to use the installed application.
 
 ## 21. Regional access / Russia — SUPERSEDED HISTORICAL REQUIREMENT
 
@@ -368,7 +381,7 @@ The superseded requirement remains recoverable through Git history and the expli
 
 End users should buy/use BOOK OS, not assemble personal subscriptions across AI vendors.
 
-Provider credentials/routing are product infrastructure concerns subject to provider terms/law. BYOK may exist later as optional capability, not a core requirement.
+Provider credentials/routing are product infrastructure concerns subject to provider terms/law. BYOK may exist as an optional capability and is acceptable for the Owner/internal pilot, but it is not a required dependency of the installed application itself.
 
 Before commercial provider brokerage, current vendor commercial/resale/regional/data-processing terms must be reviewed.
 
@@ -384,6 +397,8 @@ The public BOOK OS repository may contain project authority/specifications/sourc
 - proprietary human editorial-decision/eval corpus.
 
 A user's book project has separate local/private storage authority.
+
+The installed production application must not use the source repository as runtime storage, application data storage, update state, book state or executable dependency.
 
 ## 24. BOOK OS ↔ Audio Studio boundary — ACCEPTED
 
@@ -401,6 +416,8 @@ Build BOOK OS-specific editorial IP ourselves: ontology, Authority Protocol, Con
 
 Use proven commodity technology/APIs for LLMs, embeddings, research metadata/search, desktop/runtime, database, observability, CI and other infrastructure when it does not compromise authority/portability.
 
+Commodity infrastructure used during development must not create an unnecessary end-user runtime dependency when the same capability can be packaged locally or made optional.
+
 ## 26. Project execution governance — ACCEPTED
 
 `PROJECT_EXECUTION_PLAN.md` defines role split:
@@ -415,16 +432,18 @@ Under `BOOKOS-DEC-0002`, Central Brain may finalize internal v0.1 technical/edit
 
 The implementation baseline is no longer M0/Task 001.
 
-Accepted and merged capability now includes:
+Accepted and merged capability on current `main` includes the previously accepted M0–M7 chain and later accepted desktop/editorial milestones, including:
 
-- M0–M7 / Tasks 001–008;
-- Task 010 Literary Master + exports;
-- Task 011 real-book pilot instrumentation;
-- Task 012 macOS launch hardening.
+- Literary Master + exports;
+- real-book pilot instrumentation;
+- macOS launch hardening and visible desktop app work;
+- Russian first-book launch workspace and guided author workflow work already accepted into the current baseline;
+- GPT-6 Astra production lane;
+- explicit OpenAI `Medium / High / Extra High` work-level selection.
 
-Canonical schema is Alembic `0010`.
+The exact accepted SHAs, CI runs, transfer notes and current `main` checkpoint are recorded in `docs/PROJECT_STATE.md` and Git history. When those sources disagree with an older implementation summary in this authority file, the exact current `main` implementation wins for implementation facts, while this document remains authority for product invariants.
 
-Exact accepted SHAs, CI runs, transfer notes and the current `main` checkpoint are recorded in `docs/PROJECT_STATE.md`.
+The existing source-tree/venv-based native launch mechanism is now explicitly classified as a **development/pilot implementation to be superseded** by the self-contained native macOS application requirement in Section 19. It must not be treated as the final distribution architecture merely because it previously passed launch CI.
 
 Codex or any other executor must not resume Task 001 or former M8 merely because older historical files exist.
 
@@ -434,13 +453,25 @@ The current critical path is:
 
 `real Business Nonfiction pilot → Literary Master → HUMAN GO | CONDITIONAL_GO | NO_GO`
 
-Task 011 tooling acceptance is not product GO. BOOK OS product GO requires the actual private real-book pilot to reach a LOCKED Literary Master and the human Owner to make the final decision from the evidence.
+Tooling acceptance is not product GO. BOOK OS product GO requires the actual private real-book pilot to reach a LOCKED Literary Master and the human Owner to make the final decision from the evidence.
 
-No additional infrastructure milestone is required before starting the first complete book unless the pilot reveals a concrete regression/blocker.
+No additional infrastructure milestone is permitted merely for architectural neatness. However a **concrete product defect discovered in the real Owner workflow** — including unusable UX, incorrect project classification, non-standard macOS installation/launch, or a runtime dependency that violates Section 19 — is a legitimate blocker and must be corrected on the critical path.
 
-The first current Owner gate is creative:
+Before the first paid provider call, explicit bounded budget approval remains mandatory. No task or UI action may infer that approval.
 
-- select/confirm the real book idea;
-- select/confirm the intended reader.
+## Change log
 
-Before the first paid OpenAI call, explicit bounded budget approval remains mandatory. No task or UI action may infer that approval.
+### 0.6.0 — 2026-09-09
+
+Owner accepted the native macOS application/runtime-independence contract:
+
+- install as `BOOK OS.app` in Applications;
+- launch by double-click;
+- ship required local runtime inside the application distribution;
+- no normal-use dependency on GitHub/repositories/Python/Node/Rust/Terminal/development tooling;
+- Developer ID signing + Apple notarization for production distribution;
+- secure self-update capability allowed without making GitHub a runtime dependency;
+- books/settings remain local by default;
+- internet is limited to explicitly invoked external AI/research APIs and optional updates/backup/synchronization.
+
+This version explicitly supersedes the source-tree/venv-dependent launch mechanism as the intended production distribution architecture. It preserves GitHub `main` as the source of truth for **development authority**, not as an end-user runtime dependency.
