@@ -41,8 +41,43 @@ class OpenAIProductionResponsesAdapter(BookOSOpenAIResponsesAdapter):
 
     def _body(self, request: ModelTaskRequest, prompt: PromptTemplate) -> dict[str, Any]:
         body = super()._body(request, prompt)
+        authority_payload = {
+            "authority_inputs": [item.model_dump(mode="json") for item in request.authority_inputs],
+            "authoritative_context": request.authoritative_context,
+        }
+        dynamic_payload = {
+            "task_type": request.task_type,
+            "section_objective": request.section_objective,
+            "untrusted_context": request.untrusted_context,
+            "task_payload": request.task_payload,
+        }
+        body["input"] = [
+            {
+                "role": "developer",
+                "content": [{"type": "input_text", "text": prompt.developer_text}],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(authority_payload, ensure_ascii=False, sort_keys=True),
+                        "prompt_cache_breakpoint": {"mode": "explicit"},
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(dynamic_payload, ensure_ascii=False, sort_keys=True),
+                    }
+                ],
+            },
+        ]
         body["prompt_cache_key"] = self._prompt_cache_key(request)
-        body["prompt_cache_options"] = {"ttl": self._PROMPT_CACHE_TTL}
+        body["prompt_cache_options"] = {"mode": "explicit", "ttl": self._PROMPT_CACHE_TTL}
         return body
 
     @classmethod
