@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import "./launchUx.css";
 import {
   AVAILABLE_BUSINESS_SUBTYPES,
@@ -31,22 +31,22 @@ export function BookStartPanel({
   onCreate,
   onClose,
 }: Props) {
-  const topicsRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDivElement>(null);
+  const [topicChosen, setTopicChosen] = useState(false);
 
-  function goTo(element: HTMLDivElement | null) {
-    element?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  function goToDetails() {
+    detailsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }
 
   return (
     <section className="panel new-book book-start-panel" aria-label="Создание новой книги">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">НОВАЯ КНИГА · ШАГ 1</p>
-          <h2>Выберите направление книги</h2>
+          <p className="eyebrow">НОВАЯ КНИГА · БИЗНЕС</p>
+          <h2>Выберите тему</h2>
           <p className="muted">
-            BOOK OS показывает весь каталог, но открыть можно только те направления, для которых уже
-            есть проверяемый production-профиль.
+            Сейчас в BOOK OS открыт проверенный профиль делового нон-фикшена. Сначала выберите тему,
+            затем задайте рабочее название книги.
           </p>
         </div>
         <button className="ghost" onClick={onClose} type="button">
@@ -54,82 +54,49 @@ export function BookStartPanel({
         </button>
       </div>
 
-      <div className="category-grid" aria-label="Разделы книг">
-        {BOOK_CATEGORIES.map((category) => {
-          const available = category.availability === "AVAILABLE";
+      <div className="topic-grid" aria-label="Темы раздела Бизнес">
+        {BUSINESS_TOPICS.map((topic) => {
+          const available = topic.availability === "AVAILABLE" && Boolean(topic.subtype);
+          const selected = topicChosen && available && topic.subtype === primarySubtype;
           return (
             <button
-              key={category.id}
+              key={topic.id}
               type="button"
-              className={`category-card ${available ? "available selected" : "locked"}`}
+              className={`topic-card ${selected ? "selected" : ""} ${available ? "available" : "locked"}`}
               disabled={!available}
-              aria-label={`${category.label}${available ? ", доступно" : ", в разработке"}`}
-              onClick={() => available && goTo(topicsRef.current)}
+              aria-pressed={selected}
+              aria-label={`${topic.label}${available ? ", доступно" : ", в разработке"}`}
+              onClick={() => {
+                if (!topic.subtype) return;
+                setPrimarySubtype(topic.subtype);
+                setTopicChosen(true);
+                window.setTimeout(goToDetails, 0);
+              }}
+              title={topic.note ?? topic.description}
             >
               <span className={`availability ${available ? "ready" : "soon"}`}>
-                {available ? "Доступно" : "В разработке"}
+                {selected ? "Выбрано ✓" : available ? "Выбрать" : "В разработке"}
               </span>
-              <strong>{category.label}</strong>
-              <small>{category.description}</small>
+              <strong>{topic.label}</strong>
+              <small>{topic.description}</small>
             </button>
           );
         })}
       </div>
 
-      <div className="catalog-section" ref={topicsRef}>
-        <div className="subheading">
-          <div>
-            <p className="eyebrow">БИЗНЕС</p>
-            <h3>Выберите тему</h3>
-          </div>
-          <span className="muted">Активны только реально поддерживаемые темы</span>
-        </div>
-        <div className="topic-grid" aria-label="Темы раздела Бизнес">
-          {BUSINESS_TOPICS.map((topic) => {
-            const available = topic.availability === "AVAILABLE" && Boolean(topic.subtype);
-            const selected = available && topic.subtype === primarySubtype;
-            return (
-              <button
-                key={topic.id}
-                type="button"
-                className={`topic-card ${selected ? "selected" : ""} ${available ? "available" : "locked"}`}
-                disabled={!available}
-                aria-pressed={selected}
-                aria-label={`${topic.label}${available ? ", доступно" : ", в разработке"}`}
-                onClick={() => {
-                  if (!topic.subtype) return;
-                  setPrimarySubtype(topic.subtype);
-                  goTo(detailsRef.current);
-                }}
-                title={topic.note ?? topic.description}
-              >
-                <span className={`availability ${available ? "ready" : "soon"}`}>
-                  {selected ? "Выбрано ✓" : available ? "Доступно сейчас" : "В разработке"}
-                </span>
-                <strong>{topic.label}</strong>
-                <small>{topic.description}</small>
-                {!available && topic.note && <em>{topic.note}</em>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       <div className="start-details" ref={detailsRef}>
         <div>
           <p className="eyebrow">ШАГ 2</p>
-          <h3>Назовите рабочий проект</h3>
-          <p className="muted">
-            Название можно изменить позже. После создания проекта BOOK OS попросит описать саму идею
-            книги и предложит контракт.
-          </p>
+          <h3>Рабочее название</h3>
+          <p className="muted">Название можно изменить позже.</p>
         </div>
         <label className="field">
-          <span>Рабочее название</span>
+          <span>Название книги</span>
           <input
             value={newTitle}
             onChange={(event) => setNewTitle(event.target.value)}
-            placeholder="Например: Бизнес держится на мне"
+            placeholder="Например: SMM продвижение"
+            disabled={!topicChosen}
           />
         </label>
 
@@ -141,7 +108,7 @@ export function BookStartPanel({
             <select
               value={secondarySubtype}
               onChange={(event) => setSecondarySubtype(event.target.value)}
-              disabled={!primarySubtype}
+              disabled={!topicChosen || !primarySubtype}
             >
               <option value="">Нет</option>
               {AVAILABLE_BUSINESS_SUBTYPES.filter((value) => value !== primarySubtype).map((value) => (
@@ -154,9 +121,11 @@ export function BookStartPanel({
         </details>
 
         <div className="selected-topic-summary" role="status" aria-live="polite">
-          <small>Выбрано</small>
+          <small>Тема книги</small>
           <strong>
-            {primarySubtype ? `Бизнес → ${SUBTYPE_LABELS[primarySubtype]}` : "Сначала выберите тему"}
+            {topicChosen && primarySubtype
+              ? `Бизнес → ${SUBTYPE_LABELS[primarySubtype]}`
+              : "Выберите тему выше"}
           </strong>
         </div>
 
@@ -164,23 +133,24 @@ export function BookStartPanel({
           <button
             className="primary"
             onClick={onCreate}
-            disabled={busy || !primarySubtype || newTitle.trim().length === 0}
+            disabled={busy || !topicChosen || !primarySubtype || newTitle.trim().length === 0}
           >
-            Создать проект книги
+            Создать книгу
           </button>
         </div>
       </div>
 
       <details className="help-drawer">
-        <summary>Как пользоваться BOOK OS</summary>
-        <ol className="help-steps">
-          <li><strong>Выберите направление и тему.</strong> Недоступные профили видны, но не открываются.</li>
-          <li><strong>Опишите идею.</strong> Нескольких точных предложений достаточно для первого предложения BOOK OS.</li>
-          <li><strong>Проверьте и утвердите контракт книги.</strong> AI может предложить, но не может утвердить решение за автора.</li>
-          <li><strong>Проверьте архитектуру.</strong> Части и главы можно править до утверждения.</li>
-          <li><strong>Подготовьте контракт главы и пишите.</strong> BOOK OS ведёт по одной управляемой задаче за раз.</li>
-          <li><strong>Проверьте факты, редактуру и BookBench.</strong> Финал выпускается только после человеческого решения.</li>
-        </ol>
+        <summary>Другие направления</summary>
+        <div className="category-grid" aria-label="Направления в разработке">
+          {BOOK_CATEGORIES.filter((category) => category.id !== "business").map((category) => (
+            <div key={category.id} className="category-card locked" aria-label={`${category.label}, в разработке`}>
+              <span className="availability soon">В разработке</span>
+              <strong>{category.label}</strong>
+              <small>{category.description}</small>
+            </div>
+          ))}
+        </div>
       </details>
     </section>
   );
