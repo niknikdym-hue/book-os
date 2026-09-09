@@ -143,6 +143,8 @@ class OpenAIProductionResponsesAdapter(BookOSOpenAIResponsesAdapter):
         )
 
         if numeric_input and numeric_output:
+            assert isinstance(input_tokens, (int, float)) and not isinstance(input_tokens, bool)
+            assert isinstance(output_tokens, (int, float)) and not isinstance(output_tokens, bool)
             input_count = max(0.0, float(input_tokens))
             output_count = max(0.0, float(output_tokens))
             if numeric_cached and numeric_write:
