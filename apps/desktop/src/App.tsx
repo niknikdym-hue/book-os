@@ -11,6 +11,7 @@ import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
 import { LaunchPlanningPanel } from "./LaunchPlanningPanel";
 import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
+import { OpenAIWorkLevelPanel } from "./OpenAIWorkLevelPanel";
 import { PilotPanel } from "./PilotPanel";
 import { ResearchPanel } from "./ResearchPanel";
 import {
@@ -401,6 +402,7 @@ export function App() {
                 </div>
               </section>
 
+              <OpenAIWorkLevelPanel />
               <BookJourney project={project} chapter={selectedChapter} />
               <LaunchPlanningPanel project={project} chapter={selectedChapter} onProject={hydrate} />
 

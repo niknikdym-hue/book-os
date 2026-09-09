@@ -1,12 +1,27 @@
 from pathlib import Path
 
+import pytest
 from sqlalchemy import text
 
 from book_os_core.db import create_database
 from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway
-from book_os_core.model_routing import ModelRoutingService
+from book_os_core.model_routing import ModelRoutingError, ModelRoutingService
 from book_os_core.planning import BookContractPlanningRequest, PlanningService
 from book_os_core.projects import NewBookRequest, ProjectService
+
+
+def test_openai_registry_exposes_owner_work_levels() -> None:
+    providers = ModelRoutingService.provider_registry()
+    openai = next(provider for provider in providers if provider.id == "openai")
+
+    assert openai.label == "OpenAI"
+    assert [model.id for model in openai.models][:2] == ["gpt-6-astra", "gpt-5.6-sol"]
+    assert openai.work_levels == ["medium", "high", "xhigh"]
+
+    for level in openai.work_levels:
+        ModelRoutingService.validate_work_level("openai", level)
+    with pytest.raises(ModelRoutingError, match="not registered"):
+        ModelRoutingService.validate_work_level("openai", "max")
 
 
 def test_auto_manual_operation_and_whole_book_pin(tmp_path: Path) -> None:
@@ -24,6 +39,7 @@ def test_auto_manual_operation_and_whole_book_pin(tmp_path: Path) -> None:
         model=None,
     )
     assert auto.provider == "openai"
+    assert auto.provider_label == "OpenAI"
     assert auto.model == "gpt-6-astra"
     assert auto.selection_mode == "AUTO"
     assert auto.selection_scope is None
