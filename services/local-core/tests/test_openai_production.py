@@ -36,7 +36,7 @@ def _request(
     )
 
 
-def test_prompt_cache_key_is_stable_for_same_prompt_and_authority() -> None:
+def test_prompt_cache_key_and_authority_prefix_are_stable_for_same_authority() -> None:
     adapter = OpenAIProductionResponsesAdapter(DictSecretStore({"openai_api_key": "test"}))
 
     first = adapter._body(_request(objective="First section"), SECTION_DRAFT_V1)
@@ -49,7 +49,37 @@ def test_prompt_cache_key_is_stable_for_same_prompt_and_authority() -> None:
     assert first["prompt_cache_key"] != changed_authority["prompt_cache_key"]
     assert str(first["prompt_cache_key"]).startswith("book-os:")
     assert len(str(first["prompt_cache_key"])) <= 64
-    assert first["prompt_cache_options"] == {"ttl": "30m"}
+    assert first["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
+
+    first_input = first["input"]
+    second_input = second["input"]
+    assert isinstance(first_input, list)
+    assert isinstance(second_input, list)
+    assert first_input[0] == second_input[0]
+    assert first_input[1] == second_input[1]
+    assert first_input[2] != second_input[2]
+
+    authority_message = first_input[1]
+    assert isinstance(authority_message, dict)
+    authority_content = authority_message["content"]
+    assert isinstance(authority_content, list)
+    authority_block = authority_content[0]
+    assert isinstance(authority_block, dict)
+    assert authority_block["prompt_cache_breakpoint"] == {"mode": "explicit"}
+    authority_payload = json.loads(str(authority_block["text"]))
+    assert authority_payload["authoritative_context"] == {
+        "chapter_contract": {"chapter_purpose": "Teach the mechanism"}
+    }
+
+    dynamic_message = first_input[2]
+    assert isinstance(dynamic_message, dict)
+    dynamic_content = dynamic_message["content"]
+    assert isinstance(dynamic_content, list)
+    dynamic_block = dynamic_content[0]
+    assert isinstance(dynamic_block, dict)
+    dynamic_payload = json.loads(str(dynamic_block["text"]))
+    assert dynamic_payload["section_objective"] == "First section"
+    assert "authoritative_context" not in dynamic_payload
 
 
 def test_cache_aware_cost_audit_uses_cached_and_cache_write_rates() -> None:
@@ -82,7 +112,7 @@ def test_cache_aware_cost_audit_uses_cached_and_cache_write_rates() -> None:
 
     body = captured["body"]
     assert isinstance(body, dict)
-    assert body["prompt_cache_options"] == {"ttl": "30m"}
+    assert body["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
     assert body["prompt_cache_key"].startswith("book-os:")
     assert "cache-test-secret" not in json.dumps(body)
 
