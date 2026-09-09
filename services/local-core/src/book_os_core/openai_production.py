@@ -146,6 +146,12 @@ class OpenAIProductionResponsesAdapter(BookOSOpenAIResponsesAdapter):
             input_count = max(0.0, float(input_tokens))
             output_count = max(0.0, float(output_tokens))
             if numeric_cached and numeric_write:
+                assert isinstance(cached_tokens, (int, float)) and not isinstance(
+                    cached_tokens, bool
+                )
+                assert isinstance(cache_write_tokens, (int, float)) and not isinstance(
+                    cache_write_tokens, bool
+                )
                 cached_count = max(0.0, float(cached_tokens))
                 write_count = max(0.0, float(cache_write_tokens))
                 uncached_count = max(0.0, input_count - cached_count - write_count)
