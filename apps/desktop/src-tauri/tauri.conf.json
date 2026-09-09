@@ -13,8 +13,18 @@
     "windows": [
       {
         "title": "BOOK OS",
-        "width": 900,
-        "height": 620
+        "width": 1180,
+        "height": 760,
+        "minWidth": 820,
+        "minHeight": 600,
+        "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "decorations": true,
+        "fullscreen": false,
+        "center": false,
+        "titleBarStyle": "visible"
       }
     ]
   },
