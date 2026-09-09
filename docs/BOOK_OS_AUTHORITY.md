@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.6.0  
+**Version:** 0.7.0  
 **Date:** 2026-09-09  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
@@ -14,7 +14,7 @@ Chats are disposable working sessions and may contain drafts, hypotheses, reject
 
 Accepted decisions are not silently overwritten. A changed decision is versioned and/or explicitly superseded; Git history and decision records preserve prior state.
 
-This v0.6 consolidation preserves all accepted v0.5 product decisions and adds the Owner's explicit native macOS application/runtime-independence invariant: the installed product must be a self-contained macOS application and must not depend on GitHub, source repositories, development runtimes or Terminal for normal use.
+This v0.7 consolidation preserves all accepted v0.6 product decisions and adds the Owner's explicit world-class module-reuse and dual-execution invariant: BOOK OS must reuse strong mature commodity components where appropriate, concentrate custom engineering on BOOK OS-specific editorial intelligence, use the strongest external execution lane for current frontier-quality work, and build an independent local BOOK OS Brain in parallel without claiming parity until reproducible evaluation proves it per editorial operation.
 
 ### Current supersession rule
 
@@ -418,6 +418,45 @@ Use proven commodity technology/APIs for LLMs, embeddings, research metadata/sea
 
 Commodity infrastructure used during development must not create an unnecessary end-user runtime dependency when the same capability can be packaged locally or made optional.
 
+## 25A. World-class module reuse + independent local Brain — ACCEPTED / NON-NEGOTIABLE
+
+BOOK OS must **not reinvent mature commodity modules without a demonstrated product reason**. The default engineering choice is to evaluate and reuse strong maintained world-class components, then invest custom engineering in BOOK OS-specific editorial intelligence and integration quality.
+
+Examples of preferred reusable layers, when they satisfy current licensing/security/product requirements, include:
+
+- OpenAI Responses API, hosted tools, Agents SDK, tracing and Evals/Graders for the external execution/evaluation lane;
+- Apple MLX / MLX-LM or an equivalent mature Apple-Silicon inference runtime for local open-weight execution;
+- Tiptap/ProseMirror or an equivalent mature document engine for the professional manuscript editor;
+- established research/search/metadata sources and libraries rather than home-grown commodity crawlers/parsers where a stronger maintained option exists;
+- proven OS/platform mechanisms for packaging, signing, updates, local secure storage and observability.
+
+These components are **additions to, not replacements for, BOOK OS editorial IP**. BOOK OS retains canonical control over Authority, Book/Chapter Contracts, Book Graph/Memory, Claim/Evidence, Series Brain, chapter admission, Editorial Decision Memory, BookBench, quality routing, adversarial review and Literary Master.
+
+### Dual execution strategy
+
+BOOK OS uses two coordinated execution lanes:
+
+1. **Frontier external lane now** for editorial operations where it currently delivers the strongest demonstrable nonfiction quality.
+2. **Independent local BOOK OS Brain in parallel**, built from local/open-weight models plus BOOK OS-owned editorial intelligence, memory, evidence, quality loops and evaluation.
+
+The long-term objective is that normal high-quality nonfiction production can execute locally without requiring an external frontier model, while external providers remain optional benchmark, fallback or expert resources.
+
+The local Brain is not defined by copying or imitating the wording, hidden reasoning or proprietary implementation of any external model. It is judged by editorial outcome: intellectual depth, correctness, evidence fidelity, originality, structure, voice, usefulness, thought density, whole-book coherence and absence of machine-prose pathologies.
+
+### Quality promotion rule
+
+Local execution is promoted **per editorial operation**, never by one global declaration that “the local model is as good.” Promotion requires reproducible BOOK OS evaluation plus human review. Averages may not hide BLOCKING regressions.
+
+If the local lane remains weaker for a difficult operation, that operation remains on the stronger external lane until evidence supports promotion. No cost, latency or independence goal may silently lower the Section 1A quality target.
+
+### Provider/data boundary
+
+External vendor state — conversations, traces, hosted vector stores, agent state or tool state — is execution/derived state only and never canonical BOOK OS authority. Durable book state remains locally reconstructable.
+
+Provider outputs may be used only in ways permitted by applicable provider terms and law. In particular, OpenAI output must not be used to train, distill, fine-tune or create training targets for a competing local model. Local Brain development must use rights-clean independent data and a separately governed training/evaluation corpus.
+
+Task 020 (`docs/tasks/TASK_020_FRONTIER_QUALITY_LOOP_LOCAL_BRAIN.md`) is the first implementation authority for this strategy. Task 017 remains a required production dependency and must not be bypassed or duplicated.
+
 ## 26. Project execution governance — ACCEPTED
 
 `PROJECT_EXECUTION_PLAN.md` defines role split:
@@ -460,6 +499,19 @@ No additional infrastructure milestone is permitted merely for architectural nea
 Before the first paid provider call, explicit bounded budget approval remains mandatory. No task or UI action may infer that approval.
 
 ## Change log
+
+### 0.7.0 — 2026-09-09
+
+Owner accepted the world-class module-reuse and independent local Brain strategy:
+
+- reuse mature commodity modules instead of rebuilding them without a product reason;
+- keep BOOK OS-specific editorial intelligence canonical and custom;
+- use the strongest external execution lane for current frontier-quality work;
+- build an independent local BOOK OS Brain in parallel using local/open-weight models and BOOK OS-owned systems;
+- promote local execution per editorial operation only after reproducible quality evidence and human review;
+- keep external vendor state non-canonical;
+- keep local-model training/evaluation rights-clean and compliant with provider terms;
+- Task 020 becomes the implementation authority for the quality-loop/local-Brain foundation, with Task 017 retained as a required dependency.
 
 ### 0.6.0 — 2026-09-09
 
