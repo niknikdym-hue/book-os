@@ -88,18 +88,21 @@ export function BookJourney({ project, chapter }: Props) {
     },
   ];
 
-  let actionTitle = "Сначала настройте автора, серию, стиль и объём";
+  const currentStep = steps.find((step) => step.status === "current") ?? steps[steps.length - 1];
+  const completed = steps.filter((step) => step.status === "done").length;
+
+  let actionTitle = "Настройте книгу перед AI-планированием";
   let actionText =
-    "В верхнем блоке выберите или создайте Author Profile, при необходимости Series Profile, сравните манеры письма, утвердите Style Profile и задайте целевой объём в знаках с пробелами. После этого можно переходить к AI-планированию.";
+    "Откройте «Настройки книги» ниже: выберите автора, серию, манеру письма и целевой объём. После этого возвращайтесь к текущему шагу.";
 
   if (project.book_contract && !contractApproved) {
     actionTitle = "Проверьте предложенный контракт книги";
     actionText =
-      "Уточните читателя, проблему, обещание, центральный тезис и ограничения. Когда формулировки действительно задают нужную книгу, нажмите «Утвердить контракт книги».";
+      "Уточните читателя, проблему, обещание, центральный тезис и ограничения. Утверждайте только тот контракт, по которому действительно хотите писать всю книгу.";
   } else if (contractApproved && !project.architecture) {
-    actionTitle = "Попросите BOOK OS предложить архитектуру";
+    actionTitle = "Получите предложение архитектуры";
     actionText =
-      "Утверждённый контракт уже является опорой. Теперь BOOK OS может разложить книгу на части и главы; предложение останется черновиком до вашего решения.";
+      "Утверждённый контракт уже является опорой. BOOK OS может разложить книгу на части и главы; предложение останется черновиком до вашего решения.";
   } else if (project.architecture && !architectureApproved) {
     actionTitle = "Проверьте архитектуру целиком";
     actionText =
@@ -107,7 +110,7 @@ export function BookJourney({ project, chapter }: Props) {
   } else if (architectureApproved && !allChapterContractsApproved) {
     actionTitle = chapter ? `Подготовьте контракт главы ${chapter.ordinal}` : "Подготовьте контракты глав";
     actionText =
-      "Выберите очередную главу, получите предложение BOOK OS, проверьте её функцию, обязательные мысли, примеры и ограничения, затем утвердите контракт главы.";
+      "Выберите очередную главу, проверьте её функцию, обязательные мысли, примеры и ограничения, затем утвердите контракт главы.";
   } else if (allChapterContractsApproved && rank <= 2) {
     actionTitle = chapter ? `Пишите главу ${chapter.ordinal}` : "Переходите к написанию";
     actionText =
@@ -128,61 +131,50 @@ export function BookJourney({ project, chapter }: Props) {
 
   return (
     <>
-      <BookContextPanel project={project} />
-      <StylePreviewPanel bookId={project.book_id} />
-      <section className="panel journey-panel" aria-label="Маршрут книги">
+      <section className="panel journey-panel" aria-label="Текущий этап книги">
         <div className="panel-heading journey-heading">
           <div>
-            <p className="eyebrow">МАРШРУТ КНИГИ</p>
-            <h3>BOOK OS ведёт по шагам</h3>
+            <p className="eyebrow">СЕЙЧАС</p>
+            <h3>{currentStep.label}</h3>
+            <p className="muted">{currentStep.description}</p>
           </div>
-          <span className="journey-progress">
-            {steps.filter((step) => step.status === "done").length}/{steps.length} завершено
-          </span>
+          <span className="journey-progress">{completed}/{steps.length} завершено</span>
         </div>
 
-        <ol className="journey-steps">
-          {steps.map((step, index) => (
-            <li key={step.id} className={`journey-step ${step.status}`}>
-              <span className="journey-number" aria-hidden="true">
-                {step.status === "done" ? "✓" : index + 1}
-              </span>
-              <div>
-                <strong>{step.label}</strong>
-                <small>{step.description}</small>
-              </div>
-              <span className="journey-state">
-                {step.status === "done" ? "Готово" : step.status === "current" ? "Сейчас" : "Позже"}
-              </span>
-            </li>
-          ))}
-        </ol>
-
         <div className="next-action" role="status">
-          <p className="eyebrow">ЧТО ДЕЛАТЬ СЕЙЧАС</p>
           <strong>{actionTitle}</strong>
           <p>{actionText}</p>
         </div>
 
         <details className="help-drawer">
-          <summary>? Как пользоваться BOOK OS</summary>
-          <div className="help-copy">
-            <p>
-              BOOK OS работает как редакционная система, а не как чат: программа предлагает следующий
-              материал, а автор принимает ключевые решения в самом проекте книги.
-            </p>
-            <ol className="help-steps">
-              <li><strong>Сначала задайте контекст.</strong> Автор, серия, стиль и объём становятся обязательной опорой AI-планирования.</li>
-              <li><strong>Смотрите на «Что делать сейчас».</strong> Это главное действие текущего этапа.</li>
-              <li><strong>AI создаёт предложения, не решения.</strong> Контракт, архитектуру и значимые изменения утверждает человек.</li>
-              <li><strong>Не перескакивайте закрытые шаги.</strong> Следующие этапы становятся доступны после обязательных ворот.</li>
-              <li><strong>Словарь мусора находится в «Настройках текста».</strong> Добавленные фразы начинают участвовать в контроле прозы.</li>
-              <li><strong>Платный AI-вызов всегда отдельный.</strong> Перед каждым таким запросом нужен явный лимит и разрешение.</li>
-              <li><strong>Финальная цель — Literary Master.</strong> Это зафиксированная версия книги, а не просто последний открытый текст.</li>
-            </ol>
-          </div>
+          <summary>Показать весь маршрут книги</summary>
+          <ol className="journey-steps">
+            {steps.map((step, index) => (
+              <li key={step.id} className={`journey-step ${step.status}`}>
+                <span className="journey-number" aria-hidden="true">
+                  {step.status === "done" ? "✓" : index + 1}
+                </span>
+                <div>
+                  <strong>{step.label}</strong>
+                  <small>{step.description}</small>
+                </div>
+                <span className="journey-state">
+                  {step.status === "done" ? "Готово" : step.status === "current" ? "Сейчас" : "Позже"}
+                </span>
+              </li>
+            ))}
+          </ol>
         </details>
       </section>
+
+      <details className="utility-drawer book-settings-drawer">
+        <summary>Настройки книги · автор, серия, стиль и объём</summary>
+        <BookContextPanel project={project} />
+        <details className="help-drawer">
+          <summary>Сравнить манеры письма — по желанию</summary>
+          <StylePreviewPanel bookId={project.book_id} />
+        </details>
+      </details>
     </>
   );
 }
