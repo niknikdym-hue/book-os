@@ -83,7 +83,7 @@ def test_openai_web_search_is_bounded_and_imports_only_real_source_rows() -> Non
     assert isinstance(body, dict)
     assert body["model"] == "gpt-5.6-luna"
     assert body["store"] is False
-    assert body["tools"] == [{"type": "web_search_preview", "search_context_size": "low"}]
+    assert body["tools"] == [{"type": "web_search", "search_context_size": "low"}]
     assert body["tool_choice"] == "required"
     assert body["max_tool_calls"] == 1
     assert body["max_output_tokens"] == 128
