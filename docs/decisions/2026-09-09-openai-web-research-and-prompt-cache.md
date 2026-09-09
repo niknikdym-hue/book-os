@@ -1,7 +1,7 @@
 # BOOK OS — OWNER DECISION: OPENAI WEB RESEARCH + PROMPT CACHE
 
 **Status:** ACCEPTED / OWNER DECISION  
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** 2026-09-09  
 **Scope:** Research Engine, production OpenAI execution lane
 
@@ -25,6 +25,7 @@ The adapter may import source identities/URLs returned by the hosted web-search 
 The production search is intentionally bounded:
 
 - one hosted web-search call per explicit research action;
+- current Responses API `web_search` tool, not the legacy `web_search_preview` integration;
 - low search context;
 - cost-sensitive GPT-5.6 Luna discovery model rather than GPT-6 Astra;
 - small output budget;
@@ -45,6 +46,8 @@ The cache key is derived from non-secret identities only:
 
 It must not contain manuscript text, API secrets or personal identifiers.
 
+For production book operations, BOOK OS places an explicit cache breakpoint after the stable authority payload and before the changing section objective/untrusted/task payload. The cache therefore targets the reusable authority prefix rather than merely routing requests with a stable cache key.
+
 Changing an authority revision changes the cache identity. Prompt caching never changes authority semantics, approval rights, quality gates or model-output acceptance.
 
 Cost preflight must remain conservative: because a cache miss may incur cache-write pricing, the upper bound uses the cache-write rate rather than assuming a cache hit. Usage/provenance retains the provider's cached/cache-write token details when available.
@@ -55,9 +58,9 @@ OpenAI documentation currently confirms:
 
 - GPT-6 Astra supports Responses API web search and prompt caching;
 - GPT-5.6 Luna supports Responses API web search and reasoning effort `none`;
-- Responses supports `web_search_preview`, source inclusion through `web_search_call.action.sources`, `max_tool_calls`, `prompt_cache_key`, and `prompt_cache_options.ttl`;
+- Responses supports the current `web_search` tool, source inclusion through `web_search_call.action.sources`, `max_tool_calls`, `prompt_cache_key`, explicit `prompt_cache_breakpoint`, and `prompt_cache_options`;
 - current prompt-cache TTL option is `30m`;
-- cache writes are billed at 1.25x uncached input token rate and cached input at 0.1x for the registered current OpenAI models;
+- cache writes are billed at 1.25x uncached input token rate and cached input at 0.1x for GPT-5.6 and later;
 - web search is billed per web run plus applicable search-content/model tokens.
 
 Provider facts are dated evidence and may require a later implementation update if OpenAI changes the contract.
@@ -75,4 +78,5 @@ Neither web search nor prompt caching may:
 
 ## Change log
 
+- **1.1 — 2026-09-09:** moved the new integration from legacy `web_search_preview` to current `web_search` and required an explicit reusable authority cache boundary before dynamic task content.
 - **1.0 — 2026-09-09:** admitted bounded OpenAI web discovery and production prompt caching as concrete technical strengthening; explicitly deferred unrelated platform features.
