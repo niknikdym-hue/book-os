@@ -27,6 +27,7 @@ from book_os_core.projects import (
 )
 from book_os_core.research import ClaimCreateRequest, ClaimUpdateRequest, ResearchService
 from book_os_core.research_adapters import ResearchGateway
+from test_support_task017 import ensure_writing_allowed_for_test
 
 
 def book_contract(version: str = "v1") -> BookContractPayload:
@@ -115,6 +116,8 @@ def ready_memory_book(data_dir: Path) -> dict[str, str]:
         project.book_id, second_chapter.chapter_id, chapter_contract("consistency")
     )
     projects.approve_chapter_contract(project.book_id, second_chapter.chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, first_chapter.chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, second_chapter.chapter_id)
 
     drafting = DraftingService(data_dir, ModelGateway({"fake": DeterministicFakeAdapter()}))
     first = drafting.generate_section_draft(
@@ -187,7 +190,7 @@ def test_m5_schema_fts_exact_phrase_and_filters(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0015"
+            == "0016"
         )
         assert (
             connection.execute(

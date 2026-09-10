@@ -30,6 +30,7 @@ from book_os_core.research import (
     SourceImportRequest,
 )
 from book_os_core.research_adapters import ResearchCandidate, ResearchGateway
+from test_support_task017 import ensure_writing_allowed_for_test
 
 
 def book_contract() -> BookContractPayload:
@@ -102,6 +103,7 @@ def ready_draft(data_dir: Path) -> tuple[str, str, str, str, str]:
     chapter_id = project.chapters[0].chapter_id
     projects.save_chapter_contract(project.book_id, chapter_id, chapter_contract())
     projects.approve_chapter_contract(project.book_id, chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, chapter_id)
 
     drafting = DraftingService(
         data_dir,
@@ -192,7 +194,7 @@ def test_m4_schema_and_claim_attach_to_exact_current_draft(tmp_path: Path) -> No
             connection.execute(
                 text("SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1")
             ).scalar_one()
-            == "0015"
+            == "0016"
         )
         history = connection.execute(
             text("SELECT new_state,actor_kind FROM claim_state_history WHERE claim_id=:claim_id"),

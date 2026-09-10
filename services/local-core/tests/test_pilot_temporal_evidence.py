@@ -9,6 +9,7 @@ from book_os_core.bookbench_registry import registry_hash
 from book_os_core.db import create_database
 from book_os_core.pilot import PilotService
 from book_os_core.projects import NewBookRequest, ProjectService
+from test_support_task017 import record_independent_adversarial_review_for_test
 
 
 def _project_with_revision_refs(data_dir: Path) -> tuple[str, str, str, str, str]:
@@ -55,6 +56,7 @@ def _insert_master(
     master_id: str,
     created_at: str,
 ) -> None:
+    record_independent_adversarial_review_for_test(data_dir, book_id)
     database = data_dir / "projects" / book_id / "project.sqlite"
     engine = create_database(database)
     try:
