@@ -8,18 +8,20 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::Manager;
+use tauri::{path::BaseDirectory, Manager};
 
 const CORE_HEALTH_CALL_TIMEOUT: Duration = Duration::from_secs(2);
 const CORE_STARTUP_DEADLINE: Duration = Duration::from_secs(60);
 const CORE_HEALTH_RETRY_DEADLINE: Duration = Duration::from_secs(8);
 const CORE_STARTUP_LOG: &str = "local-core-startup.log";
+const BUNDLED_CORE_RESOURCE: &str = "book-os-core";
 
 struct Core {
     child: Mutex<Child>,
     port: Mutex<Option<u16>>,
     token: String,
 }
+
 impl Core {
     fn stop(&self) {
         if let Ok(mut child) = self.child.lock() {
@@ -37,6 +39,7 @@ impl Core {
             .map_err(|_| "local core port lock poisoned".to_string())
     }
 }
+
 impl Drop for Core {
     fn drop(&mut self) {
         self.stop();
@@ -48,6 +51,7 @@ struct CoreState {
     core: Mutex<Option<Arc<Core>>>,
     error: Mutex<Option<String>>,
 }
+
 impl CoreState {
     fn current_core(&self) -> Result<Option<Arc<Core>>, String> {
         self.core
@@ -149,54 +153,56 @@ fn desktop_app_bundle() -> Result<PathBuf, String> {
 }
 
 #[cfg(target_os = "macos")]
+fn source_app_bundle(executable: &Path) -> Option<PathBuf> {
+    let macos_dir = executable.parent()?;
+    if macos_dir.file_name()?.to_str()? != "MacOS" {
+        return None;
+    }
+    let contents_dir = macos_dir.parent()?;
+    if contents_dir.file_name()?.to_str()? != "Contents" {
+        return None;
+    }
+    let app_dir = contents_dir.parent()?;
+    if app_dir.extension()?.to_str()? != "app" {
+        return None;
+    }
+    Some(app_dir.to_path_buf())
+}
+
+#[cfg(target_os = "macos")]
 fn install_desktop_app() -> Result<Option<PathBuf>, String> {
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
 
     if cfg!(debug_assertions) {
         return Ok(None);
     }
 
     let app_dir = desktop_app_bundle()?;
-    let contents_dir = app_dir.join("Contents");
-    let macos_dir = contents_dir.join("MacOS");
-    let installed_executable = macos_dir.join("BOOK OS");
+    let installed_executable = app_dir.join("Contents").join("MacOS").join("BOOK OS");
     let current_executable = std::env::current_exe().map_err(|error| error.to_string())?;
 
     if current_executable == installed_executable {
         return Ok(Some(app_dir));
     }
 
+    let source_bundle = source_app_bundle(&current_executable).ok_or_else(|| {
+        format!(
+            "current production executable is not inside a macOS app bundle: {}",
+            current_executable.display()
+        )
+    })?;
+
     if app_dir.exists() {
         fs::remove_dir_all(&app_dir).map_err(|error| error.to_string())?;
     }
-    fs::create_dir_all(&macos_dir).map_err(|error| error.to_string())?;
-    fs::copy(&current_executable, &installed_executable).map_err(|error| error.to_string())?;
-
-    let mut permissions = fs::metadata(&installed_executable)
-        .map_err(|error| error.to_string())?
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&installed_executable, permissions).map_err(|error| error.to_string())?;
-
-    let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDisplayName</key><string>BOOK OS</string>
-  <key>CFBundleExecutable</key><string>BOOK OS</string>
-  <key>CFBundleIdentifier</key><string>com.bookos.desktop</string>
-  <key>CFBundleName</key><string>BOOK OS</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-</dict>
-</plist>
-"#;
-    fs::write(contents_dir.join("Info.plist"), plist).map_err(|error| error.to_string())?;
-    fs::write(contents_dir.join("PkgInfo"), "APPL????\n").map_err(|error| error.to_string())?;
+    let status = Command::new("/usr/bin/ditto")
+        .arg(&source_bundle)
+        .arg(&app_dir)
+        .status()
+        .map_err(|error| format!("unable to copy BOOK OS.app to Desktop: {error}"))?;
+    if !status.success() {
+        return Err(format!("ditto app copy failed with status {status}"));
+    }
 
     let _ = Command::new("/usr/bin/xattr")
         .args(["-dr", "com.apple.quarantine"])
@@ -212,6 +218,13 @@ fn install_desktop_app() -> Result<Option<PathBuf>, String> {
         return Err(format!("ad-hoc codesign failed with status {status}"));
     }
 
+    if !installed_executable.is_file() {
+        return Err("Desktop BOOK OS.app has no executable after installation".into());
+    }
+    if !app_dir.join("Contents").join("Resources").join(BUNDLED_CORE_RESOURCE).is_file() {
+        return Err("Desktop BOOK OS.app is missing its bundled Local Core".into());
+    }
+
     Ok(Some(app_dir))
 }
 
@@ -220,12 +233,7 @@ fn install_desktop_app() -> Result<Option<PathBuf>, String> {
     Ok(None)
 }
 
-fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>, PathBuf), String> {
-    let token: String = rng()
-        .sample_iter(&Alphanumeric)
-        .take(48)
-        .map(char::from)
-        .collect();
+fn dev_python_command(startup_log: &Path) -> Result<Command, String> {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let python = std::env::var("BOOK_OS_PYTHON")
         .map(|value| resolve_python(&value, manifest_dir))
@@ -240,25 +248,51 @@ fn spawn_core(data_dir: &Path) -> Result<(Arc<Core>, BufReader<ChildStdout>, Pat
             ))
         });
     let source_path = canonical_existing_path(source_path, "local core source")?;
+
+    append_startup_log(startup_log, "core_mode=development-python");
+    append_startup_log(startup_log, &format!("python={}", python.display()));
+    append_startup_log(
+        startup_log,
+        &format!("pythonpath={}", source_path.display()),
+    );
+
+    let mut command = Command::new(&python);
+    command.args(["-m", "book_os_core"]).env("PYTHONPATH", source_path);
+    Ok(command)
+}
+
+fn spawn_core(
+    data_dir: &Path,
+    bundled_core: Option<&Path>,
+) -> Result<(Arc<Core>, BufReader<ChildStdout>, PathBuf), String> {
+    let token: String = rng()
+        .sample_iter(&Alphanumeric)
+        .take(48)
+        .map(char::from)
+        .collect();
     let startup_log = data_dir.join(CORE_STARTUP_LOG);
     std::fs::write(&startup_log, "")
         .map_err(|error| format!("unable to initialize local core startup log: {error}"))?;
-    append_startup_log(&startup_log, &format!("python={}", python.display()));
-    append_startup_log(
-        &startup_log,
-        &format!("pythonpath={}", source_path.display()),
-    );
+
+    let mut command = if std::env::var_os("BOOK_OS_PYTHON").is_some() || cfg!(debug_assertions) {
+        dev_python_command(&startup_log)?
+    } else {
+        let binary = bundled_core.ok_or("production app has no bundled Local Core path")?;
+        let binary = canonical_existing_path(binary.to_path_buf(), "bundled local core")?;
+        append_startup_log(&startup_log, "core_mode=bundled");
+        append_startup_log(&startup_log, &format!("core_binary={}", binary.display()));
+        Command::new(binary)
+    };
+
     append_startup_log(&startup_log, &format!("data_dir={}", data_dir.display()));
     let stderr = OpenOptions::new()
         .create(true)
         .append(true)
         .open(&startup_log)
         .map_err(|error| format!("unable to open local core startup log: {error}"))?;
-    let mut child = Command::new(&python)
-        .args(["-m", "book_os_core"])
+    let mut child = command
         .env("BOOK_OS_SESSION_TOKEN", &token)
         .env("BOOK_OS_DATA_DIR", data_dir)
-        .env("PYTHONPATH", &source_path)
         .env("PYTHONUNBUFFERED", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::from(stderr))
@@ -345,12 +379,12 @@ fn read_json_response(mut response: ureq::http::Response<ureq::Body>) -> Result<
     let text = response
         .body_mut()
         .read_to_string()
-        .map_err(|e| e.to_string())?;
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+        .map_err(|error| error.to_string())?;
+    serde_json::from_str(&text).map_err(|error| error.to_string())
 }
 
 fn json_request_body(body: Option<Value>) -> Result<String, String> {
-    serde_json::to_string(&body.unwrap_or(Value::Null)).map_err(|e| e.to_string())
+    serde_json::to_string(&body.unwrap_or(Value::Null)).map_err(|error| error.to_string())
 }
 
 fn request_core_health(core: &Core, port: u16) -> Result<Value, String> {
@@ -430,7 +464,7 @@ fn core_api(request: CoreApiRequest, state: tauri::State<'_, CoreState>) -> Resu
             .send(json_request_body(request.body)?),
         _ => unreachable!("validated method"),
     }
-    .map_err(|e| e.to_string())?;
+    .map_err(|error| error.to_string())?;
     read_json_response(response)
 }
 
@@ -447,7 +481,16 @@ fn main() {
             std::fs::create_dir_all(&data_dir)?;
             app.manage(CoreState::default());
             let state = app.state::<CoreState>();
-            match spawn_core(&data_dir) {
+            let bundled_core = if cfg!(debug_assertions) || std::env::var_os("BOOK_OS_PYTHON").is_some() {
+                None
+            } else {
+                Some(
+                    app.path()
+                        .resolve(BUNDLED_CORE_RESOURCE, BaseDirectory::Resource)
+                        .map_err(|error| std::io::Error::other(error.to_string()))?,
+                )
+            };
+            match spawn_core(&data_dir, bundled_core.as_deref()) {
                 Ok((core, mut reader, startup_log)) => {
                     let mut managed_core = state
                         .core
@@ -572,5 +615,17 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(parsed["title"], "Привет");
         assert_eq!(parsed["count"], 2);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn detects_the_source_app_bundle_from_a_macos_executable_path() {
+        use super::source_app_bundle;
+
+        assert_eq!(
+            source_app_bundle(Path::new("/tmp/BOOK OS.app/Contents/MacOS/BOOK OS")),
+            Some(PathBuf::from("/tmp/BOOK OS.app"))
+        );
+        assert_eq!(source_app_bundle(Path::new("/tmp/BOOK OS")), None);
     }
 }
