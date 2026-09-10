@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it } from "vitest";
 import { DraftingPanel } from "./DraftingPanel";
 import type { DraftApi, DraftRunView } from "./draftingTypes";
@@ -20,6 +20,19 @@ const chapter: ChapterView = {
   },
 };
 
+const secondChapter: ChapterView = {
+  ...chapter,
+  chapter_id: "01JCHAPTER200000000000000",
+  ordinal: 2,
+  working_title: "The next mechanism",
+  chapter_contract: {
+    ...chapter.chapter_contract!,
+    entity_id: "01JCONTRACT20000000000000",
+    revision_id: "01JCONTRACTREV20000000000",
+    authority_revision_id: "01JCONTRACTREV20000000000",
+  },
+};
+
 const project: ProjectView = {
   book_id: "01JBOOK000000000000000000",
   working_title: "Drafting Book",
@@ -31,7 +44,7 @@ const project: ProjectView = {
   workflow_stage: "WRITING",
   book_contract: null,
   architecture: null,
-  chapters: [chapter],
+  chapters: [chapter, secondChapter],
 };
 
 const providers = [
@@ -149,4 +162,41 @@ it("keeps other approved models available behind the advanced routing control", 
   });
 
   expect(screen.getByRole("heading", { name: "GPT-5.6 Sol" })).toBeInTheDocument();
+});
+
+it("never renders a late draft response from the previously selected chapter", async () => {
+  let resolveFirstChapter: ((value: DraftRunView[]) => void) | null = null;
+  const raceApi: DraftApi = async function raceApi<T>(method, path): Promise<T> {
+    if (method === "GET" && path === "/api/launch/readiness") {
+      return {
+        openai_credential_state: "AVAILABLE",
+        yandex_credential_state: "AVAILABLE",
+        providers,
+      } as T;
+    }
+    if (method === "GET" && path.endsWith("/model-routing")) {
+      return { book_pin: null, providers } as T;
+    }
+    if (method === "GET" && path.includes(chapter.chapter_id) && path.endsWith("/drafts")) {
+      return new Promise<DraftRunView[]>((resolve) => {
+        resolveFirstChapter = resolve;
+      }) as Promise<T>;
+    }
+    if (method === "GET" && path.includes(secondChapter.chapter_id) && path.endsWith("/drafts")) {
+      return [] as T;
+    }
+    throw new Error(`unexpected request: ${method} ${path}`);
+  };
+
+  const view = render(<DraftingPanel project={project} chapter={chapter} api={raceApi} />);
+  expect(await screen.findByText("1. The mechanism")).toBeInTheDocument();
+
+  view.rerender(<DraftingPanel project={project} chapter={secondChapter} api={raceApi} />);
+  expect(await screen.findByText("2. The next mechanism")).toBeInTheDocument();
+  expect(screen.queryByText("A bounded generated section.")).not.toBeInTheDocument();
+
+  if (resolveFirstChapter) resolveFirstChapter([success()]);
+  await waitFor(() =>
+    expect(screen.queryByText("A bounded generated section.")).not.toBeInTheDocument(),
+  );
 });
