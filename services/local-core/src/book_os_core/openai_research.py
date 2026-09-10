@@ -106,12 +106,15 @@ class OpenAIWebSearchAdapter:
         raw_url = source.get("url")
         if not isinstance(raw_url, str):
             return None
-        canonical_url = normalize_url(raw_url)
-        if not canonical_url or not canonical_url.startswith(("http://", "https://")):
+        try:
+            canonical_url = normalize_url(raw_url)
+            if not canonical_url or not canonical_url.startswith(("http://", "https://")):
+                return None
+            host = urlsplit(canonical_url).hostname
+        except ValueError:
             return None
         raw_title = source.get("title")
         title = raw_title.strip() if isinstance(raw_title, str) and raw_title.strip() else None
-        host = urlsplit(canonical_url).hostname
         if title is None:
             title = host or canonical_url
         raw_ids = {"openai_web": canonical_url}
@@ -182,7 +185,7 @@ class ProductionResearchGateway(ResearchGateway):
         providers: list[str] | None = None,
         limit_per_provider: int = 5,
     ) -> list[ResearchCandidate]:
-        selected = list(self._DEFAULT_SCHOLARLY) if providers is None else list(providers)
+        selected = list(self._DEFAULT_SCHOLARLY) if not providers else list(providers)
         enrich_with_web = selected == list(self._DEFAULT_SCHOLARLY)
         results = super().search(
             query,
