@@ -1,0 +1,85 @@
+name: Task 017 Fixture Repair v2
+on:
+  push:
+    branches:
+      - brain/task-017-series-production-gates
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.event.head_commit.message == 'Run Task 017 fixture repair v2'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brain/task-017-series-production-gates
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install local-core dependencies
+        working-directory: services/local-core
+        run: pip install -r requirements-dev.lock
+      - name: Reuse fixture patcher with unique pilot marker
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/pytest-diagnostic.yml').read_text(encoding='utf-8')
+          start = workflow.index("          python - <<'PY'\n") + len("          python - <<'PY'\n")
+          end = workflow.index("          PY\n", start)
+          block = workflow[start:end]
+          block = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines()) + '\n'
+          old = "    ') -> None:\\\\n    database = data_dir / \\\"projects\\\" / book_id / \\\"project.sqlite\\\"',\n    ') -> None:\\\\n    record_independent_adversarial_review_for_test(data_dir, book_id)\\\\n    database = data_dir / \\\"projects\\\" / book_id / \\\"project.sqlite\\\"',"
+          new = "    '    master_id: str,\\\\n    created_at: str,\\\\n) -> None:\\\\n    database = data_dir / \\\"projects\\\" / book_id / \\\"project.sqlite\\\"',\n    '    master_id: str,\\\\n    created_at: str,\\\\n) -> None:\\\\n    record_independent_adversarial_review_for_test(data_dir, book_id)\\\\n    database = data_dir / \\\"projects\\\" / book_id / \\\"project.sqlite\\\"',"
+          if old not in block:
+              raise RuntimeError('pilot replacement source block not found')
+          block = block.replace(old, new, 1)
+          compile(block, '<task017-repair>', 'exec')
+          exec(block, {'__name__': '__main__'})
+          PY
+      - name: Format and validate full backend
+        id: validate
+        working-directory: services/local-core
+        shell: bash
+        run: |
+          set +e
+          ruff format . 2>&1 | tee repair-format.txt
+          format_status=${PIPESTATUS[0]}
+          ruff check . 2>&1 | tee repair-ruff.txt
+          ruff_status=${PIPESTATUS[0]}
+          mypy src 2>&1 | tee repair-mypy.txt
+          mypy_status=${PIPESTATUS[0]}
+          pytest -q 2>&1 | tee repair-pytest.txt
+          pytest_status=${PIPESTATUS[0]}
+          printf 'format=%s\nruff=%s\nmypy=%s\npytest=%s\n' "$format_status" "$ruff_status" "$mypy_status" "$pytest_status" | tee repair-status.txt
+          if [ "$format_status" -eq 0 ] && [ "$ruff_status" -eq 0 ] && [ "$mypy_status" -eq 0 ] && [ "$pytest_status" -eq 0 ]; then
+            echo 'ok=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ok=false' >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+      - name: Upload repair diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: task017-fixture-repair-v2-diagnostic
+          path: |
+            services/local-core/repair-format.txt
+            services/local-core/repair-ruff.txt
+            services/local-core/repair-mypy.txt
+            services/local-core/repair-pytest.txt
+            services/local-core/repair-status.txt
+          if-no-files-found: warn
+      - name: Commit verified repair and remove temporary workflows
+        if: steps.validate.outputs.ok == 'true'
+        shell: bash
+        run: |
+          rm .github/workflows/pytest-diagnostic.yml .github/workflows/task017-repair-v2.yml
+          rm -f services/local-core/repair-format.txt services/local-core/repair-ruff.txt services/local-core/repair-mypy.txt services/local-core/repair-pytest.txt services/local-core/repair-status.txt
+          git diff --check
+          git config user.name 'book-os-ci'
+          git config user.email 'book-os-ci@users.noreply.github.com'
+          git add -A
+          git commit -m 'Repair Task 017 historical test fixtures'
+          git push origin HEAD:brain/task-017-series-production-gates
