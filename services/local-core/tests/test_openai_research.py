@@ -5,18 +5,39 @@ import json
 import httpx
 
 from book_os_core.openai_research import OpenAIWebSearchAdapter, ProductionResearchGateway
-from book_os_core.research_adapters import ResearchCandidate
+from book_os_core.research_adapters import ResearchCandidate, ResearchProviderError
 from book_os_core.secrets import DictSecretStore
 
 
 class _FakeAdapter:
-    def __init__(self, provider_name: str, calls: list[str]) -> None:
+    def __init__(
+        self,
+        provider_name: str,
+        calls: list[str],
+        *,
+        results: list[ResearchCandidate] | None = None,
+        fail: bool = False,
+    ) -> None:
         self.provider_name = provider_name
         self._calls = calls
+        self._results = results or []
+        self._fail = fail
 
     def search(self, query: str, *, limit: int = 5) -> list[ResearchCandidate]:
         self._calls.append(self.provider_name)
-        return []
+        if self._fail:
+            raise ResearchProviderError(f"{self.provider_name} unavailable")
+        return list(self._results)
+
+
+def _scholarly_candidate() -> ResearchCandidate:
+    return ResearchCandidate(
+        provider="openalex",
+        external_id="openalex:fixture",
+        title="Rights-clean scholarly result",
+        canonical_url="https://example.org/scholarly",
+        source_type="journal-article",
+    )
 
 
 def test_openai_web_search_is_bounded_and_imports_only_real_source_rows() -> None:
@@ -123,3 +144,39 @@ def test_production_gateway_enriches_only_the_default_scholarly_search() -> None
     calls.clear()
     gateway.search("scholarly only", providers=["openalex"])
     assert calls == ["openalex"]
+
+
+def test_optional_web_failure_never_discards_scholarly_results() -> None:
+    calls: list[str] = []
+    scholarly = _scholarly_candidate()
+    gateway = ProductionResearchGateway(
+        {
+            "openalex": _FakeAdapter("openalex", calls, results=[scholarly]),
+            "crossref": _FakeAdapter("crossref", calls),
+            "semantic_scholar": _FakeAdapter("semantic_scholar", calls),
+            "openai_web": _FakeAdapter("openai_web", calls, fail=True),
+        }
+    )
+
+    results = gateway.search("default research")
+
+    assert calls == ["openalex", "crossref", "semantic_scholar", "openai_web"]
+    assert results == [scholarly]
+
+
+def test_missing_openai_key_never_breaks_default_scholarly_search() -> None:
+    calls: list[str] = []
+    scholarly = _scholarly_candidate()
+    gateway = ProductionResearchGateway(
+        {
+            "openalex": _FakeAdapter("openalex", calls, results=[scholarly]),
+            "crossref": _FakeAdapter("crossref", calls),
+            "semantic_scholar": _FakeAdapter("semantic_scholar", calls),
+            "openai_web": OpenAIWebSearchAdapter(DictSecretStore({})),
+        }
+    )
+
+    results = gateway.search("default research")
+
+    assert calls == ["openalex", "crossref", "semantic_scholar"]
+    assert results == [scholarly]
