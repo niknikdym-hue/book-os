@@ -127,7 +127,7 @@ export function BookContextPanel({ project }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function fillStyleForm(profile: ProfileView) {
+  const fillStyleForm = useCallback((profile: ProfileView) => {
     const content = profile.content;
     setStyleName(textValue(content, "style_name") || profile.name);
     setStyleRegister(textValue(content, "literary_register"));
@@ -143,7 +143,7 @@ export function BookContextPanel({ project }: Props) {
     setStyleTerminology(textValue(content, "terminology_level"));
     setStyleProhibitions(linesValue(content, "prohibited_patterns"));
     setStyleBenchmark(linesValue(content, "benchmark_excerpts"));
-  }
+  }, []);
 
   const reload = useCallback(async () => {
     const [profileItems, currentContext] = await Promise.all([
@@ -205,7 +205,7 @@ export function BookContextPanel({ project }: Props) {
 
   useEffect(() => {
     if (selectedStyle) fillStyleForm(selectedStyle);
-  }, [selectedStyle?.profile_id]);
+  }, [fillStyleForm, selectedStyle]);
 
   async function createProfile(kind: ProfileKind, content: Record<string, unknown>) {
     setBusy(true);
