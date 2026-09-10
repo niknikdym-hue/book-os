@@ -1,3 +1,4 @@
+import type { OpenAIWorkLevel } from "./openaiWorkLevel";
 import type { ChapterView, ProjectView } from "./types";
 
 export type DraftRunView = {
@@ -10,6 +11,7 @@ export type DraftRunView = {
   selection_mode: "AUTO" | "MANUAL";
   selection_scope: "OPERATION" | "BOOK" | null;
   routing_rationale: string | null;
+  reasoning_effort?: OpenAIWorkLevel | "low" | "max" | null;
   prompt_id: string;
   prompt_version: string;
   prompt_hash: string;
