@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uniqueProfileNames } from "./profileOptions";
 import type { ProjectView } from "./types";
 
 type ProfileKind = "AUTHOR" | "SERIES" | "STYLE";
@@ -12,6 +13,7 @@ type ProfileView = {
   current_revision: number;
   content_hash: string;
   content: Record<string, unknown>;
+  updated_at: string;
 };
 
 type BookContextView = {
@@ -175,7 +177,10 @@ export function BookContextPanel({ project }: Props) {
     () => profiles.filter((item) => item.kind === "AUTHOR"),
     [profiles],
   );
-  const approvedAuthors = authors.filter((item) => item.status === "APPROVED");
+  const approvedAuthors = useMemo(
+    () => uniqueProfileNames(authors.filter((item) => item.status === "APPROVED")),
+    [authors],
+  );
   const selectedAuthor = authors.find((item) => item.profile_id === authorId) ?? null;
   const seriesProfiles = useMemo(
     () =>

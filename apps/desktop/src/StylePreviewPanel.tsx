@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uniqueProfileNames } from "./profileOptions";
 
 type ProfileView = {
   profile_id: string;
@@ -7,6 +8,7 @@ type ProfileView = {
   name: string;
   status: "DRAFT" | "APPROVED";
   content: Record<string, unknown>;
+  updated_at: string;
 };
 
 type Readiness = {
@@ -60,8 +62,12 @@ export function StylePreviewPanel({ bookId }: Props) {
     void reload().catch((reason: unknown) => setError(String(reason)));
   }, [reload]);
 
-  const authors = profiles.filter(
-    (item) => item.kind === "AUTHOR" && item.status === "APPROVED",
+  const authors = useMemo(
+    () =>
+      uniqueProfileNames(
+        profiles.filter((item) => item.kind === "AUTHOR" && item.status === "APPROVED"),
+      ),
+    [profiles],
   );
   const styles = profiles.filter(
     (item) =>
