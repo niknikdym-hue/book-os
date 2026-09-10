@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from book_os_core.authority import AuthorityService
 from book_os_core.db import create_database
+from book_os_core.drafting import DraftRunView
 from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway
 from book_os_core.projects import NewBookRequest, ProjectService
 from book_os_core.quality_loop import QualityLoopGateError, QualityLoopStage
@@ -17,7 +18,6 @@ from book_os_core.quality_orchestrator import (
     QualityLoopOrchestrationRequest,
     QualityLoopOrchestrator,
 )
-from book_os_core.drafting import DraftRunView
 from test_drafting import architecture, book_contract, chapter_contract
 from test_support_task017 import ensure_writing_allowed_for_test
 
@@ -64,7 +64,9 @@ def admitted_project(data_dir: Path) -> tuple[str, str]:
     return project.book_id, chapter_id
 
 
-def request(*, evidence_required: bool = True, evidence_ready: bool = True) -> QualityLoopOrchestrationRequest:
+def request(
+    *, evidence_required: bool = True, evidence_ready: bool = True
+) -> QualityLoopOrchestrationRequest:
     return QualityLoopOrchestrationRequest(
         section_objective="Explain one bounded operating mechanism",
         writer_provider="fake",
@@ -73,7 +75,9 @@ def request(*, evidence_required: bool = True, evidence_ready: bool = True) -> Q
         section_intent="Add one new mechanism without expanding the chapter boundary.",
         evidence_required=evidence_required,
         evidence_ready=evidence_ready,
-        evidence_summary="Synthetic rights-clean evidence fixture is ready." if evidence_ready else "",
+        evidence_summary="Synthetic rights-clean evidence fixture is ready."
+        if evidence_ready
+        else "",
         deterministic_checks_pass=True,
         novelty_pass=True,
         novelty_evidence="No overlap in the deterministic fixture.",
