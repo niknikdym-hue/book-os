@@ -61,6 +61,41 @@ def test_ai_pro_astra_is_priced_and_bounded() -> None:
     assert guard["pricing_source_date"] == "2026-09-06"
 
 
+def test_openai_structured_schema_is_strict_at_every_object_level() -> None:
+    schema = BookOSOpenAIResponsesAdapter.output_schema("ARCHITECTURE_PROPOSAL")
+
+    def assert_strict(node: object) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                assert node["additionalProperties"] is False
+                assert set(node["required"]) == set(properties)
+            for value in node.values():
+                assert_strict(value)
+        elif isinstance(node, list):
+            for value in node:
+                assert_strict(value)
+
+    assert_strict(schema)
+
+
+def test_openai_rejection_preserves_a_safe_provider_message() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={"error": {"message": "Unsupported reasoning effort for this model."}},
+        )
+
+    adapter = BookOSOpenAIResponsesAdapter(
+        DictSecretStore({"openai_api_key": "test-openai-secret"}),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        endpoint="https://example.test/v1/responses",
+    )
+
+    with pytest.raises(ModelProviderError, match="Unsupported reasoning effort"):
+        adapter.generate(request("openai", "gpt-6-astra"), SECTION_DRAFT_V1)
+
+
 def test_ai_ya_uses_yandex_openai_compatible_contract_without_leaking_secrets() -> None:
     captured: dict[str, object] = {}
 

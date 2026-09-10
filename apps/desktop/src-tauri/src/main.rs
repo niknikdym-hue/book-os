@@ -453,18 +453,35 @@ fn core_api(request: CoreApiRequest, state: tauri::State<'_, CoreState>) -> Resu
     let response = match method.as_str() {
         "GET" => ureq::get(&url)
             .header("Authorization", &authorization)
+            .config()
+            .http_status_as_error(false)
+            .build()
             .call(),
         "POST" => ureq::post(&url)
             .header("Authorization", &authorization)
             .content_type("application/json")
+            .config()
+            .http_status_as_error(false)
+            .build()
             .send(json_request_body(request.body)?),
         "PUT" => ureq::put(&url)
             .header("Authorization", &authorization)
             .content_type("application/json")
+            .config()
+            .http_status_as_error(false)
+            .build()
             .send(json_request_body(request.body)?),
         _ => unreachable!("validated method"),
     }
     .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = read_json_response(response)
+            .ok()
+            .and_then(|body| body.get("detail").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_else(|| "Local Core did not provide a diagnostic".to_string());
+        return Err(format!("Local Core returned HTTP {status}: {detail}"));
+    }
     read_json_response(response)
 }
 
