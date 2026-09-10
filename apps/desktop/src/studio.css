@@ -351,14 +351,6 @@ body {
   border-top: 4px solid var(--studio-success);
 }
 
-.launch-planning-panel > .panel-heading h3::after {
-  content: "  ·  Astra ready";
-  color: var(--studio-success);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-
 [aria-label="Уровень работы OpenAI"] {
   border-top: 4px solid var(--studio-accent);
 }
