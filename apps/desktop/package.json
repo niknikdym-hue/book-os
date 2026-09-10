@@ -10,7 +10,7 @@
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "brand:icons": "tauri icon src-tauri/app-icon.svg",
-    "core:bundle": "mkdir -p src-tauri/resources src-tauri/.pyinstaller && ../../services/local-core/.venv/bin/python -m PyInstaller --noconfirm --clean --onefile --name book-os-core --paths ../../services/local-core/src --add-data ../../services/local-core/alembic.ini:. --add-data ../../services/local-core/alembic:alembic --distpath src-tauri/resources --workpath src-tauri/.pyinstaller/build --specpath src-tauri/.pyinstaller ../../services/local-core/standalone_core.py",
+    "core:bundle": "CORE_DIR=\"$(cd ../../services/local-core && pwd)\" && mkdir -p src-tauri/resources src-tauri/.pyinstaller && \"$CORE_DIR/.venv/bin/python\" -m PyInstaller --noconfirm --clean --onefile --name book-os-core --paths \"$CORE_DIR/src\" --add-data \"$CORE_DIR/alembic.ini:.\" --add-data \"$CORE_DIR/alembic:alembic\" --distpath src-tauri/resources --workpath src-tauri/.pyinstaller/build --specpath src-tauri/.pyinstaller \"$CORE_DIR/standalone_core.py\"",
     "prepare:bundle": "pnpm brand:icons && pnpm core:bundle",
     "tauri": "tauri"
   },
