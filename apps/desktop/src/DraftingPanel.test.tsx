@@ -47,32 +47,16 @@ const project: ProjectView = {
   chapters: [chapter, secondChapter],
 };
 
-const providers = [
-  {
-    id: "openai",
-    label: "AI Pro",
-    models: [
-      { id: "gpt-6-astra", label: "GPT-6 Astra", family: "astra", work_levels: ["medium", "high", "xhigh"] },
-      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
-    ],
-  },
-  {
-    id: "yandex",
-    label: "AI Ya",
-    models: [{ id: "aliceai-llm", label: "Alice AI LLM" }],
-  },
-];
-
 const calls: Array<{ method: string; path: string; body?: unknown }> = [];
 
-function success(model = "gpt-6-astra", reasoning = "high"): DraftRunView {
+function success(reasoning = "high"): DraftRunView {
   return {
     task_id: "01JTASK0000000000000000000",
     run_id: "01JRUN00000000000000000000",
     task_status: "SUCCEEDED",
     run_status: "SUCCEEDED",
     provider: "openai",
-    model,
+    model: "gpt-6-astra",
     selection_mode: "MANUAL",
     selection_scope: "OPERATION",
     routing_rationale: "Human manual model pin for operation SECTION_DRAFT",
@@ -89,7 +73,7 @@ function success(model = "gpt-6-astra", reasoning = "high"): DraftRunView {
     text: "A bounded generated section.",
     notes: ["not approved"],
     provider_run_id: "resp_mock",
-    usage: { output_tokens: 40 },
+    usage: { output_tokens: 40, cost_guard: { reasoning_effort: reasoning } },
     error_code: null,
     error_message: null,
   };
@@ -102,19 +86,12 @@ const fakeApi: DraftApi = async function fakeApi<T>(
 ): Promise<T> {
   calls.push({ method, path, body });
   if (method === "GET" && path === "/api/launch/readiness") {
-    return {
-      openai_credential_state: "AVAILABLE",
-      yandex_credential_state: "AVAILABLE",
-      providers,
-    } as T;
-  }
-  if (method === "GET" && path.endsWith("/model-routing")) {
-    return { book_pin: null, providers } as T;
+    return { openai_credential_state: "AVAILABLE" } as T;
   }
   if (method === "GET" && path.endsWith("/drafts")) return [] as T;
   if (method === "POST" && path.endsWith("/drafts")) {
-    const request = body as { model?: string | null; reasoning_effort?: string | null };
-    return success(request.model ?? "gpt-6-astra", request.reasoning_effort ?? "high") as T;
+    const request = body as { reasoning_effort?: string | null };
+    return success(request.reasoning_effort ?? "high") as T;
   }
   throw new Error(`unexpected request: ${method} ${path}`);
 };
@@ -123,94 +100,63 @@ beforeEach(() => {
   calls.length = 0;
 });
 
-it("starts in Astra High and returns the book text in the author workspace", async () => {
+it("shows exactly the three first-class GPT-6 Astra modes with High selected", async () => {
   render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
 
-  expect(await screen.findByRole("heading", { name: "GPT-6 Astra" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
+  await screen.findByText("OpenAI API подключён");
+  const modeGroup = screen.getByRole("group", { name: "Режим Astra" });
+  expect(within(modeGroup).getByRole("button", { name: "GPT-6 Astra Medium" })).toBeInTheDocument();
+  expect(within(modeGroup).getByRole("button", { name: "GPT-6 Astra High" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(within(modeGroup).getByRole("button", { name: "GPT-6 Astra Extra High" })).toBeInTheDocument();
+  expect(within(modeGroup).getAllByRole("button")).toHaveLength(3);
 
+  expect(screen.queryByLabelText("Модель Astra")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("AI-провайдер")).not.toBeInTheDocument();
+  expect(screen.queryByText("Подобрать Astra")).not.toBeInTheDocument();
+  expect(screen.queryByText("Другие модели и маршрутизация")).not.toBeInTheDocument();
+  expect(screen.queryByText("GPT-5.6 Sol")).not.toBeInTheDocument();
+  expect(screen.queryByText("GPT-5.6 Terra")).not.toBeInTheDocument();
+  expect(screen.queryByText("GPT-5.6 Luna")).not.toBeInTheDocument();
+  expect(screen.queryByText("Yandex AI")).not.toBeInTheDocument();
+});
+
+it.each([
+  ["GPT-6 Astra Medium", "medium"],
+  ["GPT-6 Astra High", "high"],
+  ["GPT-6 Astra Extra High", "xhigh"],
+] as const)("%s sends the exact Astra model and effort", async (label, effort) => {
+  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
+  await screen.findByText("OpenAI API подключён");
+
+  fireEvent.click(screen.getByRole("button", { name: label }));
   fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
-    target: { value: "Explain the bounded mechanism" },
+    target: { value: `Use ${label}` },
   });
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Запустить Astra" }));
 
   expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
-  expect(screen.getByText("Черновик готов")).toBeInTheDocument();
-  expect(screen.getAllByText("High").length).toBeGreaterThan(0);
   expect(calls).toContainEqual({
     method: "POST",
     path: expect.stringContaining("/drafts"),
     body: expect.objectContaining({
-      section_objective: "Explain the bounded mechanism",
+      section_objective: `Use ${label}`,
       provider: "openai",
       model: "gpt-6-astra",
       selection_mode: "MANUAL",
       selection_scope: "OPERATION",
-      reasoning_effort: "high",
+      reasoning_effort: effort,
     }),
   });
-});
 
-it("keeps Astra model and reasoning effort as separate explicit choices", async () => {
-  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
-
-  expect(await screen.findByLabelText("Модель Astra")).toHaveValue("gpt-6-astra");
-  expect(screen.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
-  fireEvent.click(screen.getByRole("button", { name: "Extra High" }));
-  fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
-    target: { value: "Use the selected Astra configuration" },
-  });
-  fireEvent.click(screen.getByRole("checkbox"));
-  fireEvent.click(screen.getByRole("button", { name: "Запустить Astra" }));
-
-  expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
-  expect(calls).toContainEqual({
-    method: "POST",
-    path: expect.stringContaining("/drafts"),
-    body: expect.objectContaining({
-      provider: "openai",
-      model: "gpt-6-astra",
-      selection_mode: "MANUAL",
-      reasoning_effort: "xhigh",
-    }),
-  });
-});
-
-it("keeps automatic Author Studio routing inside the Astra family", async () => {
-  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
-
-  await screen.findByLabelText("Модель Astra");
-  fireEvent.click(screen.getByRole("button", { name: "Подобрать Astra" }));
-  fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
-    target: { value: "Choose the eligible Astra automatically" },
-  });
-  fireEvent.click(screen.getByRole("checkbox"));
-  fireEvent.click(screen.getByRole("button", { name: "Запустить Astra" }));
-
-  expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
-  expect(calls).toContainEqual({
-    method: "POST",
-    path: expect.stringContaining("/drafts"),
-    body: expect.objectContaining({
-      provider: "openai",
-      model: "gpt-6-astra",
-      selection_mode: "AUTO",
-      reasoning_effort: "high",
-    }),
-  });
-});
-
-it("keeps other approved models available behind the advanced routing control", async () => {
-  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
-  await screen.findByText("OpenAI API подключён");
-
-  fireEvent.click(screen.getAllByText("Другие модели и маршрутизация")[0]);
-  fireEvent.change(screen.getAllByLabelText("Модель")[0], {
-    target: { value: "gpt-5.6-sol" },
-  });
-
-  expect(screen.getByRole("heading", { name: "GPT-5.6 Sol" })).toBeInTheDocument();
+  const provenance = screen.getByLabelText("Технические данные запуска");
+  expect(within(provenance).getByText("gpt-6-astra")).toBeInTheDocument();
+  expect(within(provenance).getByText("01JRUN00000000000000000000")).toBeInTheDocument();
+  expect(within(provenance).getByText("01JTASK0000000000000000000")).toBeInTheDocument();
+  expect(within(provenance).getByText("section_draft_v1 · v1.1.0")).toBeInTheDocument();
 });
 
 it("never renders a late draft response from the previously selected chapter", async () => {
@@ -223,14 +169,7 @@ it("never renders a late draft response from the previously selected chapter", a
     path: string,
   ): Promise<T> {
     if (method === "GET" && path === "/api/launch/readiness") {
-      return {
-        openai_credential_state: "AVAILABLE",
-        yandex_credential_state: "AVAILABLE",
-        providers,
-      } as T;
-    }
-    if (method === "GET" && path.endsWith("/model-routing")) {
-      return { book_pin: null, providers } as T;
+      return { openai_credential_state: "AVAILABLE" } as T;
     }
     if (method === "GET" && path.includes(chapter.chapter_id) && path.endsWith("/drafts")) {
       return firstChapterDrafts as Promise<T>;
