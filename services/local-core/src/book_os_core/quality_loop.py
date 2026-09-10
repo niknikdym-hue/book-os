@@ -208,7 +208,8 @@ class QualityLoopStateMachine:
             pending = [item.artifact_id for item in run.artifacts if item.status == "PROPOSED"]
             if pending:
                 raise QualityLoopGateError(
-                    "quality loop has material proposals awaiting human decision: " + ", ".join(pending)
+                    "quality loop has material proposals awaiting human decision: "
+                    + ", ".join(pending)
                 )
             blocking = [item.finding_id for item in run.findings if item.severity == "BLOCKING"]
             if blocking:
