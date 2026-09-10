@@ -1,87 +1,43 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { coreApi } from "./api";
 import type { DraftRunView, DraftingPanelProps } from "./draftingTypes";
 import {
-  OPENAI_WORK_LEVEL_OPTIONS,
   openAIWorkLevelLabel,
   setPendingOpenAIWorkLevel,
   type OpenAIWorkLevel,
 } from "./openaiWorkLevel";
 
-type ProviderId = "openai" | "yandex";
-type SelectionMode = "AUTO" | "MANUAL";
-type SelectionScope = "OPERATION" | "BOOK";
-
-type ProviderView = {
-  id: ProviderId;
-  label: string;
-  models: Array<{
-    id: string;
-    label: string;
-    family?: "astra";
-    work_levels?: OpenAIWorkLevel[];
-  }>;
-};
-
 type LaunchReadiness = {
   openai_credential_state: "AVAILABLE" | "NOT_AVAILABLE";
-  yandex_credential_state?: "AVAILABLE" | "NOT_AVAILABLE";
-  providers?: ProviderView[];
 };
 
-type BookModelPin = {
-  provider: ProviderId;
-  provider_label: string;
-  model: string;
+type AstraMode = {
+  effort: OpenAIWorkLevel;
+  label: string;
 };
 
-type RoutingState = {
-  book_pin: BookModelPin | null;
-  providers?: ProviderView[];
-};
-
-const FALLBACK_PROVIDERS: ProviderView[] = [
-  {
-    id: "openai",
-    label: "OpenAI",
-    models: [
-      { id: "gpt-6-astra", label: "GPT-6 Astra" },
-      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
-      { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
-      { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
-    ],
-  },
-  {
-    id: "yandex",
-    label: "Yandex AI",
-    models: [
-      { id: "aliceai-llm", label: "Alice AI LLM" },
-      { id: "aliceai-llm-flash", label: "Alice AI LLM Flash" },
-      { id: "yandexgpt-5.1", label: "YandexGPT Pro 5.1" },
-      { id: "yandexgpt-5-pro", label: "YandexGPT Pro 5" },
-      { id: "yandexgpt-5-lite", label: "YandexGPT Lite 5" },
-    ],
-  },
+const ASTRA_MODES: readonly AstraMode[] = [
+  { effort: "medium", label: "GPT-6 Astra Medium" },
+  { effort: "high", label: "GPT-6 Astra High" },
+  { effort: "xhigh", label: "GPT-6 Astra Extra High" },
 ];
 
-function providerTitle(provider: ProviderId) {
-  return provider === "openai" ? "OpenAI" : "Yandex AI";
+function modeLabel(effort: OpenAIWorkLevel) {
+  return ASTRA_MODES.find((item) => item.effort === effort)?.label ?? "GPT-6 Astra";
+}
+
+function optional(value: string | null | undefined) {
+  return value && value.trim() ? value : "—";
 }
 
 export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanelProps) {
   const [objective, setObjective] = useState("");
   const [context, setContext] = useState("");
-  const [provider, setProvider] = useState<ProviderId>("openai");
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>("MANUAL");
-  const [selectionScope, setSelectionScope] = useState<SelectionScope | null>("OPERATION");
-  const [model, setModel] = useState("gpt-6-astra");
   const [workLevel, setWorkLevel] = useState<OpenAIWorkLevel>("high");
   const [maxCostUsd, setMaxCostUsd] = useState("0.50");
   const [allowPaid, setAllowPaid] = useState(false);
-  const [apiKey, setApiKey] = useState("");
   const [runs, setRuns] = useState<DraftRunView[]>([]);
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
-  const [routingState, setRoutingState] = useState<RoutingState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -90,52 +46,23 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   const approved =
     chapter?.chapter_contract?.authority_status === "APPROVED" ||
     chapter?.chapter_contract?.authority_status === "LOCKED";
-  const providers = readiness?.providers ?? routingState?.providers ?? FALLBACK_PROVIDERS;
-  const selectedProvider = useMemo(
-    () => providers.find((item) => item.id === provider) ?? FALLBACK_PROVIDERS[0],
-    [provider, providers],
-  );
-  const selectedModel =
-    selectedProvider.models.find((item) => item.id === model) ?? selectedProvider.models[0] ?? null;
-  const astraModels = (providers.find((item) => item.id === "openai")?.models ?? [])
-    .filter((item) => item.family === "astra" || item.id === "gpt-6-astra");
-  const selectedAstra = astraModels.find((item) => item.id === model) ?? astraModels[0] ?? null;
-  const supportedWorkLevels = selectedAstra?.work_levels ?? OPENAI_WORK_LEVEL_OPTIONS.map((item) => item.value);
-  const bookPin = routingState?.book_pin ?? null;
+  const credentialAvailable = readiness?.openai_credential_state === "AVAILABLE";
   const cost = Number(maxCostUsd);
-  const credentialAvailable =
-    provider === "openai"
-      ? readiness?.openai_credential_state === "AVAILABLE"
-      : readiness?.yandex_credential_state === "AVAILABLE";
   const canRun =
     Boolean(chapter) &&
     approved &&
-    Boolean(credentialAvailable) &&
+    credentialAvailable &&
     objective.trim().length > 0 &&
     allowPaid &&
     Number.isFinite(cost) &&
     cost > 0 &&
-    (selectionMode === "AUTO" || model.trim().length > 0) &&
     !busy;
   const latest = runs[0] ?? null;
+  const selectedModeLabel = modeLabel(workLevel);
 
   const reloadReadiness = useCallback(async () => {
     setReadiness(await api<LaunchReadiness>("GET", "/api/launch/readiness"));
   }, [api]);
-
-  const reloadRouting = useCallback(async () => {
-    const state = await api<RoutingState>(
-      "GET",
-      `/api/projects/${project.book_id}/model-routing`,
-    );
-    setRoutingState(state);
-    if (state.book_pin) {
-      setProvider(state.book_pin.provider);
-      setSelectionMode("MANUAL");
-      setSelectionScope("BOOK");
-      setModel(state.book_pin.model);
-    }
-  }, [api, project.book_id]);
 
   const reloadDrafts = useCallback(async () => {
     const loadId = ++draftLoadSequence.current;
@@ -146,73 +73,19 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
       "GET",
       `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
     );
-    if (loadId === draftLoadSequence.current) {
-      setRuns(value);
-    }
+    if (loadId === draftLoadSequence.current) setRuns(value);
   }, [api, chapter, project.book_id]);
 
   useEffect(() => {
     let active = true;
     setError(null);
-    void Promise.all([reloadReadiness(), reloadRouting(), reloadDrafts()]).catch(
-      (reason: unknown) => {
-        if (active) setError(String(reason));
-      },
-    );
+    void Promise.all([reloadReadiness(), reloadDrafts()]).catch((reason: unknown) => {
+      if (active) setError(String(reason));
+    });
     return () => {
       active = false;
     };
-  }, [reloadDrafts, reloadReadiness, reloadRouting]);
-
-  useEffect(() => {
-    if (selectionMode !== "MANUAL" || bookPin) return;
-    if (!selectedProvider.models.some((item) => item.id === model)) {
-      setModel(selectedProvider.models[0]?.id ?? "");
-      setAllowPaid(false);
-    }
-  }, [bookPin, model, selectedProvider, selectionMode]);
-
-  async function saveOpenAIKey() {
-    if (!apiKey.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api("POST", "/api/launch/openai-key", { api_key: apiKey.trim() });
-      setApiKey("");
-      await reloadReadiness();
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function chooseProvider(next: ProviderId) {
-    if (bookPin || next === provider) return;
-    setProvider(next);
-    setSelectionMode("MANUAL");
-    const nextProvider = providers.find((item) => item.id === next);
-    setModel(nextProvider?.models[0]?.id ?? "");
-    setAllowPaid(false);
-  }
-
-  async function clearBookPin() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api("POST", `/api/projects/${project.book_id}/model-routing/clear-book-pin`);
-      setProvider("openai");
-      setSelectionMode("MANUAL");
-      setSelectionScope("OPERATION");
-      setModel("gpt-6-astra");
-      setAllowPaid(false);
-      await reloadRouting();
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
+  }, [reloadDrafts, reloadReadiness]);
 
   async function generate() {
     if (!chapter || !canRun) return;
@@ -220,17 +93,17 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     setError(null);
     setCopied(false);
     try {
-      if (provider === "openai") setPendingOpenAIWorkLevel(workLevel);
+      setPendingOpenAIWorkLevel(workLevel);
       const run = await api<DraftRunView>(
         "POST",
         `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
         {
           section_objective: objective.trim(),
-          provider,
-          model: selectionMode === "MANUAL" ? model.trim() : null,
-          selection_mode: selectionMode,
-          selection_scope: selectionMode === "MANUAL" ? selectionScope : null,
-          reasoning_effort: provider === "openai" ? workLevel : null,
+          provider: "openai",
+          model: "gpt-6-astra",
+          selection_mode: "MANUAL",
+          selection_scope: "OPERATION",
+          reasoning_effort: workLevel,
           untrusted_context: context.trim() ? [context.trim()] : [],
           max_output_tokens: 3500,
           max_cost_usd: cost,
@@ -238,9 +111,6 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
       );
       setRuns((current) => [run, ...current]);
       setAllowPaid(false);
-      if (selectionMode === "MANUAL" && selectionScope === "BOOK") {
-        await reloadRouting();
-      }
     } catch (reason) {
       setAllowPaid(false);
       setError(String(reason));
@@ -265,14 +135,14 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
       <header className="writer-studio-head">
         <div>
           <p className="writer-kicker"><span aria-hidden="true" /> AUTHOR STUDIO</p>
-          <h3>{provider === "openai" && model === "gpt-6-astra" ? "GPT-6 Astra" : selectedModel?.label ?? model}</h3>
+          <h3>{selectedModeLabel}</h3>
           <p className="writer-chapter">
             {chapter ? `${chapter.ordinal}. ${chapter.working_title}` : "Выберите главу для работы"}
           </p>
         </div>
         <div className={`writer-status ${credentialAvailable ? "ready" : "missing"}`}>
           <span aria-hidden="true" />
-          {credentialAvailable ? `${providerTitle(provider)} API подключён` : `${providerTitle(provider)} не подключён`}
+          {credentialAvailable ? "OpenAI API подключён" : "OpenAI не подключён"}
         </div>
       </header>
 
@@ -298,9 +168,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
                   <span className="writer-overline">ЗАДАЧА ДЛЯ МОДЕЛИ</span>
                   <h4>Что сделать с книгой сейчас?</h4>
                 </div>
-                <span className="writer-chip">
-                  {selectionMode === "AUTO" ? "Автовыбор" : selectedModel?.label ?? model}
-                </span>
+                <span className="writer-chip">{selectedModeLabel}</span>
               </div>
 
               <label className="writer-prompt-label">
@@ -337,15 +205,12 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
                     </button>
                   </header>
                   <div className="writer-manuscript">{latest.text}</div>
-                  <details className="writer-provenance">
-                    <summary>Данные запуска</summary>
-                    <dl>
-                      <div><dt>Модель</dt><dd>{latest.model}</dd></div>
-                      <div><dt>Уровень</dt><dd>{openAIWorkLevelLabel(latest.reasoning_effort)}</dd></div>
-                      <div><dt>Статус</dt><dd>{latest.revision_status ?? latest.run_status}</dd></div>
-                      <div><dt>Revision</dt><dd>{latest.revision_id ?? "—"}</dd></div>
-                    </dl>
-                  </details>
+                  <p className="writer-note">
+                    {latest.model === "gpt-6-astra"
+                      ? `GPT-6 Astra ${openAIWorkLevelLabel(latest.reasoning_effort)}`
+                      : latest.model}
+                    {latest.revision_status ? ` · ${latest.revision_status}` : ""}
+                  </p>
                 </article>
               ) : (
                 <div className="writer-result-empty">
@@ -362,107 +227,30 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
 
         <aside className="writer-inspector" aria-label="Настройки Writer">
           <section>
-            <span className="writer-overline">МОДЕЛЬ</span>
-            <div className="writer-model-card">
-              <span className="writer-model-orb" aria-hidden="true" />
-              <div>
-                <div className="writer-routing-switch" role="group" aria-label="Выбор Astra">
-                  <button
-                    type="button"
-                    className={selectionMode === "AUTO" ? "active" : ""}
-                    disabled={busy}
-                    onClick={() => {
-                      setProvider("openai");
-                      setSelectionMode("AUTO");
-                      setSelectionScope(null);
-                      setAllowPaid(false);
-                    }}
-                  >
-                    Подобрать Astra
-                  </button>
-                  <button
-                    type="button"
-                    className={selectionMode === "MANUAL" ? "active" : ""}
-                    disabled={busy}
-                    onClick={() => {
-                      setProvider("openai");
-                      setSelectionMode("MANUAL");
-                      setSelectionScope("OPERATION");
-                      setModel(selectedAstra?.id ?? "");
-                      setAllowPaid(false);
-                    }}
-                  >
-                    Выбрать самому
-                  </button>
-                </div>
-                <label className="sr-only" htmlFor="astra-model">Модель Astra</label>
-                <select
-                  id="astra-model"
-                  aria-label="Модель Astra"
-                  value={selectedAstra?.id ?? ""}
-                  disabled={busy || selectionMode === "AUTO" || astraModels.length === 0}
-                  onChange={(event) => {
-                    setProvider("openai");
-                    setSelectionMode("MANUAL");
-                    setSelectionScope("OPERATION");
-                    setModel(event.target.value);
+            <span className="writer-overline">РЕЖИМ ASTRA</span>
+            <div className="writer-levels writer-astra-modes" role="group" aria-label="Режим Astra">
+              {ASTRA_MODES.map((mode) => (
+                <button
+                  key={mode.effort}
+                  type="button"
+                  className={workLevel === mode.effort ? "active" : ""}
+                  aria-pressed={workLevel === mode.effort}
+                  disabled={busy}
+                  onClick={() => {
+                    setWorkLevel(mode.effort);
                     setAllowPaid(false);
                   }}
                 >
-                  {astraModels.map((item) => (
-                    <option key={item.id} value={item.id}>{item.label}</option>
-                  ))}
-                </select>
-                <small>OpenAI Astra · Writer</small>
-              </div>
+                  {mode.label}
+                </button>
+              ))}
             </div>
           </section>
 
-          {selectedAstra && (
-            <section>
-              <span className="writer-overline">ГЛУБИНА РАБОТЫ</span>
-              <div className="writer-levels" role="group" aria-label="Уровень работы OpenAI">
-                {OPENAI_WORK_LEVEL_OPTIONS.filter((option) => supportedWorkLevels.includes(option.value)).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={workLevel === option.value ? "active" : ""}
-                    aria-pressed={workLevel === option.value}
-                    onClick={() => {
-                      setWorkLevel(option.value);
-                      setAllowPaid(false);
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <p className="writer-note">High — основной режим для работы над книгой.</p>
-            </section>
-          )}
-
-          {!credentialAvailable && provider === "openai" && (
+          {!credentialAvailable && (
             <section className="writer-key-section">
               <span className="writer-overline">OPENAI НЕ ПОДКЛЮЧЁН</span>
-              <label>
-                <span>Ключ OpenAI</span>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  placeholder="sk-…"
-                  autoComplete="off"
-                />
-              </label>
-              <button
-                type="button"
-                className="writer-secondary"
-                disabled={busy || !apiKey.trim()}
-                onClick={() => void saveOpenAIKey()}
-              >
-                Сохранить в Keychain
-              </button>
-              <small>Ключ хранится локально в macOS Keychain.</small>
+              <p className="writer-note">Подключение ключа вынесено в «Настройки / Advanced» вне рабочей панели.</p>
             </section>
           )}
 
@@ -483,99 +271,6 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
             </label>
           </section>
 
-          {bookPin && (
-            <section className="writer-pin">
-              <span className="writer-overline">НА ВСЮ КНИГУ</span>
-              <strong>{bookPin.provider_label} · {bookPin.model}</strong>
-              <button type="button" className="writer-link" disabled={busy} onClick={() => void clearBookPin()}>
-                Снять закрепление
-              </button>
-            </section>
-          )}
-
-          <details className="writer-advanced">
-            <summary>Другие модели и маршрутизация</summary>
-            <div className="writer-advanced-content">
-              <div className="writer-provider-switch" role="group" aria-label="AI-провайдер">
-                {providers.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={provider === item.id ? "active" : ""}
-                    disabled={busy || Boolean(bookPin)}
-                    onClick={() => chooseProvider(item.id)}
-                  >
-                    {providerTitle(item.id)}
-                  </button>
-                ))}
-              </div>
-              <div className="writer-routing-switch" role="group" aria-label="Выбор модели">
-                <button
-                  type="button"
-                  className={selectionMode === "MANUAL" ? "active" : ""}
-                  disabled={busy || Boolean(bookPin)}
-                  onClick={() => {
-                    setSelectionMode("MANUAL");
-                    setModel(selectedProvider.models[0]?.id ?? "");
-                    setAllowPaid(false);
-                  }}
-                >
-                  Ручной
-                </button>
-                <button
-                  type="button"
-                  className={selectionMode === "AUTO" ? "active" : ""}
-                  disabled={busy || Boolean(bookPin)}
-                  onClick={() => {
-                    setSelectionMode("AUTO");
-                    setSelectionScope("OPERATION");
-                    setAllowPaid(false);
-                  }}
-                >
-                  Авто
-                </button>
-              </div>
-              {selectionMode === "MANUAL" && (
-                <>
-                  <label>
-                    <span>Модель</span>
-                    <select
-                      aria-label="Модель"
-                      value={model}
-                      disabled={busy || Boolean(bookPin)}
-                      onChange={(event) => {
-                        setModel(event.target.value);
-                        setAllowPaid(false);
-                      }}
-                    >
-                      {selectedProvider.models.map((item) => (
-                        <option key={item.id} value={item.id}>{item.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="writer-routing-switch" role="group" aria-label="Где закрепить модель">
-                    <button
-                      type="button"
-                      className={selectionScope === "OPERATION" ? "active" : ""}
-                      disabled={busy || Boolean(bookPin)}
-                      onClick={() => setSelectionScope("OPERATION")}
-                    >
-                      Эта операция
-                    </button>
-                    <button
-                      type="button"
-                      className={selectionScope === "BOOK" ? "active" : ""}
-                      disabled={busy || Boolean(bookPin)}
-                      onClick={() => setSelectionScope("BOOK")}
-                    >
-                      Вся книга
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </details>
-
           <label className="writer-approval">
             <input
               type="checkbox"
@@ -587,7 +282,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
           </label>
 
           <button type="button" className="writer-run" disabled={!canRun} onClick={() => void generate()}>
-            <span>{busy ? "Astra работает…" : provider === "openai" && model === "gpt-6-astra" ? "Запустить Astra" : "Запустить Writer"}</span>
+            <span>{busy ? "Astra работает…" : "Запустить Astra"}</span>
             <strong aria-hidden="true">→</strong>
           </button>
 
@@ -602,6 +297,36 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
           )}
         </aside>
       </div>
+
+      {latest && (
+        <details className="utility-drawer writer-technical-provenance" aria-label="Технические данные запуска">
+          <summary>Настройки / Advanced · технические данные запуска</summary>
+          <div className="panel">
+            <p className="muted">
+              Эти данные нужны для аудита воспроизводимости и не являются частью обычной авторской панели.
+            </p>
+            <dl className="writer-provenance">
+              <div><dt>Модель</dt><dd>{latest.model}</dd></div>
+              <div><dt>Уровень</dt><dd>{openAIWorkLevelLabel(latest.reasoning_effort)}</dd></div>
+              <div><dt>Provider</dt><dd>{latest.provider}</dd></div>
+              <div><dt>Selection</dt><dd>{latest.selection_mode} · {optional(latest.selection_scope)}</dd></div>
+              <div><dt>Routing</dt><dd>{optional(latest.routing_rationale)}</dd></div>
+              <div><dt>Run ID</dt><dd>{latest.run_id}</dd></div>
+              <div><dt>Task ID</dt><dd>{latest.task_id}</dd></div>
+              <div><dt>Prompt</dt><dd>{latest.prompt_id} · v{latest.prompt_version}</dd></div>
+              <div><dt>Prompt hash</dt><dd>{latest.prompt_hash}</dd></div>
+              <div><dt>Input revision</dt><dd>{latest.input_revision_id}</dd></div>
+              <div><dt>Input hash</dt><dd>{latest.input_revision_hash}</dd></div>
+              <div><dt>Output revision</dt><dd>{optional(latest.revision_id)}</dd></div>
+              <div><dt>Output hash</dt><dd>{optional(latest.revision_hash)}</dd></div>
+              <div><dt>Provider run</dt><dd>{optional(latest.provider_run_id)}</dd></div>
+              <div><dt>Статус</dt><dd>{latest.revision_status ?? latest.run_status}</dd></div>
+              <div><dt>Notes</dt><dd>{latest.notes.length ? latest.notes.join(" · ") : "—"}</dd></div>
+              <div><dt>Usage</dt><dd><code>{JSON.stringify(latest.usage)}</code></dd></div>
+            </dl>
+          </div>
+        </details>
+      )}
     </section>
   );
 }
