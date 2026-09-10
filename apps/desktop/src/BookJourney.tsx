@@ -7,8 +7,10 @@ type JourneyStatus = "done" | "current" | "locked";
 type JourneyStep = {
   id: string;
   label: string;
+  shortLabel: string;
   description: string;
   status: JourneyStatus;
+  target?: string;
 };
 
 type Props = {
@@ -29,6 +31,11 @@ const stageRank: Record<string, number> = {
   "LITERARY MASTER": 5,
 };
 
+function moveTo(target?: string) {
+  if (!target) return;
+  document.querySelector(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 export function BookJourney({ project, chapter }: Props) {
   const contractApproved = approved(project.book_contract?.authority_status);
   const architectureApproved = approved(project.architecture?.authority_status);
@@ -40,146 +47,185 @@ export function BookJourney({ project, chapter }: Props) {
   const steps: JourneyStep[] = [
     {
       id: "direction",
-      label: "Тема",
-      description: "Направление и рабочий проект выбраны.",
+      label: "Тема и направление",
+      shortLabel: "Тема",
+      description: "Проект книги создан.",
       status: "done",
     },
     {
       id: "contract",
       label: "Идея и контракт",
-      description: "BOOK OS формирует предложение; автор проверяет и утверждает.",
+      shortLabel: "Контракт",
+      description: "Обещание, тезис и границы книги.",
       status: contractApproved ? "done" : "current",
+      target: project.book_contract ? "#book-contract" : ".launch-planning-panel",
     },
     {
       id: "architecture",
       label: "Архитектура",
-      description: "Части, главы, функция каждой главы и движение мысли.",
+      shortLabel: "Архитектура",
+      description: "Части, главы и движение мысли.",
       status: !contractApproved ? "locked" : architectureApproved ? "done" : "current",
+      target: "#architecture",
     },
     {
       id: "chapters",
-      label: "Подготовка глав",
-      description: "Контракт каждой главы до систематического написания.",
+      label: "Контракты глав",
+      shortLabel: "Главы",
+      description: "Функция и границы каждой главы.",
       status: !architectureApproved ? "locked" : allChapterContractsApproved ? "done" : "current",
+      target: "#chapter-contract",
     },
     {
       id: "writing",
-      label: "Написание",
-      description: "Управляемые черновики по утверждённым контрактам глав.",
+      label: "Исследование и написание",
+      shortLabel: "Писать",
+      description: "Astra/Writer, факты и управляемые черновики.",
       status: !allChapterContractsApproved ? "locked" : rank > 2 ? "done" : "current",
+      target: ".drafting-panel",
     },
     {
       id: "edit",
-      label: "Факты и редактура",
-      description: "Claim/Evidence, сквозная и литературная редактура.",
+      label: "Редактура",
+      shortLabel: "Редактура",
+      description: "Факты, повторы, аргумент и литературная правка.",
       status: rank < 3 ? "locked" : rank > 3 ? "done" : "current",
+      target: ".workflow-drawer",
     },
     {
       id: "bookbench",
-      label: "BookBench",
-      description: "Проверка качества книги перед финальным решением.",
+      label: "BookBench / Final Review",
+      shortLabel: "Проверить",
+      description: "Независимый контроль качества перед выпуском.",
       status: rank < 4 ? "locked" : rank > 4 ? "done" : "current",
+      target: ".workflow-drawer",
     },
     {
       id: "master",
       label: "Literary Master",
-      description: "Финальная воспроизводимая версия после человеческого утверждения.",
+      shortLabel: "Выпустить",
+      description: "Финальная воспроизводимая версия.",
       status: rank < 5 ? "locked" : "current",
+      target: ".workflow-drawer",
     },
   ];
 
-  let actionTitle = "Сначала настройте автора, серию, стиль и объём";
+  let actionTitle = "Настройте контекст книги";
   let actionText =
-    "В верхнем блоке выберите или создайте Author Profile, при необходимости Series Profile, сравните манеры письма, утвердите Style Profile и задайте целевой объём в знаках с пробелами. После этого можно переходить к AI-планированию.";
+    "Автор, серия, стиль и объём должны быть зафиксированы до содержательного AI-планирования.";
+  let actionTarget = ".book-context-panel";
 
   if (project.book_contract && !contractApproved) {
-    actionTitle = "Проверьте предложенный контракт книги";
+    actionTitle = "Проверьте контракт книги";
     actionText =
-      "Уточните читателя, проблему, обещание, центральный тезис и ограничения. Когда формулировки действительно задают нужную книгу, нажмите «Утвердить контракт книги».";
+      "Уточните читателя, проблему, обещание, центральный тезис и ограничения. Утверждайте только тот контракт, по которому действительно хотите писать всю книгу.";
+    actionTarget = "#book-contract";
   } else if (contractApproved && !project.architecture) {
-    actionTitle = "Попросите BOOK OS предложить архитектуру";
+    actionTitle = "Создайте архитектуру";
     actionText =
       "Утверждённый контракт уже является опорой. Теперь BOOK OS может разложить книгу на части и главы; предложение останется черновиком до вашего решения.";
+    actionTarget = ".launch-planning-panel";
   } else if (project.architecture && !architectureApproved) {
     actionTitle = "Проверьте архитектуру целиком";
     actionText =
-      "Просмотрите все части и главы: зачем нужна каждая глава, что нового она добавляет и нет ли повторов. Исправьте структуру и только затем утвердите её.";
+      "Проверьте функцию каждой главы, новый вклад и отсутствие повторов. Исправьте структуру и только затем утвердите её.";
+    actionTarget = "#architecture";
   } else if (architectureApproved && !allChapterContractsApproved) {
-    actionTitle = chapter ? `Подготовьте контракт главы ${chapter.ordinal}` : "Подготовьте контракты глав";
+    actionTitle = chapter ? `Подготовьте главу ${chapter.ordinal}` : "Подготовьте контракты глав";
     actionText =
-      "Выберите очередную главу, получите предложение BOOK OS, проверьте её функцию, обязательные мысли, примеры и ограничения, затем утвердите контракт главы.";
+      "Зафиксируйте функцию, обязательные мысли, примеры и границы очередной главы до систематического написания.";
+    actionTarget = "#chapter-contract";
   } else if (allChapterContractsApproved && rank <= 2) {
-    actionTitle = chapter ? `Пишите главу ${chapter.ordinal}` : "Переходите к написанию";
+    actionTitle = chapter ? `Начать работу над главой ${chapter.ordinal}` : "Начать написание";
     actionText =
-      "Контуры книги утверждены. Работайте по одной главе: Writer создаёт bounded draft, после чего текст проходит проверку фактов, редактуру и BookBench.";
+      "Контуры книги утверждены. Выберите Astra и уровень работы, затем запускайте bounded Writer; после черновика идут факты, независимая критика и редактура.";
+    actionTarget = ".drafting-panel";
   } else if (rank === 3) {
-    actionTitle = "Проверьте факты и отредактируйте книгу";
+    actionTitle = "Довести книгу редактурой";
     actionText =
-      "Свяжите существенные утверждения с проверенными источниками, устраните повторения и слабые места, затем завершите сквозную и литературную редактуру.";
+      "Свяжите существенные утверждения с источниками, устраните повторы и слабые места и проведите сквозную литературную редактуру.";
+    actionTarget = ".workflow-drawer";
   } else if (rank === 4) {
-    actionTitle = "Пройдите финальный BookBench";
+    actionTitle = "Пройти финальный BookBench";
     actionText =
-      "Проверьте выполнение контракта, доказательность, голос, повторы, структуру и машинные патологии. Оценка не заменяет человеческого решения.";
+      "Проверьте выполнение контракта, доказательность, голос, структуру и машинные патологии. Финальное решение остаётся человеческим.";
+    actionTarget = ".workflow-drawer";
   } else if (rank >= 5) {
-    actionTitle = "Проверьте и выпустите Literary Master";
+    actionTitle = "Собрать Literary Master";
     actionText =
-      "Финальная версия должна ссылаться на точные утверждённые ревизии и проверки. Выпуск остаётся вашим человеческим решением.";
+      "Финальная версия должна ссылаться на точные утверждённые ревизии и проверки и быть готовой к воспроизводимому выпуску.";
+    actionTarget = ".workflow-drawer";
   }
+
+  const doneCount = steps.filter((step) => step.status === "done").length;
+  const progress = Math.round((doneCount / steps.length) * 100);
 
   return (
     <>
-      <BookContextPanel project={project} />
-      <StylePreviewPanel bookId={project.book_id} />
-      <section className="panel journey-panel" aria-label="Маршрут книги">
-        <div className="panel-heading journey-heading">
+      <section className="panel journey-panel studio-command" aria-label="Маршрут книги">
+        <div className="studio-command-head">
           <div>
-            <p className="eyebrow">МАРШРУТ КНИГИ</p>
-            <h3>BOOK OS ведёт по шагам</h3>
+            <p className="eyebrow">AUTHOR WORKSPACE</p>
+            <h3>Производственный маршрут книги</h3>
+            <p className="muted studio-command-copy">
+              Один текущий шаг. Завершённое видно сразу. Закрытые этапы нельзя перескочить.
+            </p>
           </div>
-          <span className="journey-progress">
-            {steps.filter((step) => step.status === "done").length}/{steps.length} завершено
-          </span>
+          <div className="studio-progress" aria-label={`${progress}% маршрута завершено`}>
+            <strong>{doneCount}/{steps.length}</strong>
+            <span>готово</span>
+          </div>
         </div>
 
-        <ol className="journey-steps">
+        <div className="progress-track" aria-hidden="true">
+          <span style={{ width: `${progress}%` }} />
+        </div>
+
+        <nav className="journey-command-grid" aria-label="Этапы книги">
           {steps.map((step, index) => (
-            <li key={step.id} className={`journey-step ${step.status}`}>
-              <span className="journey-number" aria-hidden="true">
-                {step.status === "done" ? "✓" : index + 1}
+            <button
+              key={step.id}
+              type="button"
+              className={`journey-command ${step.status}`}
+              disabled={step.status === "locked" || !step.target}
+              onClick={() => moveTo(step.target)}
+              aria-current={step.status === "current" ? "step" : undefined}
+              title={step.description}
+            >
+              <span className="journey-command-index" aria-hidden="true">
+                {step.status === "done" ? "✓" : String(index + 1).padStart(2, "0")}
               </span>
-              <div>
-                <strong>{step.label}</strong>
-                <small>{step.description}</small>
-              </div>
-              <span className="journey-state">
+              <span className="journey-command-label">{step.shortLabel}</span>
+              <span className="journey-command-state">
                 {step.status === "done" ? "Готово" : step.status === "current" ? "Сейчас" : "Позже"}
               </span>
-            </li>
+            </button>
           ))}
-        </ol>
+        </nav>
 
-        <div className="next-action" role="status">
-          <p className="eyebrow">ЧТО ДЕЛАТЬ СЕЙЧАС</p>
-          <strong>{actionTitle}</strong>
-          <p>{actionText}</p>
+        <div className="next-action studio-next-action" role="status">
+          <div>
+            <p className="eyebrow">СЕЙЧАС</p>
+            <strong>{actionTitle}</strong>
+            <p>{actionText}</p>
+          </div>
+          <button className="studio-next-button" type="button" onClick={() => moveTo(actionTarget)}>
+            Перейти к шагу
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
 
-        <details className="help-drawer">
-          <summary>? Как пользоваться BOOK OS</summary>
-          <div className="help-copy">
-            <p>
-              BOOK OS работает как редакционная система, а не как чат: программа предлагает следующий
-              материал, а автор принимает ключевые решения в самом проекте книги.
-            </p>
-            <ol className="help-steps">
-              <li><strong>Сначала задайте контекст.</strong> Автор, серия, стиль и объём становятся обязательной опорой AI-планирования.</li>
-              <li><strong>Смотрите на «Что делать сейчас».</strong> Это главное действие текущего этапа.</li>
-              <li><strong>AI создаёт предложения, не решения.</strong> Контракт, архитектуру и значимые изменения утверждает человек.</li>
-              <li><strong>Не перескакивайте закрытые шаги.</strong> Следующие этапы становятся доступны после обязательных ворот.</li>
-              <li><strong>Словарь мусора находится в «Настройках текста».</strong> Добавленные фразы начинают участвовать в контроле прозы.</li>
-              <li><strong>Платный AI-вызов всегда отдельный.</strong> Перед каждым таким запросом нужен явный лимит и разрешение.</li>
-              <li><strong>Финальная цель — Literary Master.</strong> Это зафиксированная версия книги, а не просто последний открытый текст.</li>
-            </ol>
+        <details className="help-drawer studio-context-drawer">
+          <summary>Контекст книги, стиль и инструкция</summary>
+          <div className="studio-context-stack">
+            <BookContextPanel project={project} />
+            <StylePreviewPanel bookId={project.book_id} />
+            <div className="help-copy">
+              <p>
+                BOOK OS работает как редакционная система, а не как чат: AI создаёт предложения,
+                ключевые решения утверждает автор, а финальной точкой является Literary Master.
+              </p>
+            </div>
           </div>
         </details>
       </section>
