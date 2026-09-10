@@ -142,6 +142,10 @@ class DraftingService:
             "target_characters": context.target_characters,
             "min_characters": context.min_characters,
             "max_characters": context.max_characters,
+            "include_bibliography": context.include_bibliography,
+            "plan_illustrations": context.plan_illustrations,
+            "visual_asset_format": context.visual_asset_format,
+            "visual_materials_policy": context.visual_materials_policy,
             "characters_unit": context.characters_unit,
         }
 

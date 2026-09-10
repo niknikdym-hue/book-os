@@ -132,6 +132,9 @@ def test_blind_compare_keeps_models_hidden_until_human_selection(tmp_path: Path)
     assert context_payload["target_characters"] == 300_000
     assert context_payload["min_characters"] == 280_000
     assert context_payload["max_characters"] == 320_000
+    assert context_payload["visual_asset_format"] == "png"
+    assert context_payload["visual_materials_policy"] == "when_useful"
+    assert context_payload["plan_illustrations"] is False
     assert context_payload["author_profile"]["content_hash"]
     assert context_payload["style_profile"]["content_hash"]
     assert adapter.requests[0].authoritative_context["book_context_hash"]
