@@ -35,8 +35,6 @@ type Props = {
   project: ProjectView;
 };
 
-const SUGGESTED_AUTHORS = ["Елена Дым", "Елена Галакси", "Елена Дилон", "Елена Дымова"];
-
 const STYLE_STARTERS = [
   {
     name: "Современная художественная проза",
@@ -321,8 +319,35 @@ export function BookContextPanel({ project }: Props) {
       </p>
 
       <section className="planning-step">
+        <h4>1. Примеры настройки</h4>
+        <p className="muted">
+          Начните с ближайшего типа текста, а детали при желании добавьте ниже. Сначала выберите
+          автора — это привяжет манеру письма к нужному имени.
+        </p>
+        <div className="actions planning-action">
+          {STYLE_STARTERS.map((starter) => (
+            <button
+              key={starter.name}
+              type="button"
+              className="ghost"
+              disabled={busy || !authorId}
+              onClick={() => void createAndApproveProfile("STYLE", {
+                style_name: starter.name,
+                author_profile_id: authorId,
+                ...starter,
+                prohibited_patterns: [],
+                benchmark_excerpts: [],
+              })}
+            >
+              {starter.name}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="planning-step">
         <div className="panel-heading">
-          <h4>1. Автор</h4>
+          <h4>2. Автор</h4>
           <ProfileStatus profile={selectedAuthor} />
         </div>
         <label className="field">
@@ -346,13 +371,6 @@ export function BookContextPanel({ project }: Props) {
             Утвердить Author Profile
           </button>
         )}
-        <div className="actions planning-action">
-          {SUGGESTED_AUTHORS.map((name) => (
-            <button key={name} className={authorName === name ? "primary" : "ghost"} type="button" onClick={() => setAuthorName(name)}>
-              {name}
-            </button>
-          ))}
-        </div>
         <div className="form-grid">
           <label className="field">
             <span>Новый автор / псевдоним</span>
@@ -401,7 +419,7 @@ export function BookContextPanel({ project }: Props) {
 
       <section className="planning-step">
         <div className="panel-heading">
-          <h4>2. Серия</h4>
+          <h4>3. Серия</h4>
           <ProfileStatus profile={seriesMode === "SERIES" ? selectedSeries : null} />
         </div>
         <div className="actions planning-action">
@@ -455,7 +473,7 @@ export function BookContextPanel({ project }: Props) {
 
       <section className="planning-step">
         <div className="panel-heading">
-          <h4>3. Манера письма</h4>
+          <h4>4. Манера письма</h4>
           <ProfileStatus profile={selectedStyle} />
         </div>
         <label className="field">
@@ -470,29 +488,6 @@ export function BookContextPanel({ project }: Props) {
         {selectedStyle?.status === "DRAFT" && (
           <button className="primary" disabled={busy} onClick={() => void approveProfile(selectedStyle.profile_id)}>Утвердить Style Profile</button>
         )}
-        <div className="planning-step">
-          <h5>Начать с жанровой основы</h5>
-          <p className="muted">Это короткий стартовый профиль. Его можно уточнить позже — не нужно заполнять все поля до первой страницы.</p>
-          <div className="actions planning-action">
-            {STYLE_STARTERS.map((starter) => (
-              <button
-                key={starter.name}
-                type="button"
-                className="ghost"
-                disabled={busy || !authorId}
-                onClick={() => void createAndApproveProfile("STYLE", {
-                  style_name: starter.name,
-                  author_profile_id: authorId,
-                  ...starter,
-                  prohibited_patterns: [],
-                  benchmark_excerpts: [],
-                })}
-              >
-                {starter.name}
-              </button>
-            ))}
-          </div>
-        </div>
         <details className="advanced-settings">
           <summary>Настроить стиль подробно — необязательно</summary>
           <p className="muted">
@@ -543,7 +538,7 @@ export function BookContextPanel({ project }: Props) {
       </section>
 
       <section className="planning-step">
-        <h4>4. Примерный объём книги</h4>
+        <h4>5. Примерный объём книги</h4>
         <p className="muted">
           Единица — знаки с пробелами. Это ориентир для архитектуры и контроля плотности, а не квота,
           которую разрешено добивать водой.
@@ -563,7 +558,7 @@ export function BookContextPanel({ project }: Props) {
       </section>
 
       <section className="planning-step">
-        <h4>5. Материалы внутри книги</h4>
+        <h4>6. Материалы внутри книги</h4>
         <p className="muted">
           Когда мысль понятнее через сравнение или последовательность, BOOK OS предусмотрит
           таблицу или схему. Такие материалы для книги всегда готовятся в PNG.
@@ -582,7 +577,7 @@ export function BookContextPanel({ project }: Props) {
       </section>
 
       <section className="planning-step">
-        <h4>6. Библиография</h4>
+        <h4>7. Библиография</h4>
         <label className="paid-approval">
           <input
             type="checkbox"
