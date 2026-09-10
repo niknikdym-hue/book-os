@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
 import type { DraftRunView, DraftingPanelProps } from "./draftingTypes";
+import {
+  OPENAI_WORK_LEVEL_OPTIONS,
+  openAIWorkLevelLabel,
+  setPendingOpenAIWorkLevel,
+  type OpenAIWorkLevel,
+} from "./openaiWorkLevel";
 
 type ProviderId = "openai" | "yandex";
 type SelectionMode = "AUTO" | "MANUAL";
@@ -32,7 +38,7 @@ type RoutingState = {
 const FALLBACK_PROVIDERS: ProviderView[] = [
   {
     id: "openai",
-    label: "AI Pro",
+    label: "OpenAI",
     models: [
       { id: "gpt-6-astra", label: "GPT-6 Astra" },
       { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
@@ -42,7 +48,7 @@ const FALLBACK_PROVIDERS: ProviderView[] = [
   },
   {
     id: "yandex",
-    label: "AI Ya",
+    label: "Yandex AI",
     models: [
       { id: "aliceai-llm", label: "Alice AI LLM" },
       { id: "aliceai-llm-flash", label: "Alice AI LLM Flash" },
@@ -53,20 +59,27 @@ const FALLBACK_PROVIDERS: ProviderView[] = [
   },
 ];
 
+function providerTitle(provider: ProviderId) {
+  return provider === "openai" ? "OpenAI" : "Yandex AI";
+}
+
 export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanelProps) {
   const [objective, setObjective] = useState("");
+  const [context, setContext] = useState("");
   const [provider, setProvider] = useState<ProviderId>("openai");
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>("AUTO");
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>("MANUAL");
   const [selectionScope, setSelectionScope] = useState<SelectionScope>("OPERATION");
   const [model, setModel] = useState("gpt-6-astra");
+  const [workLevel, setWorkLevel] = useState<OpenAIWorkLevel>("high");
   const [maxCostUsd, setMaxCostUsd] = useState("0.50");
   const [allowPaid, setAllowPaid] = useState(false);
-  const [context, setContext] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [runs, setRuns] = useState<DraftRunView[]>([]);
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
   const [routingState, setRoutingState] = useState<RoutingState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const approved =
     chapter?.chapter_contract?.authority_status === "APPROVED" ||
@@ -76,18 +89,29 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     () => providers.find((item) => item.id === provider) ?? FALLBACK_PROVIDERS[0],
     [provider, providers],
   );
+  const selectedModel =
+    selectedProvider.models.find((item) => item.id === model) ?? selectedProvider.models[0] ?? null;
   const bookPin = routingState?.book_pin ?? null;
   const cost = Number(maxCostUsd);
   const credentialAvailable =
     provider === "openai"
       ? readiness?.openai_credential_state === "AVAILABLE"
       : readiness?.yandex_credential_state === "AVAILABLE";
-  const paidReady =
-    credentialAvailable &&
+  const canRun =
+    Boolean(chapter) &&
+    approved &&
+    Boolean(credentialAvailable) &&
+    objective.trim().length > 0 &&
     allowPaid &&
     Number.isFinite(cost) &&
     cost > 0 &&
-    (selectionMode === "AUTO" || model.trim().length > 0);
+    (selectionMode === "AUTO" || model.trim().length > 0) &&
+    !busy;
+  const latest = runs[0] ?? null;
+
+  const reloadReadiness = useCallback(async () => {
+    setReadiness(await api<LaunchReadiness>("GET", "/api/launch/readiness"));
+  }, [api]);
 
   const reloadRouting = useCallback(async () => {
     const state = await api<RoutingState>(
@@ -103,49 +127,62 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     }
   }, [api, project.book_id]);
 
+  const reloadDrafts = useCallback(async () => {
+    if (!chapter) {
+      setRuns([]);
+      return;
+    }
+    setRuns(
+      await api<DraftRunView[]>(
+        "GET",
+        `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
+      ),
+    );
+  }, [api, chapter, project.book_id]);
+
   useEffect(() => {
     let active = true;
-    setRuns([]);
     setError(null);
-    const tasks: Array<Promise<void>> = [
-      api<LaunchReadiness>("GET", "/api/launch/readiness").then((value) => {
-        if (active) setReadiness(value);
-      }),
-      reloadRouting(),
-    ];
-    if (chapter) {
-      tasks.push(
-        api<DraftRunView[]>(
-          "GET",
-          `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
-        ).then((value) => {
-          if (active) setRuns(value);
-        }),
-      );
-    }
-    void Promise.all(tasks).catch((reason: unknown) => {
-      if (active) setError(String(reason));
-    });
+    void Promise.all([reloadReadiness(), reloadRouting(), reloadDrafts()]).catch(
+      (reason: unknown) => {
+        if (active) setError(String(reason));
+      },
+    );
     return () => {
       active = false;
     };
-  }, [api, chapter, project.book_id, reloadRouting]);
+  }, [reloadDrafts, reloadReadiness, reloadRouting]);
 
   useEffect(() => {
     if (selectionMode !== "MANUAL" || bookPin) return;
     if (!selectedProvider.models.some((item) => item.id === model)) {
       setModel(selectedProvider.models[0]?.id ?? "");
+      setAllowPaid(false);
     }
   }, [bookPin, model, selectedProvider, selectionMode]);
+
+  async function saveOpenAIKey() {
+    if (!apiKey.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api("POST", "/api/launch/openai-key", { api_key: apiKey.trim() });
+      setApiKey("");
+      await reloadReadiness();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function chooseProvider(next: ProviderId) {
     if (bookPin || next === provider) return;
     setProvider(next);
+    setSelectionMode("MANUAL");
+    const nextProvider = providers.find((item) => item.id === next);
+    setModel(nextProvider?.models[0]?.id ?? "");
     setAllowPaid(false);
-    if (selectionMode === "MANUAL") {
-      const nextProvider = providers.find((item) => item.id === next);
-      setModel(nextProvider?.models[0]?.id ?? "");
-    }
   }
 
   async function clearBookPin() {
@@ -153,8 +190,10 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     setError(null);
     try {
       await api("POST", `/api/projects/${project.book_id}/model-routing/clear-book-pin`);
-      setSelectionMode("AUTO");
+      setProvider("openai");
+      setSelectionMode("MANUAL");
       setSelectionScope("OPERATION");
+      setModel("gpt-6-astra");
       setAllowPaid(false);
       await reloadRouting();
     } catch (reason) {
@@ -165,10 +204,12 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   }
 
   async function generate() {
-    if (!chapter || !approved || !objective.trim() || !paidReady) return;
+    if (!chapter || !canRun) return;
     setBusy(true);
     setError(null);
+    setCopied(false);
     try {
+      if (provider === "openai") setPendingOpenAIWorkLevel(workLevel);
       const run = await api<DraftRunView>(
         "POST",
         `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
@@ -178,7 +219,8 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
           model: selectionMode === "MANUAL" ? model.trim() : null,
           selection_mode: selectionMode,
           selection_scope: selectionMode === "MANUAL" ? selectionScope : null,
-          untrusted_context: context.trim() ? [context] : [],
+          reasoning_effort: provider === "openai" ? workLevel : null,
+          untrusted_context: context.trim() ? [context.trim()] : [],
           max_output_tokens: 3500,
           max_cost_usd: cost,
         },
@@ -196,87 +238,224 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     }
   }
 
-  const latest = runs[0] ?? null;
-  const latestProviderLabel =
-    providers.find((item) => item.id === latest?.provider)?.label ?? latest?.provider;
+  async function copyLatest() {
+    if (!latest?.text) return;
+    try {
+      await navigator.clipboard.writeText(latest.text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   return (
-    <section className="panel drafting-panel">
-      <div className="panel-heading">
+    <section className="writer-studio drafting-panel" aria-label="Writer Studio">
+      <header className="writer-studio-head">
         <div>
-          <p className="eyebrow">WRITER · ОГРАНИЧЕННОЕ НАПИСАНИЕ</p>
-          <h3>Черновик фрагмента</h3>
+          <p className="writer-kicker"><span aria-hidden="true" /> AUTHOR STUDIO</p>
+          <h3>{provider === "openai" && model === "gpt-6-astra" ? "GPT-6 Astra" : selectedModel?.label ?? model}</h3>
+          <p className="writer-chapter">
+            {chapter ? `${chapter.ordinal}. ${chapter.working_title}` : "Выберите главу для работы"}
+          </p>
         </div>
-        <span className="badge draft">ТОЛЬКО ЧЕРНОВИК · НУЖНО РЕШЕНИЕ ЧЕЛОВЕКА</span>
-      </div>
+        <div className={`writer-status ${credentialAvailable ? "ready" : "missing"}`}>
+          <span aria-hidden="true" />
+          {credentialAvailable ? `${providerTitle(provider)} API подключён` : `${providerTitle(provider)} не подключён`}
+        </div>
+      </header>
 
-      {!chapter && <p className="muted">Сначала выберите главу с утверждённым контрактом.</p>}
-      {chapter && !approved && (
-        <p className="muted">Перед написанием утвердите контракт этой главы.</p>
-      )}
-
-      {chapter && approved && (
-        <>
-          {bookPin && (
-            <div className="selected-topic-summary" role="status">
-              <small>На всю книгу закреплена модель</small>
-              <strong>{bookPin.provider_label} · {bookPin.model}</strong>
-              <span>Writer обязан использовать это закрепление, пока вы его не снимете.</span>
-              <button className="ghost" disabled={busy} onClick={() => void clearBookPin()}>
-                Снять закрепление на всю книгу
-              </button>
+      <div className="writer-layout">
+        <section className="writer-canvas">
+          {!chapter && (
+            <div className="writer-empty">
+              <strong>Сначала выберите главу</strong>
+              <p>Рабочая область Writer откроется для конкретной главы.</p>
+            </div>
+          )}
+          {chapter && !approved && (
+            <div className="writer-empty">
+              <strong>Нужен утверждённый контракт главы</strong>
+              <p>Это защищает книгу от написания вне утверждённой архитектуры.</p>
             </div>
           )}
 
-          <div className="form-grid">
-            <label className="field">
-              <span>Задача этого фрагмента</span>
-              <textarea
-                rows={4}
-                value={objective}
-                onChange={(event) => setObjective(event.target.value)}
-                placeholder="Что именно должен сделать этот один фрагмент главы?"
+          {chapter && approved && (
+            <>
+              <div className="writer-section-head">
+                <div>
+                  <span className="writer-overline">ЗАДАЧА ДЛЯ МОДЕЛИ</span>
+                  <h4>Что сделать с книгой сейчас?</h4>
+                </div>
+                <span className="writer-chip">
+                  {selectionMode === "AUTO" ? "Автовыбор" : selectedModel?.label ?? model}
+                </span>
+              </div>
+
+              <label className="writer-prompt-label">
+                <span className="sr-only">Задача этого фрагмента</span>
+                <textarea
+                  aria-label="Задача этого фрагмента"
+                  className="writer-prompt"
+                  rows={7}
+                  value={objective}
+                  onChange={(event) => setObjective(event.target.value)}
+                  placeholder="Например: напиши сильное открытие главы, объясни механизм без банальностей, сохрани голос автора и не повторяй предыдущие главы…"
+                />
+              </label>
+
+              <details className="writer-context-drawer">
+                <summary>Добавить исходный материал или уточнение</summary>
+                <textarea
+                  rows={5}
+                  value={context}
+                  onChange={(event) => setContext(event.target.value)}
+                  placeholder="Заметки, факты, исходный фрагмент или дополнительное ограничение для этой операции"
+                />
+              </details>
+
+              {latest?.text ? (
+                <article className="writer-result">
+                  <header>
+                    <div>
+                      <span className="writer-overline">ПОСЛЕДНИЙ РЕЗУЛЬТАТ</span>
+                      <h4>Черновик готов</h4>
+                    </div>
+                    <button type="button" className="writer-copy" onClick={() => void copyLatest()}>
+                      {copied ? "Скопировано" : "Копировать"}
+                    </button>
+                  </header>
+                  <div className="writer-manuscript">{latest.text}</div>
+                  <details className="writer-provenance">
+                    <summary>Данные запуска</summary>
+                    <dl>
+                      <div><dt>Модель</dt><dd>{latest.model}</dd></div>
+                      <div><dt>Уровень</dt><dd>{openAIWorkLevelLabel(latest.reasoning_effort)}</dd></div>
+                      <div><dt>Статус</dt><dd>{latest.revision_status ?? latest.run_status}</dd></div>
+                      <div><dt>Revision</dt><dd>{latest.revision_id ?? "—"}</dd></div>
+                    </dl>
+                  </details>
+                </article>
+              ) : (
+                <div className="writer-result-empty">
+                  <span aria-hidden="true">A</span>
+                  <div>
+                    <strong>Результат Astra появится здесь</strong>
+                    <p>Сразу в книге — без терминала, логов и отдельного окна.</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <aside className="writer-inspector" aria-label="Настройки Writer">
+          <section>
+            <span className="writer-overline">МОДЕЛЬ</span>
+            <div className="writer-model-card">
+              <span className="writer-model-orb" aria-hidden="true" />
+              <div>
+                <strong>{selectionMode === "AUTO" ? "BOOK OS Auto" : selectedModel?.label ?? model}</strong>
+                <small>{providerTitle(provider)} · Writer</small>
+              </div>
+            </div>
+          </section>
+
+          {provider === "openai" && (
+            <section>
+              <span className="writer-overline">ГЛУБИНА РАБОТЫ</span>
+              <div className="writer-levels" role="group" aria-label="Уровень работы OpenAI">
+                {OPENAI_WORK_LEVEL_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={workLevel === option.value ? "active" : ""}
+                    aria-pressed={workLevel === option.value}
+                    onClick={() => {
+                      setWorkLevel(option.value);
+                      setAllowPaid(false);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="writer-note">High — основной режим для работы над книгой.</p>
+            </section>
+          )}
+
+          {!credentialAvailable && provider === "openai" && (
+            <section className="writer-key-section">
+              <span className="writer-overline">ПОДКЛЮЧИТЬ OPENAI</span>
+              <label>
+                <span>API key</span>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder="sk-…"
+                  autoComplete="off"
+                />
+              </label>
+              <button
+                type="button"
+                className="writer-secondary"
+                disabled={busy || !apiKey.trim()}
+                onClick={() => void saveOpenAIKey()}
+              >
+                Сохранить в Keychain
+              </button>
+              <small>Ключ хранится локально в macOS Keychain.</small>
+            </section>
+          )}
+
+          <section>
+            <span className="writer-overline">ЛИМИТ ЗАПРОСА</span>
+            <label className="writer-cost">
+              <span>$</span>
+              <input
+                aria-label="Максимальная стоимость запроса, USD"
+                inputMode="decimal"
+                value={maxCostUsd}
+                onChange={(event) => {
+                  setMaxCostUsd(event.target.value);
+                  setAllowPaid(false);
+                }}
               />
+              <small>максимум</small>
             </label>
-            <div className="field">
-              <span>AI-провайдер</span>
-              <div className="actions planning-action">
+          </section>
+
+          {bookPin && (
+            <section className="writer-pin">
+              <span className="writer-overline">НА ВСЮ КНИГУ</span>
+              <strong>{bookPin.provider_label} · {bookPin.model}</strong>
+              <button type="button" className="writer-link" disabled={busy} onClick={() => void clearBookPin()}>
+                Снять закрепление
+              </button>
+            </section>
+          )}
+
+          <details className="writer-advanced">
+            <summary>Другие модели и маршрутизация</summary>
+            <div className="writer-advanced-content">
+              <div className="writer-provider-switch" role="group" aria-label="AI-провайдер">
                 {providers.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    className={provider === item.id ? "primary" : "ghost"}
+                    className={provider === item.id ? "active" : ""}
                     disabled={busy || Boolean(bookPin)}
                     onClick={() => chooseProvider(item.id)}
                   >
-                    {item.label}
+                    {providerTitle(item.id)}
                   </button>
                 ))}
               </div>
-              <small>
-                {credentialAvailable
-                  ? `${selectedProvider.label} готов к платному вызову.`
-                  : `${selectedProvider.label} не настроен; запрос будет заблокирован.`}
-              </small>
-            </div>
-            <div className="field">
-              <span>Выбор модели</span>
-              <div className="actions planning-action">
+              <div className="writer-routing-switch" role="group" aria-label="Выбор модели">
                 <button
                   type="button"
-                  className={selectionMode === "AUTO" ? "primary" : "ghost"}
-                  disabled={busy || Boolean(bookPin)}
-                  onClick={() => {
-                    setSelectionMode("AUTO");
-                    setSelectionScope("OPERATION");
-                    setAllowPaid(false);
-                  }}
-                >
-                  Авто
-                </button>
-                <button
-                  type="button"
-                  className={selectionMode === "MANUAL" ? "primary" : "ghost"}
+                  className={selectionMode === "MANUAL" ? "active" : ""}
                   disabled={busy || Boolean(bookPin)}
                   onClick={() => {
                     setSelectionMode("MANUAL");
@@ -286,136 +465,86 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
                 >
                   Ручной
                 </button>
+                <button
+                  type="button"
+                  className={selectionMode === "AUTO" ? "active" : ""}
+                  disabled={busy || Boolean(bookPin)}
+                  onClick={() => {
+                    setSelectionMode("AUTO");
+                    setSelectionScope("OPERATION");
+                    setAllowPaid(false);
+                  }}
+                >
+                  Авто
+                </button>
               </div>
-              <small>
-                Авто = BOOK OS выбирает исполнитель именно для операции написания фрагмента.
-              </small>
-            </div>
-            {selectionMode === "MANUAL" && (
-              <>
-                <label className="field">
-                  <span>Модель</span>
-                  <select
-                    value={model}
-                    disabled={busy || Boolean(bookPin)}
-                    onChange={(event) => {
-                      setModel(event.target.value);
-                      setAllowPaid(false);
-                    }}
-                  >
-                    {selectedProvider.models.map((item) => (
-                      <option key={item.id} value={item.id}>{item.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <div className="field">
-                  <span>Где закрепить модель</span>
-                  <div className="actions planning-action">
+              {selectionMode === "MANUAL" && (
+                <>
+                  <label>
+                    <span>Модель</span>
+                    <select
+                      aria-label="Модель"
+                      value={model}
+                      disabled={busy || Boolean(bookPin)}
+                      onChange={(event) => {
+                        setModel(event.target.value);
+                        setAllowPaid(false);
+                      }}
+                    >
+                      {selectedProvider.models.map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="writer-routing-switch" role="group" aria-label="Где закрепить модель">
                     <button
                       type="button"
-                      className={selectionScope === "OPERATION" ? "primary" : "ghost"}
+                      className={selectionScope === "OPERATION" ? "active" : ""}
                       disabled={busy || Boolean(bookPin)}
                       onClick={() => setSelectionScope("OPERATION")}
                     >
-                      Только эта операция
+                      Эта операция
                     </button>
                     <button
                       type="button"
-                      className={selectionScope === "BOOK" ? "primary" : "ghost"}
+                      className={selectionScope === "BOOK" ? "active" : ""}
                       disabled={busy || Boolean(bookPin)}
                       onClick={() => setSelectionScope("BOOK")}
                     >
-                      На всю книгу
+                      Вся книга
                     </button>
                   </div>
-                </div>
-              </>
-            )}
-            <label className="field">
-              <span>Максимальная стоимость запроса, USD</span>
-              <input
-                inputMode="decimal"
-                value={maxCostUsd}
-                onChange={(event) => setMaxCostUsd(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Дополнительный материал — необязательно</span>
-              <small>Хранится как данные и не может изменить authority или расширить задачу.</small>
-              <textarea
-                rows={5}
-                value={context}
-                onChange={(event) => setContext(event.target.value)}
-                placeholder="Можно вставить ограниченный исходный материал для этого фрагмента"
-              />
-            </label>
-          </div>
-          <label className="paid-approval">
+                </>
+              )}
+            </div>
+          </details>
+
+          <label className="writer-approval">
             <input
               type="checkbox"
               checked={allowPaid}
+              disabled={!credentialAvailable || !approved}
               onChange={(event) => setAllowPaid(event.target.checked)}
             />
-            <span>
-              Разрешаю только следующий платный запрос через {selectedProvider.label} с пределом ${maxCostUsd || "0"}.
-              После попытки разрешение автоматически сбросится.
-            </span>
+            <span>Разрешаю один следующий платный вызов с лимитом ${maxCostUsd || "0"}.</span>
           </label>
-          <div className="actions">
-            <button
-              className="primary"
-              onClick={() => void generate()}
-              disabled={busy || !objective.trim() || !paidReady}
-            >
-              {busy ? "Writer пишет…" : "Создать черновик"}
-            </button>
-          </div>
-        </>
-      )}
 
-      {error && <div className="alert inline-alert">{error}</div>}
+          <button type="button" className="writer-run" disabled={!canRun} onClick={() => void generate()}>
+            <span>{busy ? "Astra работает…" : provider === "openai" && model === "gpt-6-astra" ? "Запустить Astra" : "Запустить Writer"}</span>
+            <strong aria-hidden="true">→</strong>
+          </button>
 
-      {latest && (
-        <div className="draft-result">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">ПОСЛЕДНИЙ ЗАПУСК</p>
-              <h4>{latest.revision_status ?? latest.run_status}</h4>
+          {error && <div className="writer-error">{error}</div>}
+
+          {runs.length > 0 && (
+            <div className="writer-history">
+              <span className="writer-overline">ИСТОРИЯ ГЛАВЫ</span>
+              <strong>{runs.length} запусков</strong>
+              <small>Последний результат показан в центре.</small>
             </div>
-            <span className="badge draft">{latest.revision_status ?? latest.run_status}</span>
-          </div>
-          {latest.text && <article className="draft-copy">{latest.text}</article>}
-          <dl className="provenance-grid">
-            <div>
-              <dt>Провайдер / модель</dt>
-              <dd>{latestProviderLabel} · {latest.model}</dd>
-            </div>
-            <div>
-              <dt>Маршрутизация</dt>
-              <dd>
-                {latest.selection_mode}
-                {latest.selection_scope ? ` · ${latest.selection_scope}` : ""}
-              </dd>
-            </div>
-            <div>
-              <dt>Prompt</dt>
-              <dd>{latest.prompt_id} · {latest.prompt_version}</dd>
-            </div>
-            <div>
-              <dt>Задача</dt>
-              <dd>{latest.task_id}</dd>
-            </div>
-            <div>
-              <dt>Входная revision</dt>
-              <dd>{latest.input_revision_id}</dd>
-            </div>
-          </dl>
-          {latest.routing_rationale && <small className="muted">{latest.routing_rationale}</small>}
-          {latest.notes.length > 0 && (
-            <ul className="notes-list">{latest.notes.map((note) => <li key={note}>{note}</li>)}</ul>
           )}
-        </div>
-      )}
+        </aside>
+      </div>
     </section>
   );
 }
