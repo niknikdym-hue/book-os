@@ -58,6 +58,16 @@ function lines(value: string): string[] {
     .filter(Boolean);
 }
 
+function textValue(content: Record<string, unknown>, key: string): string {
+  const value = content[key];
+  return typeof value === "string" ? value : "";
+}
+
+function linesValue(content: Record<string, unknown>, key: string): string {
+  const value = content[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").join("\n") : "";
+}
+
 function ProfileStatus({ profile }: { profile: ProfileView | null }) {
   if (!profile) return <span className="badge empty">НЕ ВЫБРАН</span>;
   return (
@@ -111,6 +121,24 @@ export function BookContextPanel({ project }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function fillStyleForm(profile: ProfileView) {
+    const content = profile.content;
+    setStyleName(textValue(content, "style_name") || profile.name);
+    setStyleRegister(textValue(content, "literary_register"));
+    setStylePresence(textValue(content, "authorial_presence"));
+    setStyleDirectness(textValue(content, "directness"));
+    setStyleRhythm(textValue(content, "sentence_paragraph_rhythm"));
+    setStyleScenes(textValue(content, "scene_density"));
+    setStyleEvidence(textValue(content, "evidence_density"));
+    setStyleDepth(textValue(content, "analytical_depth"));
+    setStyleIrony(textValue(content, "irony_humor"));
+    setStyleTemperature(textValue(content, "emotional_temperature"));
+    setStylePractical(textValue(content, "practical_instruction_intensity"));
+    setStyleTerminology(textValue(content, "terminology_level"));
+    setStyleProhibitions(linesValue(content, "prohibited_patterns"));
+    setStyleBenchmark(linesValue(content, "benchmark_excerpts"));
+  }
+
   const reload = useCallback(async () => {
     const [profileItems, currentContext] = await Promise.all([
       coreApi<ProfileView[]>("GET", "/api/context/profiles"),
@@ -163,6 +191,10 @@ export function BookContextPanel({ project }: Props) {
   const approvedStyles = styles.filter((item) => item.status === "APPROVED");
   const selectedSeries = seriesProfiles.find((item) => item.profile_id === seriesId) ?? null;
   const selectedStyle = styles.find((item) => item.profile_id === styleId) ?? null;
+
+  useEffect(() => {
+    if (selectedStyle) fillStyleForm(selectedStyle);
+  }, [selectedStyle?.profile_id]);
 
   async function createProfile(kind: ProfileKind, content: Record<string, unknown>) {
     setBusy(true);
@@ -262,15 +294,15 @@ export function BookContextPanel({ project }: Props) {
       <div className="panel-heading">
         <div>
           <p className="eyebrow">ОБЯЗАТЕЛЬНО ДО AI-ПЛАНИРОВАНИЯ</p>
-          <h3>Автор, серия, стиль и объём</h3>
+          <h3>Профиль этой книги</h3>
         </div>
         <span className={`badge ${context?.ready_for_planning ? "approved" : "draft"}`}>
           {context?.ready_for_planning ? "КОНТЕКСТ ГОТОВ" : "НУЖНО НАСТРОИТЬ"}
         </span>
       </div>
       <p className="muted">
-        Эти настройки становятся входным authority-контекстом книги. AI не может утвердить профиль
-        автора, серии или стиля за вас.
+        Выберите автора и манеру письма — BOOK OS сохранит их как профиль этой книги. Подробные поля
+        необязательны: они нужны только если хочется точнее настроить голос.
       </p>
 
       <section className="planning-step">
@@ -412,13 +444,14 @@ export function BookContextPanel({ project }: Props) {
           <ProfileStatus profile={selectedStyle} />
         </div>
         <label className="field">
-          <span>Манера письма</span>
+          <span>Сохранённый профиль манеры</span>
           <select value={styleId} onChange={(event) => setStyleId(event.target.value)} disabled={!authorId}>
             <option value="">Выберите стиль</option>
             {approvedStyles.map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name}</option>)}
             {styles.filter((item) => item.status === "DRAFT").map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name} — черновик</option>)}
           </select>
         </label>
+        {selectedStyle && <p className="selected-topic-summary">Настройки «{selectedStyle.name}» подставлены ниже. Их можно посмотреть и дополнить.</p>}
         {selectedStyle?.status === "DRAFT" && (
           <button className="primary" disabled={busy} onClick={() => void approveProfile(selectedStyle.profile_id)}>Утвердить Style Profile</button>
         )}
@@ -446,22 +479,26 @@ export function BookContextPanel({ project }: Props) {
           </div>
         </div>
         <details className="advanced-settings">
-          <summary>Создать свою манеру или настроить детали</summary>
+          <summary>Настроить стиль подробно — необязательно</summary>
+          <p className="muted">
+            Минимум для первого текста: название, регистр, ритм и запреты. Остальное оставляйте пустым,
+            если не хотите ограничивать Astra заранее.
+          </p>
           <div className="form-grid">
-            <label className="field"><span>Название стиля</span><input value={styleName} onChange={(event) => setStyleName(event.target.value)} /></label>
-            <label className="field"><span>Литературный регистр</span><input value={styleRegister} onChange={(event) => setStyleRegister(event.target.value)} /></label>
-            <label className="field"><span>Присутствие автора</span><input value={stylePresence} onChange={(event) => setStylePresence(event.target.value)} /></label>
-            <label className="field"><span>Прямота</span><input value={styleDirectness} onChange={(event) => setStyleDirectness(event.target.value)} /></label>
-            <label className="field"><span>Ритм предложений и абзацев</span><textarea rows={3} value={styleRhythm} onChange={(event) => setStyleRhythm(event.target.value)} /></label>
-            <label className="field"><span>Плотность сцен</span><input value={styleScenes} onChange={(event) => setStyleScenes(event.target.value)} /></label>
-            <label className="field"><span>Плотность доказательств</span><input value={styleEvidence} onChange={(event) => setStyleEvidence(event.target.value)} /></label>
-            <label className="field"><span>Аналитическая глубина</span><input value={styleDepth} onChange={(event) => setStyleDepth(event.target.value)} /></label>
-            <label className="field"><span>Ирония / юмор</span><input value={styleIrony} onChange={(event) => setStyleIrony(event.target.value)} /></label>
-            <label className="field"><span>Эмоциональная температура</span><input value={styleTemperature} onChange={(event) => setStyleTemperature(event.target.value)} /></label>
-            <label className="field"><span>Практичность</span><input value={stylePractical} onChange={(event) => setStylePractical(event.target.value)} /></label>
-            <label className="field"><span>Уровень терминологии</span><input value={styleTerminology} onChange={(event) => setStyleTerminology(event.target.value)} /></label>
-            <label className="field"><span>Запрещённые паттерны — по одному на строке</span><textarea rows={4} value={styleProhibitions} onChange={(event) => setStyleProhibitions(event.target.value)} /></label>
-            <label className="field"><span>Benchmark этого стиля — необязательно</span><textarea rows={5} value={styleBenchmark} onChange={(event) => setStyleBenchmark(event.target.value)} /></label>
+            <label className="field"><span>Название стиля</span><small>Ваше короткое имя профиля, например «Тёплый деловой голос».</small><input value={styleName} onChange={(event) => setStyleName(event.target.value)} /></label>
+            <label className="field"><span>Литературный регистр</span><small>Общее звучание: разговорный, литературный, деловой, публицистический.</small><input value={styleRegister} onChange={(event) => setStyleRegister(event.target.value)} placeholder="Ясный деловой нон-фикшн" /></label>
+            <label className="field"><span>Присутствие автора</span><small>Насколько автор заметен: «я», личные истории, или спокойный взгляд со стороны.</small><input value={stylePresence} onChange={(event) => setStylePresence(event.target.value)} placeholder="Редкое «я», наблюдатель со стороны" /></label>
+            <label className="field"><span>Прямота</span><small>Говорим прямо или ведём читателя через образы, вопросы и недосказанность.</small><input value={styleDirectness} onChange={(event) => setStyleDirectness(event.target.value)} placeholder="Прямо, без назидательности" /></label>
+            <label className="field"><span>Ритм предложений и абзацев</span><small>Темп чтения: короткие фразы, длинные размышления, диалоги, паузы.</small><textarea rows={3} value={styleRhythm} onChange={(event) => setStyleRhythm(event.target.value)} placeholder="Короткие и средние фразы; один поворот мысли на абзац" /></label>
+            <label className="field"><span>Плотность сцен</span><small>Сколько конкретных эпизодов и деталей нужно, а сколько объяснений.</small><input value={styleScenes} onChange={(event) => setStyleScenes(event.target.value)} placeholder="Одна яркая сцена на ключевой тезис" /></label>
+            <label className="field"><span>Плотность доказательств</span><small>Нужны ли исследования, источники, цифры, реальные кейсы.</small><input value={styleEvidence} onChange={(event) => setStyleEvidence(event.target.value)} placeholder="Примеры и проверяемые источники там, где есть факт" /></label>
+            <label className="field"><span>Аналитическая глубина</span><small>Объяснять только вывод или показывать причины, механику и последствия.</small><input value={styleDepth} onChange={(event) => setStyleDepth(event.target.value)} placeholder="Показывать механизм, а не только совет" /></label>
+            <label className="field"><span>Ирония / юмор</span><small>Допустимы ли лёгкая ирония, самоирония или юмор — и в какой мере.</small><input value={styleIrony} onChange={(event) => setStyleIrony(event.target.value)} placeholder="Редкая доброжелательная самоирония" /></label>
+            <label className="field"><span>Эмоциональная температура</span><small>Ощущение текста: спокойный, тёплый, тревожный, энергичный, строгий.</small><input value={styleTemperature} onChange={(event) => setStyleTemperature(event.target.value)} placeholder="Тёплый, уверенный, без давления" /></label>
+            <label className="field"><span>Практичность</span><small>Нужны ли упражнения, чек-листы, шаги и вопросы к читателю.</small><input value={stylePractical} onChange={(event) => setStylePractical(event.target.value)} placeholder="После важной идеи — один практичный следующий шаг" /></label>
+            <label className="field"><span>Уровень терминологии</span><small>Язык для широкого читателя или профессиональной аудитории.</small><input value={styleTerminology} onChange={(event) => setStyleTerminology(event.target.value)} placeholder="Простые слова; термин объяснять при первом появлении" /></label>
+            <label className="field"><span>Запрещённые паттерны</span><small>По одному на строке: штампы, слова, приёмы и интонации, которых не должно быть.</small><textarea rows={4} value={styleProhibitions} onChange={(event) => setStyleProhibitions(event.target.value)} placeholder="Канцелярит\nПустые обещания\n«Успешный успех»" /></label>
+            <label className="field"><span>Отрывок-ориентир — необязательно</span><small>Ваш собственный текст, который передаёт нужное звучание. Не вставляйте чужие большие фрагменты.</small><textarea rows={5} value={styleBenchmark} onChange={(event) => setStyleBenchmark(event.target.value)} placeholder="Несколько собственных абзацев, если они уже есть" /></label>
           </div>
           <button
             className="ghost"
@@ -484,7 +521,7 @@ export function BookContextPanel({ project }: Props) {
               benchmark_excerpts: styleBenchmark.trim() ? [styleBenchmark.trim()] : [],
             })}
           >
-            Создать черновик для редактуры
+            Сохранить новый профиль манеры
           </button>
         </details>
         <p className="muted">Выбранную манеру можно сначала примерить на отдельном коротком тексте ниже.</p>
@@ -512,7 +549,7 @@ export function BookContextPanel({ project }: Props) {
 
       <div className="actions">
         <button className="primary" disabled={busy || !canSave} onClick={() => void saveContext()}>
-          {busy ? "Сохраняю…" : "Сохранить контекст книги"}
+          {busy ? "Сохраняю…" : "Сохранить профиль этой книги"}
         </button>
       </div>
       {!canSave && (
