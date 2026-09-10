@@ -112,7 +112,9 @@ it("показывает реальный каталог тем, отражае�
   fireEvent.click(screen.getByRole("button", { name: "Создать проект книги" }));
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "BOOK OS ведёт по шагам" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Производственный маршрут книги" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Контракт/ })).toBeEnabled();
+  expect(screen.getByRole("button", { name: /Архитектура/ })).toBeDisabled();
   expect(screen.getAllByText("Опишите идею книги").length).toBeGreaterThan(0);
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
@@ -155,7 +157,8 @@ it("показывает автору следующий шаг и сохран�
   await screen.findByText("Локальное ядро: работает");
   fireEvent.click(await screen.findByRole("button", { name: /Operating Book/ }));
   expect(await screen.findByText("ЧЕРНОВИК")).toBeInTheDocument();
-  expect(screen.getByText("Проверьте предложенный контракт книги")).toBeInTheDocument();
+  expect(screen.getByText("Проверьте контракт книги")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Перейти к шагу" })).toBeEnabled();
 
   fireEvent.click(screen.getAllByRole("button", { name: "Сохранить черновик" })[0]);
   await waitFor(() =>
