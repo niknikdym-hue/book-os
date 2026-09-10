@@ -165,8 +165,14 @@ it("keeps other approved models available behind the advanced routing control", 
 });
 
 it("never renders a late draft response from the previously selected chapter", async () => {
-  let resolveFirstChapter: ((value: DraftRunView[]) => void) | null = null;
-  const raceApi: DraftApi = async function raceApi<T>(method, path): Promise<T> {
+  let resolveFirstChapter: (value: DraftRunView[]) => void = () => undefined;
+  const firstChapterDrafts = new Promise<DraftRunView[]>((resolve) => {
+    resolveFirstChapter = resolve;
+  });
+  const raceApi: DraftApi = async function raceApi<T>(
+    method: "GET" | "POST" | "PUT",
+    path: string,
+  ): Promise<T> {
     if (method === "GET" && path === "/api/launch/readiness") {
       return {
         openai_credential_state: "AVAILABLE",
@@ -178,9 +184,7 @@ it("never renders a late draft response from the previously selected chapter", a
       return { book_pin: null, providers } as T;
     }
     if (method === "GET" && path.includes(chapter.chapter_id) && path.endsWith("/drafts")) {
-      return new Promise<DraftRunView[]>((resolve) => {
-        resolveFirstChapter = resolve;
-      }) as Promise<T>;
+      return firstChapterDrafts as Promise<T>;
     }
     if (method === "GET" && path.includes(secondChapter.chapter_id) && path.endsWith("/drafts")) {
       return [] as T;
@@ -195,7 +199,7 @@ it("never renders a late draft response from the previously selected chapter", a
   expect(await screen.findByText("2. The next mechanism")).toBeInTheDocument();
   expect(screen.queryByText("A bounded generated section.")).not.toBeInTheDocument();
 
-  if (resolveFirstChapter) resolveFirstChapter([success()]);
+  resolveFirstChapter([success()]);
   await waitFor(() =>
     expect(screen.queryByText("A bounded generated section.")).not.toBeInTheDocument(),
   );
