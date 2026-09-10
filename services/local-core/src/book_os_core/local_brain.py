@@ -56,9 +56,7 @@ class LocalModelManifest(BaseModel):
     benchmark_status_by_operation: dict[LocalTaskClass, BenchmarkStatus] = Field(
         default_factory=dict
     )
-    promotion_state_by_operation: dict[LocalTaskClass, PromotionState] = Field(
-        default_factory=dict
-    )
+    promotion_state_by_operation: dict[LocalTaskClass, PromotionState] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_operation_metadata(self) -> LocalModelManifest:
@@ -177,9 +175,7 @@ class LocalReadinessService:
         if not model_configured:
             reasons.append("MODEL_NOT_CONFIGURED")
 
-        apple_silicon_sufficient = (
-            not manifest.requires_apple_silicon or hardware.apple_silicon
-        )
+        apple_silicon_sufficient = not manifest.requires_apple_silicon or hardware.apple_silicon
         if not apple_silicon_sufficient:
             reasons.append("APPLE_SILICON_REQUIRED")
 
@@ -264,7 +260,9 @@ class LocalModelAdapter:
 
         task_class = cast(LocalTaskClass, request.task_type)
         if task_class not in self.manifest.supported_task_classes:
-            raise ModelProviderError(f"local model does not support task class: {request.task_type}")
+            raise ModelProviderError(
+                f"local model does not support task class: {request.task_type}"
+            )
         if not self.manifest.supports_structured_output:
             raise ModelProviderError("local model manifest does not support structured output")
 
