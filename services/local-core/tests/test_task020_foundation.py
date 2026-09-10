@@ -144,7 +144,7 @@ def admitted_chapter(*, writing_allowed: bool = True) -> ChapterAdmissionStatusV
     )
 
 
-def advance_to_human_review(machine: QualityLoopStateMachine):
+def advance_to_independent_critic(machine: QualityLoopStateMachine):
     run = machine.start(admitted_chapter(), actor_kind="SYSTEM", actor="test")
     machine.advance(
         run,
@@ -225,6 +225,11 @@ def advance_to_human_review(machine: QualityLoopStateMachine):
         actor="critic:deterministic-v1",
         evidence={"summary": "Independent deterministic review complete.", "finding_ids": []},
     )
+    return run, draft
+
+
+def advance_to_human_review(machine: QualityLoopStateMachine):
+    run, draft = advance_to_independent_critic(machine)
     revision = machine.propose_artifact(
         run,
         kind="TARGETED_REVISION_PROPOSAL",
@@ -307,6 +312,73 @@ def test_quality_loop_rejects_generic_stage_evidence_bypass() -> None:
     assert run.stage == QualityLoopStage.ADMISSION_VERIFIED
 
 
+def test_revision_proposal_must_match_exact_draft_baseline() -> None:
+    machine = QualityLoopStateMachine()
+    run, _draft = advance_to_independent_critic(machine)
+    revision = machine.propose_artifact(
+        run,
+        kind="TARGETED_REVISION_PROPOSAL",
+        role="EDITOR",
+        payload={
+            "source_revision_id": "unrelated-revision",
+            "source_revision_hash": "b" * 64,
+            "finding_ids": [],
+            "proposal_ids": [],
+            "proposal_hashes": [],
+        },
+        actor_kind="AI",
+        actor="critic:deterministic-v1",
+    )
+
+    with pytest.raises(QualityLoopGateError, match="exact draft revision baseline"):
+        machine.advance(
+            run,
+            QualityLoopStage.REVISION_PROPOSAL,
+            actor_kind="SYSTEM",
+            actor="manager",
+            evidence={"artifact_id": revision.artifact_id},
+        )
+
+    assert run.stage == QualityLoopStage.INDEPENDENT_CRITIC
+
+
+def test_post_revision_count_must_match_exact_revision_artifact() -> None:
+    machine = QualityLoopStateMachine()
+    run, _draft = advance_to_independent_critic(machine)
+    revision = machine.propose_artifact(
+        run,
+        kind="TARGETED_REVISION_PROPOSAL",
+        role="EDITOR",
+        payload={
+            "source_revision_id": "revision-1",
+            "source_revision_hash": "a" * 64,
+            "finding_ids": [],
+            "proposal_ids": [],
+            "proposal_hashes": [],
+        },
+        actor_kind="AI",
+        actor="critic:deterministic-v1",
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.REVISION_PROPOSAL,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"artifact_id": revision.artifact_id},
+    )
+
+    with pytest.raises(QualityLoopGateError, match="proposal_count"):
+        machine.advance(
+            run,
+            QualityLoopStage.POST_REVISION_CHECKS,
+            actor_kind="SYSTEM",
+            actor="manager",
+            evidence={"result": "PASS", "proposal_count": 1, "all_exact_baseline": True},
+        )
+
+    assert run.stage == QualityLoopStage.REVISION_PROPOSAL
+
+
 def test_quality_loop_is_ordered_and_material_output_cannot_self_approve() -> None:
     machine = QualityLoopStateMachine()
     run, draft, revision = advance_to_human_review(machine)
@@ -319,6 +391,16 @@ def test_quality_loop_is_ordered_and_material_output_cannot_self_approve() -> No
             actor_kind="AI",  # type: ignore[arg-type]
             actor="fake:fake-writer",
             reason="self approval must fail",
+        )
+
+    with pytest.raises(QualityLoopGateError, match="material producer"):
+        machine.decide_artifact(
+            run,
+            draft.artifact_id,
+            decision="ACCEPTED",
+            actor_kind="OWNER",
+            actor="fake:fake-writer",
+            reason="changing actor_kind must not permit self approval",
         )
 
     accept_material(machine, run, draft, revision)
@@ -352,6 +434,32 @@ def test_quality_loop_is_ordered_and_material_output_cannot_self_approve() -> No
         )
 
 
+def test_rejected_material_cannot_complete_quality_loop() -> None:
+    machine = QualityLoopStateMachine()
+    run, draft, revision = advance_to_human_review(machine)
+
+    for artifact in (draft, revision):
+        machine.decide_artifact(
+            run,
+            artifact.artifact_id,
+            decision="REJECTED",
+            actor_kind="OWNER",
+            actor="owner",
+            reason="Rejected in deterministic negative-path fixture.",
+        )
+
+    with pytest.raises(QualityLoopGateError, match="accepted draft and revision"):
+        machine.advance(
+            run,
+            QualityLoopStage.COMPLETE,
+            actor_kind="OWNER",
+            actor="owner",
+            evidence={"decision": "ACCEPT"},
+        )
+
+    assert run.stage == QualityLoopStage.HUMAN_REVIEW
+
+
 def test_blocking_finding_requires_explicit_non_ai_resolution_before_completion() -> None:
     machine = QualityLoopStateMachine()
     run, draft, revision = advance_to_human_review(machine)
@@ -376,7 +484,7 @@ def test_blocking_finding_requires_explicit_non_ai_resolution_before_completion(
             evidence={"decision": "ACCEPT"},
         )
 
-    with pytest.raises(QualityLoopGateError, match="AI cannot resolve"):
+    with pytest.raises(QualityLoopGateError, match="HUMAN/OWNER/SYSTEM"):
         machine.resolve_finding(
             run,
             blocking.finding_id,
@@ -384,6 +492,16 @@ def test_blocking_finding_requires_explicit_non_ai_resolution_before_completion(
             actor_kind="AI",
             actor="same-model",
             reason="model self-clear must fail",
+        )
+
+    with pytest.raises(QualityLoopGateError, match="unknown quality-loop actor kind"):
+        machine.resolve_finding(
+            run,
+            blocking.finding_id,
+            disposition="RESOLVED",
+            actor_kind="BOT",  # type: ignore[arg-type]
+            actor="unknown-runtime-actor",
+            reason="unknown actor kinds must fail closed",
         )
 
     resolved = machine.resolve_finding(
