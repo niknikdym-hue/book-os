@@ -166,6 +166,10 @@ class DraftingService:
         run_id = new_ulid()
         try:
             choice = self._resolve_choice(book_id, request)
+            if request.reasoning_effort is not None and choice.provider in PROVIDERS:
+                self._routing.validate_work_level(
+                    choice.provider, choice.model, request.reasoning_effort
+                )
             book_context = self._book_context_payload(
                 book_id, required=choice.provider in PROVIDERS
             )
@@ -371,6 +375,11 @@ class DraftingService:
                 "selection_mode": choice.selection_mode,
                 "selection_scope": choice.selection_scope,
                 "routing_rationale": choice.rationale,
+                "model_label": (
+                    ModelRoutingService.model_label(choice.provider, choice.model)
+                    if choice.provider in PROVIDERS
+                    else choice.model
+                ),
                 "reasoning_effort": reasoning_effort,
                 "book_context_hashes": cast(
                     dict[str, JSONValue], model_request.task_payload.get("book_context_hashes", {})

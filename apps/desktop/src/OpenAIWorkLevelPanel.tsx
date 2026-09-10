@@ -8,6 +8,16 @@ import {
   type OpenAIWorkLevel,
 } from "./openaiWorkLevel";
 
+// Validated against this account's non-billable OpenAI Models metadata on 2026-09-10.
+// Keep model identity separate from reasoning effort: they are different API fields.
+export const OPENAI_ASTRA_MODELS = [
+  {
+    id: "gpt-6-astra",
+    label: "GPT-6 Astra",
+    workLevels: ["medium", "high", "xhigh"] as const,
+  },
+] as const;
+
 export function OpenAIWorkLevelPanel() {
   const [workLevel, setWorkLevel] = useState<OpenAIWorkLevel | null>(
     getPendingOpenAIWorkLevel(),
@@ -19,18 +29,22 @@ export function OpenAIWorkLevelPanel() {
     <section className="panel legacy-openai-work-level-panel" aria-label="Уровень работы OpenAI">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">OPENAI · СЛЕДУЮЩАЯ ОПЕРАЦИЯ</p>
-          <h3>Уровень работы модели</h3>
+          <p className="eyebrow">ASTRA · СЛЕДУЮЩАЯ ОПЕРАЦИЯ</p>
+          <h3>Модель и глубина работы</h3>
         </div>
         <span className={`badge ${workLevel ? "approved" : "draft"}`}>
           {openAIWorkLevelLabel(workLevel)}
         </span>
       </div>
-      <p className="muted">
-        Выберите уровень для следующей OpenAI-операции. После любой попытки BOOK OS сбросит выбор,
-        поэтому следующая существенная операция снова потребует явного решения. Authority, этапы,
-        quality gates и редакционные правила от уровня модели не меняются.
-      </p>
+      <label className="field">
+        <span>Модель Astra</span>
+        <select aria-label="Модель Astra" value="gpt-6-astra" disabled>
+          {OPENAI_ASTRA_MODELS.map((model) => (
+            <option key={model.id} value={model.id}>{model.label}</option>
+          ))}
+        </select>
+      </label>
+      <p className="muted">Выберите глубину для следующей операции. Модель и уровень работы — отдельные параметры API.</p>
       <div className="actions planning-action">
         {OPENAI_WORK_LEVEL_OPTIONS.map((option) => (
           <button

@@ -24,6 +24,8 @@ class ModelRoutingError(RuntimeError):
 class ProviderModel(BaseModel):
     id: str
     label: str
+    family: str | None = None
+    work_levels: list[WorkLevel] = []
 
 
 class ProviderView(BaseModel):
@@ -70,7 +72,9 @@ PROVIDERS: dict[str, ProviderSpec] = {
             "BOOK_CONTRACT_PROPOSAL": "gpt-6-astra",
             "ARCHITECTURE_PROPOSAL": "gpt-6-astra",
             "CHAPTER_CONTRACT_PROPOSAL": "gpt-5.6-sol",
-            "SECTION_DRAFT": "gpt-5.6-sol",
+            # The Author Studio's automatic mode is Astra-only. It must not silently
+            # replace an Astra choice with a different OpenAI family.
+            "SECTION_DRAFT": "gpt-6-astra",
             "STYLE_PREVIEW": "gpt-5.6-terra",
             "ANNOTATION": "gpt-5.6-terra",
         },
@@ -105,7 +109,15 @@ class ModelRoutingService:
     def provider_registry() -> list[ProviderView]:
         result: list[ProviderView] = []
         for provider_id, spec in PROVIDERS.items():
-            models = [ProviderModel(id=model_id, label=label) for model_id, label in spec.models]
+            models = [
+                ProviderModel(
+                    id=model_id,
+                    label=label,
+                    family="astra" if model_id == "gpt-6-astra" else None,
+                    work_levels=list(spec.work_levels) if model_id == "gpt-6-astra" else [],
+                )
+                for model_id, label in spec.models
+            ]
             result.append(
                 ProviderView(
                     id=provider_id,
@@ -135,11 +147,20 @@ class ModelRoutingService:
             raise ModelRoutingError(f"model {model} is not registered for provider {provider}")
 
     @classmethod
-    def validate_work_level(cls, provider: str, work_level: str) -> None:
+    def model_label(cls, provider: str, model: str) -> str:
         spec = cls._provider(provider)
-        if work_level not in spec.work_levels:
+        for model_id, label in spec.models:
+            if model_id == model:
+                return label
+        raise ModelRoutingError(f"model {model} is not registered for provider {provider}")
+
+    @classmethod
+    def validate_work_level(cls, provider: str, model: str, work_level: str) -> None:
+        spec = cls._provider(provider)
+        model_work_levels = spec.work_levels if model == "gpt-6-astra" else ()
+        if work_level not in model_work_levels:
             raise ModelRoutingError(
-                f"work level {work_level} is not registered for provider {provider}"
+                f"work level {work_level} is not registered for {provider}/{model}"
             )
 
     def get_book_pin(self, book_id: str) -> BookModelPinView | None:

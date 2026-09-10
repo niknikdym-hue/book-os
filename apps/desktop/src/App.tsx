@@ -404,7 +404,10 @@ export function App() {
 
               <OpenAIWorkLevelPanel />
               <BookJourney project={project} chapter={selectedChapter} />
-              <LaunchPlanningPanel project={project} chapter={selectedChapter} onProject={hydrate} />
+              <details className="workflow-drawer">
+                <summary>Планирование и другие модели</summary>
+                <LaunchPlanningPanel project={project} chapter={selectedChapter} onProject={hydrate} />
+              </details>
 
               {project.book_contract && (
                 <section className="panel" id="book-contract">

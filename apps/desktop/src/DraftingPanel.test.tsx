@@ -52,7 +52,7 @@ const providers = [
     id: "openai",
     label: "AI Pro",
     models: [
-      { id: "gpt-6-astra", label: "GPT-6 Astra" },
+      { id: "gpt-6-astra", label: "GPT-6 Astra", family: "astra", work_levels: ["medium", "high", "xhigh"] },
       { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
     ],
   },
@@ -147,6 +147,55 @@ it("starts in Astra High and returns the book text in the author workspace", asy
       model: "gpt-6-astra",
       selection_mode: "MANUAL",
       selection_scope: "OPERATION",
+      reasoning_effort: "high",
+    }),
+  });
+});
+
+it("keeps Astra model and reasoning effort as separate explicit choices", async () => {
+  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
+
+  expect(await screen.findByLabelText("Модель Astra")).toHaveValue("gpt-6-astra");
+  expect(screen.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("button", { name: "Extra High" }));
+  fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
+    target: { value: "Use the selected Astra configuration" },
+  });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Запустить Astra" }));
+
+  expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
+  expect(calls).toContainEqual({
+    method: "POST",
+    path: expect.stringContaining("/drafts"),
+    body: expect.objectContaining({
+      provider: "openai",
+      model: "gpt-6-astra",
+      selection_mode: "MANUAL",
+      reasoning_effort: "xhigh",
+    }),
+  });
+});
+
+it("keeps automatic Author Studio routing inside the Astra family", async () => {
+  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
+
+  await screen.findByLabelText("Модель Astra");
+  fireEvent.click(screen.getByRole("button", { name: "Подобрать Astra" }));
+  fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
+    target: { value: "Choose the eligible Astra automatically" },
+  });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Запустить Astra" }));
+
+  expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
+  expect(calls).toContainEqual({
+    method: "POST",
+    path: expect.stringContaining("/drafts"),
+    body: expect.objectContaining({
+      provider: "openai",
+      model: "gpt-6-astra",
+      selection_mode: "AUTO",
       reasoning_effort: "high",
     }),
   });

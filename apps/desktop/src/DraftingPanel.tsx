@@ -15,7 +15,12 @@ type SelectionScope = "OPERATION" | "BOOK";
 type ProviderView = {
   id: ProviderId;
   label: string;
-  models: Array<{ id: string; label: string }>;
+  models: Array<{
+    id: string;
+    label: string;
+    family?: "astra";
+    work_levels?: OpenAIWorkLevel[];
+  }>;
 };
 
 type LaunchReadiness = {
@@ -68,7 +73,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   const [context, setContext] = useState("");
   const [provider, setProvider] = useState<ProviderId>("openai");
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("MANUAL");
-  const [selectionScope, setSelectionScope] = useState<SelectionScope>("OPERATION");
+  const [selectionScope, setSelectionScope] = useState<SelectionScope | null>("OPERATION");
   const [model, setModel] = useState("gpt-6-astra");
   const [workLevel, setWorkLevel] = useState<OpenAIWorkLevel>("high");
   const [maxCostUsd, setMaxCostUsd] = useState("0.50");
@@ -92,6 +97,10 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   );
   const selectedModel =
     selectedProvider.models.find((item) => item.id === model) ?? selectedProvider.models[0] ?? null;
+  const astraModels = (providers.find((item) => item.id === "openai")?.models ?? [])
+    .filter((item) => item.family === "astra" || item.id === "gpt-6-astra");
+  const selectedAstra = astraModels.find((item) => item.id === model) ?? astraModels[0] ?? null;
+  const supportedWorkLevels = selectedAstra?.work_levels ?? OPENAI_WORK_LEVEL_OPTIONS.map((item) => item.value);
   const bookPin = routingState?.book_pin ?? null;
   const cost = Number(maxCostUsd);
   const credentialAvailable =
@@ -357,17 +366,63 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
             <div className="writer-model-card">
               <span className="writer-model-orb" aria-hidden="true" />
               <div>
-                <strong>{selectionMode === "AUTO" ? "BOOK OS Auto" : selectedModel?.label ?? model}</strong>
-                <small>{providerTitle(provider)} · Writer</small>
+                <div className="writer-routing-switch" role="group" aria-label="Выбор Astra">
+                  <button
+                    type="button"
+                    className={selectionMode === "AUTO" ? "active" : ""}
+                    disabled={busy}
+                    onClick={() => {
+                      setProvider("openai");
+                      setSelectionMode("AUTO");
+                      setSelectionScope(null);
+                      setAllowPaid(false);
+                    }}
+                  >
+                    Подобрать Astra
+                  </button>
+                  <button
+                    type="button"
+                    className={selectionMode === "MANUAL" ? "active" : ""}
+                    disabled={busy}
+                    onClick={() => {
+                      setProvider("openai");
+                      setSelectionMode("MANUAL");
+                      setSelectionScope("OPERATION");
+                      setModel(selectedAstra?.id ?? "");
+                      setAllowPaid(false);
+                    }}
+                  >
+                    Выбрать самому
+                  </button>
+                </div>
+                <label className="sr-only" htmlFor="astra-model">Модель Astra</label>
+                <select
+                  id="astra-model"
+                  aria-label="Модель Astra"
+                  value={selectedAstra?.id ?? ""}
+                  disabled={busy || selectionMode === "AUTO" || astraModels.length === 0}
+                  onChange={(event) => {
+                    setProvider("openai");
+                    setSelectionMode("MANUAL");
+                    setSelectionScope("OPERATION");
+                    setModel(event.target.value);
+                    setAllowPaid(false);
+                  }}
+                >
+                  {astraModels.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+                <small>OpenAI Astra · Writer</small>
               </div>
             </div>
           </section>
 
-          {provider === "openai" && (
+          {selectedAstra && (
             <section>
               <span className="writer-overline">ГЛУБИНА РАБОТЫ</span>
               <div className="writer-levels" role="group" aria-label="Уровень работы OpenAI">
-                {OPENAI_WORK_LEVEL_OPTIONS.map((option) => (
+                {OPENAI_WORK_LEVEL_OPTIONS.filter((option) => supportedWorkLevels.includes(option.value)).map((option) => (
                   <button
                     key={option.value}
                     type="button"

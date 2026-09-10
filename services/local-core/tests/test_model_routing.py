@@ -17,11 +17,16 @@ def test_openai_registry_exposes_owner_work_levels() -> None:
     assert openai.label == "OpenAI"
     assert [model.id for model in openai.models][:2] == ["gpt-6-astra", "gpt-5.6-sol"]
     assert openai.work_levels == ["medium", "high", "xhigh"]
+    astra = next(model for model in openai.models if model.id == "gpt-6-astra")
+    assert astra.family == "astra"
+    assert astra.work_levels == ["medium", "high", "xhigh"]
 
     for level in openai.work_levels:
-        ModelRoutingService.validate_work_level("openai", level)
+        ModelRoutingService.validate_work_level("openai", "gpt-6-astra", level)
     with pytest.raises(ModelRoutingError, match="not registered"):
-        ModelRoutingService.validate_work_level("openai", "max")
+        ModelRoutingService.validate_work_level("openai", "gpt-6-astra", "max")
+    with pytest.raises(ModelRoutingError, match="not registered"):
+        ModelRoutingService.validate_work_level("openai", "gpt-5.6-sol", "high")
 
 
 def test_auto_manual_operation_and_whole_book_pin(tmp_path: Path) -> None:
