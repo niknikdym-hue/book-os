@@ -30,7 +30,9 @@ class StylePreviewError(RuntimeError):
 
 class StylePreviewRequest(BaseModel):
     author_profile_id: str = Field(min_length=26, max_length=26)
-    style_profile_ids: list[str] = Field(min_length=2, max_length=3)
+    # A preview can be a comparison, but a writer must also be able to try one
+    # chosen set of settings before committing it to the book.
+    style_profile_ids: list[str] = Field(min_length=1, max_length=3)
     content_brief: str = Field(min_length=20, max_length=5000)
     provider: Literal["openai", "yandex"]
     selection_mode: Literal["AUTO", "MANUAL"] = "AUTO"

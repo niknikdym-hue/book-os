@@ -443,9 +443,9 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
 
           {!credentialAvailable && provider === "openai" && (
             <section className="writer-key-section">
-              <span className="writer-overline">ПОДКЛЮЧИТЬ OPENAI</span>
+              <span className="writer-overline">OPENAI НЕ ПОДКЛЮЧЁН</span>
               <label>
-                <span>API key</span>
+                <span>Ключ OpenAI</span>
                 <input
                   type="password"
                   value={apiKey}

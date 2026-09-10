@@ -95,7 +95,7 @@ type Props = {
 const FALLBACK_PROVIDERS: ProviderView[] = [
   {
     id: "openai",
-    label: "AI Pro",
+    label: "OpenAI",
     models: [
       { id: "gpt-6-astra", label: "GPT-6 Astra" },
       { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
@@ -493,22 +493,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       </section>
 
       {provider === "openai" && readiness?.openai_credential_state === "NOT_AVAILABLE" && (
-        <div className="credential-setup">
-          <label className="field">
-            <span>Ключ AI Pro (OpenAI API)</span>
-            <small>Сохраняется только в macOS Keychain и не показывается после сохранения.</small>
-            <input
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="Вставьте API key"
-            />
-          </label>
-          <button className="primary" disabled={busy || apiKey.trim().length < 10} onClick={() => void saveOpenAIKey()}>
-            Сохранить AI Pro в Keychain
-          </button>
-        </div>
+        <div className="alert inline-alert">OpenAI ещё не подключён на этом Mac.</div>
       )}
 
       {provider === "yandex" && readiness?.yandex_credential_state !== "AVAILABLE" && (
@@ -574,10 +559,10 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
 
       {provider === "openai" && !contractApproved && !blindSelection && (
         <section className="planning-step">
-          <h4>Слепой тест AI Pro: Sol ↔ Astra</h4>
+          <h4>Слепой тест OpenAI: Sol ↔ Astra</h4>
           <p className="muted">
             Это отдельный сравнительный инструмент. BOOK OS отправит одну и ту же идею двум моделям
-            AI Pro с одинаковым контекстом. Вы увидите только варианты A и B до фиксации выбора.
+            OpenAI с одинаковым контекстом. Вы увидите только варианты A и B до фиксации выбора.
           </p>
 
           {!blindComparison && (
@@ -602,7 +587,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                   onChange={(event) => setAllowBlindPaid(event.target.checked)}
                 />
                 <span>
-                  Разрешаю <strong>только этот слепой тест</strong>: два платных AI Pro-запроса,
+                  Разрешаю <strong>только этот слепой тест</strong>: два платных OpenAI-запроса,
                   каждый не дороже ${blindCostUsd || "0"}. После попытки разрешение автоматически сбросится.
                 </span>
               </label>

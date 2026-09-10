@@ -29,6 +29,28 @@ type Props = {
   project: ProjectView;
 };
 
+const SUGGESTED_AUTHORS = ["Елена Дым", "Елена Галакси", "Елена Дилон", "Елена Дымова"];
+
+const STYLE_STARTERS = [
+  {
+    name: "Современная художественная проза",
+    literary_register: "Ясная современная художественная проза",
+    sentence_paragraph_rhythm: "Живой ритм, короткие и средние абзацы, сцены с конкретными деталями",
+  },
+  {
+    name: "Деловой нон-фикшн",
+    literary_register: "Ясный деловой нон-фикшн без канцелярита",
+    evidence_density: "Аргументы, примеры и проверяемые выводы",
+    practical_instruction_intensity: "Практичные следующие шаги без пустой мотивации",
+  },
+  {
+    name: "Психологическая проза",
+    literary_register: "Бережная психологическая проза",
+    emotional_temperature: "Тёплая и честная, без давления на читателя",
+    directness: "Прямая, но не назидательная",
+  },
+] as const;
+
 function lines(value: string): string[] {
   return value
     .split("\n")
@@ -161,6 +183,25 @@ export function BookContextPanel({ project }: Props) {
     }
   }
 
+  async function createAndApproveProfile(kind: "AUTHOR" | "STYLE", content: Record<string, unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await coreApi<ProfileView>("POST", "/api/context/profiles", { kind, content });
+      const approved = await coreApi<ProfileView>("POST", `/api/context/profiles/${created.profile_id}/approve`);
+      await reload();
+      if (approved.kind === "AUTHOR") {
+        setAuthorId(approved.profile_id);
+        setStyleId("");
+      }
+      if (approved.kind === "STYLE") setStyleId(approved.profile_id);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function approveProfile(profileId: string) {
     setBusy(true);
     setError(null);
@@ -238,7 +279,7 @@ export function BookContextPanel({ project }: Props) {
           <ProfileStatus profile={selectedAuthor} />
         </div>
         <label className="field">
-          <span>Утверждённый Author Profile</span>
+          <span>Имя автора</span>
           <select value={authorId} onChange={(event) => {
             setAuthorId(event.target.value);
             setSeriesId("");
@@ -258,8 +299,32 @@ export function BookContextPanel({ project }: Props) {
             Утвердить Author Profile
           </button>
         )}
+        <div className="actions planning-action">
+          {SUGGESTED_AUTHORS.map((name) => (
+            <button key={name} className={authorName === name ? "primary" : "ghost"} type="button" onClick={() => setAuthorName(name)}>
+              {name}
+            </button>
+          ))}
+        </div>
+        <div className="form-grid">
+          <label className="field">
+            <span>Новый автор / псевдоним</span>
+            <input value={authorName} onChange={(event) => setAuthorName(event.target.value)} placeholder="Например: Елена Дымова" />
+          </label>
+          <div className="field">
+            <span>&nbsp;</span>
+            <button
+              className="primary"
+              type="button"
+              disabled={busy || authorName.trim().length === 0}
+              onClick={() => void createAndApproveProfile("AUTHOR", { author_name: authorName.trim() })}
+            >
+              Добавить автора
+            </button>
+          </div>
+        </div>
         <details className="advanced-settings">
-          <summary>Создать новый Author Profile</summary>
+          <summary>Добавить нового автора или настроить голос подробнее</summary>
           <div className="form-grid">
             <label className="field"><span>Имя / псевдоним</span><input value={authorName} onChange={(event) => setAuthorName(event.target.value)} /></label>
             <label className="field"><span>Голос и требования к прозе</span><textarea rows={4} value={authorVoice} onChange={(event) => setAuthorVoice(event.target.value)} /></label>
@@ -272,7 +337,7 @@ export function BookContextPanel({ project }: Props) {
           <button
             className="ghost"
             disabled={busy || authorName.trim().length === 0}
-            onClick={() => void createProfile("AUTHOR", {
+            onClick={() => void createAndApproveProfile("AUTHOR", {
               author_name: authorName.trim(),
               voice_requirements: authorVoice.trim(),
               evidence_discipline: authorEvidence.trim(),
@@ -282,7 +347,7 @@ export function BookContextPanel({ project }: Props) {
               benchmark_excerpts: authorBenchmark.trim() ? [authorBenchmark.trim()] : [],
             })}
           >
-            Создать черновик Author Profile
+            Добавить автора
           </button>
         </details>
       </section>
@@ -347,7 +412,7 @@ export function BookContextPanel({ project }: Props) {
           <ProfileStatus profile={selectedStyle} />
         </div>
         <label className="field">
-          <span>Style Profile</span>
+          <span>Манера письма</span>
           <select value={styleId} onChange={(event) => setStyleId(event.target.value)} disabled={!authorId}>
             <option value="">Выберите стиль</option>
             {approvedStyles.map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name}</option>)}
@@ -357,8 +422,31 @@ export function BookContextPanel({ project }: Props) {
         {selectedStyle?.status === "DRAFT" && (
           <button className="primary" disabled={busy} onClick={() => void approveProfile(selectedStyle.profile_id)}>Утвердить Style Profile</button>
         )}
+        <div className="planning-step">
+          <h5>Начать с жанровой основы</h5>
+          <p className="muted">Это короткий стартовый профиль. Его можно уточнить позже — не нужно заполнять все поля до первой страницы.</p>
+          <div className="actions planning-action">
+            {STYLE_STARTERS.map((starter) => (
+              <button
+                key={starter.name}
+                type="button"
+                className="ghost"
+                disabled={busy || !authorId}
+                onClick={() => void createAndApproveProfile("STYLE", {
+                  style_name: starter.name,
+                  author_profile_id: authorId,
+                  ...starter,
+                  prohibited_patterns: [],
+                  benchmark_excerpts: [],
+                })}
+              >
+                {starter.name}
+              </button>
+            ))}
+          </div>
+        </div>
         <details className="advanced-settings">
-          <summary>Создать / настроить Style Profile</summary>
+          <summary>Создать свою манеру или настроить детали</summary>
           <div className="form-grid">
             <label className="field"><span>Название стиля</span><input value={styleName} onChange={(event) => setStyleName(event.target.value)} /></label>
             <label className="field"><span>Литературный регистр</span><input value={styleRegister} onChange={(event) => setStyleRegister(event.target.value)} /></label>
@@ -396,13 +484,10 @@ export function BookContextPanel({ project }: Props) {
               benchmark_excerpts: styleBenchmark.trim() ? [styleBenchmark.trim()] : [],
             })}
           >
-            Создать черновик Style Profile
+            Создать черновик для редактуры
           </button>
         </details>
-        <p className="muted">
-          Следующий slice добавит сравнимые сгенерированные примеры: один и тот же brief в нескольких
-          Style Profiles до утверждения манеры письма.
-        </p>
+        <p className="muted">Выбранную манеру можно сначала примерить на отдельном коротком тексте ниже.</p>
       </section>
 
       <section className="planning-step">
