@@ -21,6 +21,7 @@ QualityRole = Literal[
 ]
 MaterialStatus = Literal["PROPOSED", "ACCEPTED", "REJECTED"]
 FindingSeverity = Literal["PASS", "ATTENTION", "BLOCKING"]
+FindingDisposition = Literal["OPEN", "RESOLVED", "SUPERSEDED"]
 
 
 class QualityLoopStage(StrEnum):
@@ -77,6 +78,12 @@ class QualityLoopFinding(BaseModel):
     created_by_kind: QualityActorKind
     created_by: str = Field(min_length=1, max_length=255)
     created_at: str
+    disposition: FindingDisposition = "OPEN"
+    resolved_by_kind: Literal["HUMAN", "OWNER", "SYSTEM"] | None = None
+    resolved_by: str | None = Field(default=None, max_length=255)
+    resolved_at: str | None = None
+    resolution_reason: str | None = Field(default=None, max_length=12000)
+    resolution_evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class QualityLoopEvent(BaseModel):
@@ -133,6 +140,203 @@ class QualityLoopStateMachine:
     @staticmethod
     def _touch(run: QualityLoopRun) -> None:
         run.updated_at = utc_now()
+
+    @staticmethod
+    def _artifact(
+        run: QualityLoopRun,
+        artifact_id: object,
+        *,
+        kind: str,
+    ) -> QualityLoopArtifact:
+        if not isinstance(artifact_id, str) or not artifact_id:
+            raise QualityLoopGateError(f"{kind} transition requires an artifact_id")
+        artifact = next((item for item in run.artifacts if item.artifact_id == artifact_id), None)
+        if artifact is None:
+            raise QualityLoopGateError(f"unknown quality-loop artifact: {artifact_id}")
+        if artifact.kind != kind:
+            raise QualityLoopGateError(
+                f"quality-loop artifact {artifact_id} has kind {artifact.kind}; expected {kind}"
+            )
+        return artifact
+
+    @staticmethod
+    def _stage_event(run: QualityLoopRun, stage: QualityLoopStage) -> QualityLoopEvent:
+        event = next((item for item in reversed(run.events) if item.to_stage == stage), None)
+        if event is None:
+            raise QualityLoopGateError(f"missing provenance event for {stage.value}")
+        return event
+
+    def _validate_stage_evidence(
+        self,
+        run: QualityLoopRun,
+        next_stage: QualityLoopStage,
+        evidence: dict[str, Any],
+    ) -> None:
+        if next_stage == QualityLoopStage.MICRO_PLAN:
+            micro_plan = evidence.get("micro_plan")
+            if not isinstance(micro_plan, str) or not micro_plan.strip():
+                raise QualityLoopGateError("MICRO_PLAN requires a non-empty micro_plan")
+            return
+
+        if next_stage == QualityLoopStage.EVIDENCE_PLAN:
+            required = evidence.get("evidence_required")
+            ready = evidence.get("evidence_ready")
+            summary = evidence.get("evidence_summary", "")
+            if not isinstance(required, bool) or not isinstance(ready, bool):
+                raise QualityLoopGateError(
+                    "EVIDENCE_PLAN requires boolean evidence_required and evidence_ready"
+                )
+            if not isinstance(summary, str):
+                raise QualityLoopGateError("EVIDENCE_PLAN evidence_summary must be text")
+            if ready and not summary.strip():
+                raise QualityLoopGateError(
+                    "EVIDENCE_PLAN marked ready requires a non-empty evidence_summary"
+                )
+            return
+
+        if next_stage == QualityLoopStage.SECTION_INTENT:
+            plan = self._stage_event(run, QualityLoopStage.EVIDENCE_PLAN).evidence
+            if plan.get("evidence_required") is True and plan.get("evidence_ready") is not True:
+                raise QualityLoopGateError(
+                    "EVIDENCE_REQUIRED: cannot advance beyond evidence plan until evidence is ready"
+                )
+            section_intent = evidence.get("section_intent")
+            if not isinstance(section_intent, str) or not section_intent.strip():
+                raise QualityLoopGateError("SECTION_INTENT requires a non-empty section_intent")
+            return
+
+        if next_stage == QualityLoopStage.DRAFT_CANDIDATE:
+            artifact = self._artifact(
+                run,
+                evidence.get("artifact_id"),
+                kind="DRAFT_CANDIDATE",
+            )
+            for field in ("unit_id", "revision_id", "revision_hash", "provider", "model", "run_id"):
+                value = artifact.payload.get(field)
+                if not isinstance(value, str) or not value:
+                    raise QualityLoopGateError(
+                        f"DRAFT_CANDIDATE artifact requires non-empty {field} provenance"
+                    )
+            return
+
+        if next_stage == QualityLoopStage.DETERMINISTIC_CHECKS:
+            if evidence.get("result") != "PASS":
+                raise QualityLoopGateError("DETERMINISTIC_CHECKS requires result=PASS")
+            revision_id = evidence.get("draft_revision_id")
+            if not isinstance(revision_id, str) or not revision_id:
+                raise QualityLoopGateError(
+                    "DETERMINISTIC_CHECKS requires an exact draft_revision_id"
+                )
+            draft_event = self._stage_event(run, QualityLoopStage.DRAFT_CANDIDATE)
+            artifact = self._artifact(
+                run,
+                draft_event.evidence.get("artifact_id"),
+                kind="DRAFT_CANDIDATE",
+            )
+            if artifact.payload.get("revision_id") != revision_id:
+                raise QualityLoopGateError(
+                    "DETERMINISTIC_CHECKS draft_revision_id does not match draft candidate"
+                )
+            return
+
+        if next_stage == QualityLoopStage.EVIDENCE_CHECKS:
+            if evidence.get("result") != "PASS":
+                raise QualityLoopGateError("EVIDENCE_CHECKS requires result=PASS")
+            required = evidence.get("required")
+            summary = evidence.get("summary", "")
+            if not isinstance(required, bool) or not isinstance(summary, str):
+                raise QualityLoopGateError(
+                    "EVIDENCE_CHECKS requires boolean required and textual summary"
+                )
+            plan = self._stage_event(run, QualityLoopStage.EVIDENCE_PLAN).evidence
+            if required != plan.get("evidence_required"):
+                raise QualityLoopGateError(
+                    "EVIDENCE_CHECKS required flag does not match evidence plan"
+                )
+            if required and not summary.strip():
+                raise QualityLoopGateError(
+                    "EVIDENCE_CHECKS for evidence-required content needs traceable evidence summary"
+                )
+            return
+
+        if next_stage == QualityLoopStage.NOVELTY_CHECK:
+            novelty_evidence = evidence.get("evidence")
+            if evidence.get("result") != "PASS":
+                raise QualityLoopGateError("NOVELTY_CHECK requires result=PASS")
+            if not isinstance(novelty_evidence, str) or not novelty_evidence.strip():
+                raise QualityLoopGateError(
+                    "NOVELTY_CHECK requires non-empty semantic novelty/repetition evidence"
+                )
+            return
+
+        if next_stage == QualityLoopStage.INDEPENDENT_CRITIC:
+            summary = evidence.get("summary")
+            finding_ids = evidence.get("finding_ids")
+            if not isinstance(summary, str) or not summary.strip():
+                raise QualityLoopGateError("INDEPENDENT_CRITIC requires a non-empty summary")
+            if not isinstance(finding_ids, list) or any(
+                not isinstance(item, str) or not item for item in finding_ids
+            ):
+                raise QualityLoopGateError(
+                    "INDEPENDENT_CRITIC requires a list of exact finding_ids"
+                )
+            known = {item.finding_id for item in run.findings}
+            unknown = [item for item in finding_ids if item not in known]
+            if unknown:
+                raise QualityLoopGateError(
+                    "INDEPENDENT_CRITIC references unknown findings: " + ", ".join(unknown)
+                )
+            return
+
+        if next_stage == QualityLoopStage.REVISION_PROPOSAL:
+            artifact = self._artifact(
+                run,
+                evidence.get("artifact_id"),
+                kind="TARGETED_REVISION_PROPOSAL",
+            )
+            for field in ("source_revision_id", "source_revision_hash"):
+                value = artifact.payload.get(field)
+                if not isinstance(value, str) or not value:
+                    raise QualityLoopGateError(
+                        f"TARGETED_REVISION_PROPOSAL artifact requires non-empty {field}"
+                    )
+            return
+
+        if next_stage == QualityLoopStage.POST_REVISION_CHECKS:
+            if evidence.get("result") != "PASS" or evidence.get("all_exact_baseline") is not True:
+                raise QualityLoopGateError(
+                    "POST_REVISION_CHECKS requires PASS against the exact baseline"
+                )
+            proposal_count = evidence.get("proposal_count")
+            if not isinstance(proposal_count, int) or isinstance(proposal_count, bool) or proposal_count < 0:
+                raise QualityLoopGateError(
+                    "POST_REVISION_CHECKS requires a non-negative proposal_count"
+                )
+            self._stage_event(run, QualityLoopStage.REVISION_PROPOSAL)
+            return
+
+        if next_stage == QualityLoopStage.HUMAN_REVIEW:
+            draft_artifact = self._artifact(
+                run,
+                evidence.get("draft_artifact_id"),
+                kind="DRAFT_CANDIDATE",
+            )
+            revision_artifact = self._artifact(
+                run,
+                evidence.get("revision_artifact_id"),
+                kind="TARGETED_REVISION_PROPOSAL",
+            )
+            if evidence.get("material_status") != "PROPOSED":
+                raise QualityLoopGateError("HUMAN_REVIEW requires material_status=PROPOSED")
+            if draft_artifact.status != "PROPOSED" or revision_artifact.status != "PROPOSED":
+                raise QualityLoopGateError(
+                    "HUMAN_REVIEW must receive undecided material proposals"
+                )
+            return
+
+        if next_stage == QualityLoopStage.COMPLETE:
+            if evidence.get("decision") != "ACCEPT":
+                raise QualityLoopGateError("quality loop completion requires decision=ACCEPT")
 
     def start(
         self,
@@ -202,6 +406,8 @@ class QualityLoopStateMachine:
         if not evidence:
             raise QualityLoopTransitionError("stage transition requires provenance evidence")
 
+        self._validate_stage_evidence(run, next_stage, evidence)
+
         if next_stage == QualityLoopStage.COMPLETE:
             if actor_kind not in {"HUMAN", "OWNER"}:
                 raise QualityLoopGateError("quality loop completion requires HUMAN/OWNER authority")
@@ -211,7 +417,11 @@ class QualityLoopStateMachine:
                     "quality loop has material proposals awaiting human decision: "
                     + ", ".join(pending)
                 )
-            blocking = [item.finding_id for item in run.findings if item.severity == "BLOCKING"]
+            blocking = [
+                item.finding_id
+                for item in run.findings
+                if item.severity == "BLOCKING" and item.disposition == "OPEN"
+            ]
             if blocking:
                 raise QualityLoopGateError(
                     "quality loop has unresolved blocking findings: " + ", ".join(blocking)
@@ -314,5 +524,35 @@ class QualityLoopStateMachine:
             created_at=utc_now(),
         )
         run.findings.append(finding)
+        self._touch(run)
+        return finding
+
+    def resolve_finding(
+        self,
+        run: QualityLoopRun,
+        finding_id: str,
+        *,
+        disposition: Literal["RESOLVED", "SUPERSEDED"],
+        actor_kind: QualityActorKind,
+        actor: str,
+        reason: str,
+        evidence: dict[str, Any] | None = None,
+    ) -> QualityLoopFinding:
+        self._require_open(run)
+        if actor_kind == "AI":
+            raise QualityLoopGateError("AI cannot resolve or supersede quality-loop findings")
+        finding = next((item for item in run.findings if item.finding_id == finding_id), None)
+        if finding is None:
+            raise QualityLoopGateError(f"unknown quality-loop finding: {finding_id}")
+        if finding.disposition != "OPEN":
+            raise QualityLoopGateError("quality-loop finding is already closed")
+        if not reason.strip():
+            raise QualityLoopGateError("finding resolution requires a reason")
+        finding.disposition = disposition
+        finding.resolved_by_kind = cast(Literal["HUMAN", "OWNER", "SYSTEM"], actor_kind)
+        finding.resolved_by = actor
+        finding.resolved_at = utc_now()
+        finding.resolution_reason = reason
+        finding.resolution_evidence = evidence or {}
         self._touch(run)
         return finding
