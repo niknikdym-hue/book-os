@@ -189,19 +189,130 @@ jobs:
           grep -F "BOOK OS local core healthy" "$DESKTOP_LOG"
           grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
           cat "$CORE_STARTUP_LOG"
-      - name: Package installable BOOK OS app
+      - name: Package owner-test BOOK OS app
         run: |
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
             "$HOME/Desktop/BOOK OS.app" \
-            "$RUNNER_TEMP/BOOK-OS-macOS.zip"
-          test -s "$RUNNER_TEMP/BOOK-OS-macOS.zip"
-      - name: Upload installable BOOK OS app
+            "$RUNNER_TEMP/BOOK-OS-macOS-owner-test.zip"
+          test -s "$RUNNER_TEMP/BOOK-OS-macOS-owner-test.zip"
+      - name: Upload owner-test BOOK OS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOOK-OS-macOS-owner-test
+          path: ${{ runner.temp }}/BOOK-OS-macOS-owner-test.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-signing-preflight:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Require Apple distribution credentials
+        shell: bash
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name GitHub Actions secret is required for Developer ID signing and notarization"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+  macos-production-release:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: [local-core, desktop, tauri-smoke, macos-native-launch, macos-signing-preflight]
+    runs-on: macos-latest
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/desktop/pnpm-lock.yaml }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Import Developer ID Application certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/book-os-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/book-os-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          APPLE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "::error::The imported certificate is not a valid Developer ID Application signing identity"
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "BOOK_OS_BUILD_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+      - name: Prepare standalone Local Core
+        run: |
+          python3.12 -m venv services/local-core/.venv
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-build.lock
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --prod=false
+      - name: Build signed and notarized macOS app
+        working-directory: apps/desktop
+        run: pnpm tauri build --bundles app
+      - name: Verify Developer ID signature and notarization ticket
+        shell: bash
+        run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          test -d "$APP"
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP"
+          /usr/bin/codesign -dv --verbose=4 "$APP" 2>&1 | grep -F "Authority=Developer ID Application:"
+          /usr/bin/xcrun stapler validate "$APP"
+          /usr/sbin/spctl --assess --type execute --verbose=4 "$APP"
+      - name: Package and Gatekeeper-check final quarantined artifact
+        shell: bash
+        run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          ZIP="$RUNNER_TEMP/BOOK-OS-macOS.zip"
+          PROBE_DIR="$RUNNER_TEMP/book-os-release-probe"
+          PROBE_APP="$PROBE_DIR/BOOK OS.app"
+
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+          test -s "$ZIP"
+          rm -rf "$PROBE_DIR"
+          mkdir -p "$PROBE_DIR"
+          /usr/bin/ditto -x -k "$ZIP" "$PROBE_DIR"
+          test -d "$PROBE_APP"
+          /usr/bin/xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");BOOK-OS-CI;" "$PROBE_APP"
+          /usr/bin/codesign --verify --deep --strict "$PROBE_APP"
+          /usr/bin/xcrun stapler validate "$PROBE_APP"
+          /usr/sbin/spctl --assess --type execute --verbose=4 "$PROBE_APP"
+      - name: Upload production BOOK OS app
         uses: actions/upload-artifact@v4
         with:
           name: BOOK-OS-macOS
           path: ${{ runner.temp }}/BOOK-OS-macOS.zip
           if-no-files-found: error
           retention-days: 7
+
   secret-scan:
     runs-on: ubuntu-latest
     permissions:
