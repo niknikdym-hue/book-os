@@ -317,7 +317,7 @@ def upgrade() -> None:
         "WHERE c.book_id=NEW.book_id AND c.chapter_id=NEW.chapter_id)"
         ") THEN RAISE(ABORT, 'WRITING_NOT_ALLOWED') END; END"
     )
-    op.execute(
+    op.get_bind().exec_driver_sql(
         "CREATE TRIGGER require_adversarial_review_for_literary_master "
         "BEFORE INSERT ON literary_masters BEGIN "
         "SELECT CASE WHEN NOT EXISTS ("
