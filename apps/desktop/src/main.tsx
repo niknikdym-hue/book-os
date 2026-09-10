@@ -6,6 +6,7 @@ import "./styles.css";
 import "./launchUx.css";
 import "./studio.css";
 import "./authorStudio.css";
+import "./authorStudioCorrections.css";
 
 const rootCandidate = document.getElementById("root");
 if (!rootCandidate) {
