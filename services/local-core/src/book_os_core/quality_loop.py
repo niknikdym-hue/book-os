@@ -266,11 +266,13 @@ class QualityLoopStateMachine:
         artifact_id: str,
         *,
         decision: Literal["ACCEPTED", "REJECTED"],
-        actor_kind: Literal["HUMAN", "OWNER"],
+        actor_kind: QualityActorKind,
         actor: str,
         reason: str,
     ) -> QualityLoopArtifact:
         self._require_open(run)
+        if actor_kind not in {"HUMAN", "OWNER"}:
+            raise QualityLoopGateError("material decision requires HUMAN/OWNER authority")
         artifact = next((item for item in run.artifacts if item.artifact_id == artifact_id), None)
         if artifact is None:
             raise QualityLoopGateError(f"unknown quality-loop artifact: {artifact_id}")
@@ -279,7 +281,7 @@ class QualityLoopStateMachine:
         if not reason.strip():
             raise QualityLoopGateError("human material decision requires a reason")
         artifact.status = decision
-        artifact.decided_by_kind = actor_kind
+        artifact.decided_by_kind = cast(Literal["HUMAN", "OWNER"], actor_kind)
         artifact.decided_by = actor
         artifact.decided_at = utc_now()
         artifact.decision_reason = reason
