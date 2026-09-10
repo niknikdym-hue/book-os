@@ -344,7 +344,7 @@ class OpenAIResponsesAdapter:
     @staticmethod
     def _strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
         """Normalize Pydantic's schema to the strict subset required by Responses."""
-        normalized = json.loads(json.dumps(schema))
+        normalized: dict[str, Any] = json.loads(json.dumps(schema))
 
         def visit(node: object) -> None:
             if isinstance(node, dict):
