@@ -5,16 +5,19 @@
   "mainBinaryName": "BOOK OS",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm brand:icons && pnpm build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "BOOK OS",
-        "width": 900,
-        "height": 620
+        "title": "BOOK OS — Author Studio",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "center": true
       }
     ]
   },
