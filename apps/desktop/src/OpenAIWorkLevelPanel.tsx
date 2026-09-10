@@ -16,7 +16,7 @@ export function OpenAIWorkLevelPanel() {
   useEffect(() => subscribeOpenAIWorkLevel(setWorkLevel), []);
 
   return (
-    <section className="panel" aria-label="Уровень работы OpenAI">
+    <section className="panel legacy-openai-work-level-panel" aria-label="Уровень работы OpenAI">
       <div className="panel-heading">
         <div>
           <p className="eyebrow">OPENAI · СЛЕДУЮЩАЯ ОПЕРАЦИЯ</p>
