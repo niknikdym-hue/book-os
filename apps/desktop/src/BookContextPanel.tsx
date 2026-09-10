@@ -21,6 +21,7 @@ type BookContextView = {
   target_characters: number | null;
   min_characters: number | null;
   max_characters: number | null;
+  include_bibliography: boolean;
   characters_unit: "characters_with_spaces";
   ready_for_planning: boolean;
 };
@@ -87,6 +88,7 @@ export function BookContextPanel({ project }: Props) {
   const [targetCharacters, setTargetCharacters] = useState("300000");
   const [minCharacters, setMinCharacters] = useState("");
   const [maxCharacters, setMaxCharacters] = useState("");
+  const [includeBibliography, setIncludeBibliography] = useState(false);
 
   const [authorName, setAuthorName] = useState("");
   const [authorVoice, setAuthorVoice] = useState("");
@@ -157,6 +159,7 @@ export function BookContextPanel({ project }: Props) {
     }
     setMinCharacters(currentContext.min_characters ? String(currentContext.min_characters) : "");
     setMaxCharacters(currentContext.max_characters ? String(currentContext.max_characters) : "");
+    setIncludeBibliography(currentContext.include_bibliography);
   }, [project.book_id]);
 
   useEffect(() => {
@@ -271,6 +274,7 @@ export function BookContextPanel({ project }: Props) {
           target_characters: target,
           min_characters: minimum,
           max_characters: maximum,
+          include_bibliography: includeBibliography,
         },
       );
       setContext(next);
@@ -382,6 +386,21 @@ export function BookContextPanel({ project }: Props) {
             Добавить автора
           </button>
         </details>
+      </section>
+
+      <section className="planning-step">
+        <h4>5. Библиография</h4>
+        <label className="paid-approval">
+          <input
+            type="checkbox"
+            checked={includeBibliography}
+            onChange={(event) => setIncludeBibliography(event.target.checked)}
+          />
+          <span>
+            Библиография в конце книги
+            <small>В финальном плане книги будет отдельный список использованных источников. Включайте, если книга опирается на исследования, законы, документы или проверяемые данные.</small>
+          </span>
+        </label>
       </section>
 
       <section className="planning-step">

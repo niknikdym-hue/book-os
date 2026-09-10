@@ -169,6 +169,7 @@ class BookContextUpdateRequest(BaseModel):
     target_characters: int = Field(gt=0)
     min_characters: int | None = Field(default=None, gt=0)
     max_characters: int | None = Field(default=None, gt=0)
+    include_bibliography: bool = False
 
     @model_validator(mode="after")
     def valid_range(self) -> BookContextUpdateRequest:
@@ -189,6 +190,7 @@ class BookContextView(BaseModel):
     target_characters: int | None
     min_characters: int | None
     max_characters: int | None
+    include_bibliography: bool = False
     characters_unit: Literal["characters_with_spaces"] = "characters_with_spaces"
     ready_for_planning: bool
 
@@ -445,6 +447,7 @@ class BookContextService:
                 target_characters=None,
                 min_characters=None,
                 max_characters=None,
+                include_bibliography=False,
                 ready_for_planning=False,
             )
 
@@ -484,6 +487,7 @@ class BookContextService:
             target_characters=cast(int | None, row["target_characters"]),
             min_characters=cast(int | None, row["min_characters"]),
             max_characters=cast(int | None, row["max_characters"]),
+            include_bibliography=bool(row["include_bibliography"]),
             ready_for_planning=ready,
         )
 
@@ -512,10 +516,10 @@ class BookContextService:
                         "INSERT INTO book_context_settings("
                         "book_id,author_profile_id,author_profile_hash,series_profile_id,"
                         "series_profile_hash,style_profile_id,style_profile_hash,target_characters,"
-                        "min_characters,max_characters,updated_at) VALUES ("
+                        "min_characters,max_characters,include_bibliography,updated_at) VALUES ("
                         ":book_id,:author_profile_id,:author_profile_hash,:series_profile_id,"
                         ":series_profile_hash,:style_profile_id,:style_profile_hash,:target_characters,"
-                        ":min_characters,:max_characters,:updated_at) "
+                        ":min_characters,:max_characters,:include_bibliography,:updated_at) "
                         "ON CONFLICT(book_id) DO UPDATE SET "
                         "author_profile_id=excluded.author_profile_id,"
                         "author_profile_hash=excluded.author_profile_hash,"
@@ -525,7 +529,9 @@ class BookContextService:
                         "style_profile_hash=excluded.style_profile_hash,"
                         "target_characters=excluded.target_characters,"
                         "min_characters=excluded.min_characters,"
-                        "max_characters=excluded.max_characters,updated_at=excluded.updated_at"
+                        "max_characters=excluded.max_characters,"
+                        "include_bibliography=excluded.include_bibliography,"
+                        "updated_at=excluded.updated_at"
                     ),
                     {
                         "book_id": book_id,
@@ -538,6 +544,7 @@ class BookContextService:
                         "target_characters": request.target_characters,
                         "min_characters": request.min_characters,
                         "max_characters": request.max_characters,
+                        "include_bibliography": request.include_bibliography,
                         "updated_at": utc_now(),
                     },
                 )

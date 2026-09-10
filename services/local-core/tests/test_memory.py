@@ -190,7 +190,7 @@ def test_m5_schema_fts_exact_phrase_and_filters(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0016"
+            == "0017"
         )
         assert (
             connection.execute(

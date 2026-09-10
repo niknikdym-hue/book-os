@@ -95,6 +95,7 @@ def test_profiles_are_versioned_human_approved_and_bound_to_book(tmp_path: Path)
             series_profile_id=series.profile_id,
             style_profile_id=style.profile_id,
             target_characters=300_000,
+            include_bibliography=True,
             min_characters=280_000,
             max_characters=320_000,
         ),
@@ -103,6 +104,7 @@ def test_profiles_are_versioned_human_approved_and_bound_to_book(tmp_path: Path)
     assert context.ready_for_planning is True
     assert context.characters_unit == "characters_with_spaces"
     assert context.target_characters == 300_000
+    assert context.include_bibliography is True
     assert context.author_profile is not None
     assert context.author_profile.name == "Елена Дилон"
     assert context.series_profile is not None
