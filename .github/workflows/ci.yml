@@ -87,6 +87,10 @@ jobs:
           test -x "$EXEC"
           test -x "$BUNDLED_CORE"
           /usr/bin/plutil -lint "$APP/Contents/Info.plist"
+          # Embedding the generated Local Core mutates the bundle after Tauri's initial
+          # signing pass. Re-sign the final bundle and every nested executable before
+          # verification, exactly as the Desktop self-install path already does.
+          /usr/bin/codesign --force --deep --sign - "$APP"
           /usr/bin/codesign --verify --deep --strict "$APP"
 
           # Prove the production app cannot fall back to the source checkout or build venv.
