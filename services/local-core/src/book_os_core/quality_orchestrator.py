@@ -14,7 +14,12 @@ from .editorial import (
     ProposalView,
 )
 from .model_gateway import ModelGateway
-from .quality_loop import QualityLoopGateError, QualityLoopRun, QualityLoopStage, QualityLoopStateMachine
+from .quality_loop import (
+    QualityLoopGateError,
+    QualityLoopRun,
+    QualityLoopStage,
+    QualityLoopStateMachine,
+)
 from .series_production import SeriesProductionService
 
 CriticSeverity = Literal["INFO", "MINOR", "MAJOR", "CRITICAL"]
@@ -132,7 +137,9 @@ class QualityLoopOrchestrator:
                 actor_kind="SYSTEM",
                 actor="quality-loop-manager",
             )
-            raise QualityLoopGateError("EVIDENCE_REQUIRED: Writer cannot run before evidence is ready")
+            raise QualityLoopGateError(
+                "EVIDENCE_REQUIRED: Writer cannot run before evidence is ready"
+            )
 
         self._machine.advance(
             run,
@@ -332,7 +339,9 @@ class QualityLoopOrchestrator:
         )
 
         if any(item.stale or not item.diff for item in proposals):
-            raise QualityLoopGateError("POST_REVISION_CHECKS_BLOCKING: proposal is stale or unchanged")
+            raise QualityLoopGateError(
+                "POST_REVISION_CHECKS_BLOCKING: proposal is stale or unchanged"
+            )
         self._machine.advance(
             run,
             QualityLoopStage.POST_REVISION_CHECKS,
