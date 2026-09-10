@@ -109,7 +109,8 @@ def test_fake_quality_loop_reaches_human_review_with_exact_open_revision_proposa
     proposal = result.revision_proposals[0]
     assert finding.actor == critic.executor_identity
     assert finding.actor_kind == "AI"
-    assert finding.run_id == result.run.run_id
+    assert finding.run_id is None
+    assert finding.evidence["quality_loop_run_id"] == result.run.run_id
     assert finding.base_revision_id == result.draft.revision_id
     assert finding.base_revision_hash == result.draft.revision_hash
     assert proposal.status == "OPEN"
