@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
-from .authority_types import JSONValue, content_hash, new_ulid, utc_now
+from .authority_types import content_hash, new_ulid, utc_now
 from .series_production import ChapterAdmissionStatusView
 
 QualityActorKind = Literal["HUMAN", "OWNER", "AI", "SYSTEM"]
@@ -56,7 +56,7 @@ class QualityLoopArtifact(BaseModel):
     kind: str = Field(min_length=1, max_length=80)
     role: QualityRole
     status: MaterialStatus = "PROPOSED"
-    payload: dict[str, JSONValue] = Field(min_length=1)
+    payload: dict[str, Any] = Field(min_length=1)
     payload_hash: str = Field(min_length=64, max_length=64)
     created_by_kind: QualityActorKind
     created_by: str = Field(min_length=1, max_length=255)
@@ -85,7 +85,7 @@ class QualityLoopEvent(BaseModel):
     to_stage: QualityLoopStage
     actor_kind: QualityActorKind
     actor: str = Field(min_length=1, max_length=255)
-    evidence: dict[str, JSONValue] = Field(min_length=1)
+    evidence: dict[str, Any] = Field(min_length=1)
     created_at: str
 
 
@@ -189,7 +189,7 @@ class QualityLoopStateMachine:
         *,
         actor_kind: QualityActorKind,
         actor: str,
-        evidence: dict[str, JSONValue],
+        evidence: dict[str, Any],
     ) -> QualityLoopRun:
         self._require_open(run)
         expected = self._ALLOWED[run.stage]
@@ -240,7 +240,7 @@ class QualityLoopStateMachine:
         *,
         kind: str,
         role: QualityRole,
-        payload: dict[str, JSONValue],
+        payload: dict[str, Any],
         actor_kind: QualityActorKind,
         actor: str,
     ) -> QualityLoopArtifact:
