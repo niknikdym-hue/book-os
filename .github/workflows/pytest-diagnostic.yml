@@ -1,0 +1,33 @@
+name: Pytest Diagnostic
+on:
+  push:
+    branches:
+      - brain/task-017-series-production-gates
+jobs:
+  pytest-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install local-core dependencies
+        working-directory: services/local-core
+        run: pip install -r requirements-dev.lock
+      - name: Capture full pytest output
+        working-directory: services/local-core
+        shell: bash
+        run: |
+          set +e
+          pytest -vv --tb=short 2>&1 | tee pytest-output.txt
+          status=${PIPESTATUS[0]}
+          echo "$status" > pytest-exit-code.txt
+          exit 0
+      - name: Upload pytest diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: task017-pytest-diagnostic
+          path: |
+            services/local-core/pytest-output.txt
+            services/local-core/pytest-exit-code.txt
+          if-no-files-found: error
