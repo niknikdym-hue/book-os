@@ -395,6 +395,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
 
       <section className="planning-step" aria-label="Выбор AI">
         <h4>AI для этой книги</h4>
+        <p className="muted">Выберите сервис и способ подбора. Точная модель и уровень работы сохраняются с результатом.</p>
         <div className="actions planning-action">
           {providers.map((item) => (
             <button
@@ -433,7 +434,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                   setAllowPaid(false);
                 }}
               >
-                Авто
+                Подобрать автоматически
               </button>
               <button
                 type="button"
@@ -446,19 +447,19 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                   setAllowPaid(false);
                 }}
               >
-                Ручной выбор
+                Выбрать модель самой
               </button>
             </div>
 
             {selectionMode === "AUTO" ? (
               <p className="muted">
-                BOOK OS сам выберет модель {selectedProviderLabel} для каждой редакционной операции.
-                Точная модель сохранится в provenance каждого вызова.
+                BOOK OS подберёт подходящую модель {selectedProviderLabel} для каждой операции.
+                Точная модель сохранится с результатом.
               </p>
             ) : (
               <div className="form-grid planning-settings-grid">
                 <label className="field">
-                  <span>Модель</span>
+                  <span>Модель для этой книги</span>
                   <select value={model} onChange={(event) => setModel(event.target.value)}>
                     {selectedProvider.models.map((item) => (
                       <option key={item.id} value={item.id}>{item.label}</option>
@@ -466,7 +467,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                   </select>
                 </label>
                 <fieldset className="field">
-                  <legend>Где закрепить</legend>
+                  <legend>Когда использовать</legend>
                   <label>
                     <input
                       type="radio"
@@ -474,7 +475,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                       checked={selectionScope === "OPERATION"}
                       onChange={() => setSelectionScope("OPERATION")}
                     />
-                    Только на конкретную операцию
+                    Только сейчас
                   </label>
                   <label>
                     <input
@@ -483,7 +484,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
                       checked={selectionScope === "BOOK"}
                       onChange={() => setSelectionScope("BOOK")}
                     />
-                    На всю книгу
+                    Для всей книги
                   </label>
                 </fieldset>
               </div>
@@ -558,7 +559,8 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       )}
 
       {provider === "openai" && !contractApproved && !blindSelection && (
-        <section className="planning-step">
+        <details className="advanced-settings planning-settings">
+          <summary>Сравнить два варианта предложения — необязательно</summary>
           <h4>Слепой тест OpenAI: Sol ↔ Astra</h4>
           <p className="muted">
             Это отдельный сравнительный инструмент. BOOK OS отправит одну и ту же идею двум моделям
@@ -622,7 +624,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
               </div>
             </>
           )}
-        </section>
+        </details>
       )}
 
       {blindSelection && (
@@ -666,7 +668,7 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
       )}
 
       <details className="advanced-settings planning-settings">
-        <summary>Стоимость выбранного AI-вызова</summary>
+        <summary>Изменить лимит расходов — необязательно</summary>
         <label className="field">
           <span>Максимальная стоимость одного запроса, USD</span>
           <input
@@ -742,24 +744,8 @@ export function LaunchPlanningPanel({ project, chapter, onProject }: Props) {
 
       {latestRun && (
         <div className="planning-run">
-          <strong>Черновик создан — теперь его нужно проверить</strong>
-          <span>
-            {latestRun.routing?.provider_label ?? latestRun.provider} · {latestRun.model}
-          </span>
-          {latestRun.routing && (
-            <small>
-              {latestRun.routing.selection_mode === "AUTO" ? "Авто" : "Ручной выбор"}
-              {latestRun.routing.selection_scope === "BOOK" ? " · закреплено на книгу" : ""}
-              {latestRun.routing.selection_scope === "OPERATION" ? " · только эта операция" : ""}
-            </small>
-          )}
-          <small>Технический Run ID: {latestRun.run_id}</small>
+          <strong>Черновик создан — проверьте и утвердите, если он вам подходит</strong>
         </div>
-      )}
-      {readiness && (
-        <small className="muted">
-          Словарь мусора: {readiness.anti_junk_entry_count} записей · внешних вызовов при проверке готовности: {readiness.external_calls}
-        </small>
       )}
       {error && <div className="alert inline-alert">{error}</div>}
     </section>

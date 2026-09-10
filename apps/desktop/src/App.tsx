@@ -12,7 +12,6 @@ import { EditorialPanel } from "./EditorialPanel";
 import { LaunchPlanningPanel } from "./LaunchPlanningPanel";
 import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
 import { OpenAIWorkLevelPanel } from "./OpenAIWorkLevelPanel";
-import { PilotPanel } from "./PilotPanel";
 import { ResearchPanel } from "./ResearchPanel";
 import {
   BUSINESS_SUBTYPES,
@@ -405,7 +404,7 @@ export function App() {
               <OpenAIWorkLevelPanel />
               <BookJourney project={project} chapter={selectedChapter} />
               <details className="workflow-drawer">
-                <summary>Планирование и другие модели</summary>
+                <summary>Идея и план книги</summary>
                 <LaunchPlanningPanel project={project} chapter={selectedChapter} onProject={hydrate} />
               </details>
 
@@ -614,7 +613,6 @@ export function App() {
               <details className="utility-drawer">
                 <summary>Дополнительные инструменты и диагностика</summary>
                 <BookMemoryPanel project={project} chapter={selectedChapter} />
-                <PilotPanel project={project} />
               </details>
             </>
           )}
