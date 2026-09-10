@@ -12,7 +12,7 @@ from .research_adapters import (
     ResearchProviderError,
     normalize_url,
 )
-from .secrets import SecretStore
+from .secrets import SecretNotFound, SecretStore
 
 
 class OpenAIWebSearchAdapter:
@@ -162,11 +162,12 @@ class OpenAIWebSearchAdapter:
 
 
 class ProductionResearchGateway(ResearchGateway):
-    """Native BOOK OS research composition.
+    """Native BOOK OS research composition with fail-soft optional web enrichment.
 
-    The current desktop panel requests the canonical scholarly trio. In production that exact
-    default search is enriched with the configured OpenAI web-discovery adapter. Explicit narrower
-    provider selections remain narrow and are not silently broadened.
+    The scholarly trio remains the canonical baseline. Its normal desktop search is enriched with
+    OpenAI web discovery when that optional adapter is configured and available. A missing OpenAI
+    credential or transient web-search failure never discards already discovered scholarly results.
+    Explicit narrower provider selections remain narrow and keep their ordinary failure semantics.
     """
 
     _DEFAULT_SCHOLARLY = ("openalex", "crossref", "semantic_scholar")
@@ -181,11 +182,19 @@ class ProductionResearchGateway(ResearchGateway):
         providers: list[str] | None = None,
         limit_per_provider: int = 5,
     ) -> list[ResearchCandidate]:
-        selected = list(providers) if providers is not None else None
-        if selected == list(self._DEFAULT_SCHOLARLY) and "openai_web" in self.adapters:
-            selected.append("openai_web")
-        return super().search(
+        selected = list(self._DEFAULT_SCHOLARLY) if providers is None else list(providers)
+        enrich_with_web = selected == list(self._DEFAULT_SCHOLARLY)
+        results = super().search(
             query,
             providers=selected,
             limit_per_provider=limit_per_provider,
         )
+
+        web_adapter = self.adapters.get("openai_web") if enrich_with_web else None
+        if web_adapter is None:
+            return results
+        try:
+            results.extend(web_adapter.search(query, limit=limit_per_provider))
+        except (SecretNotFound, ResearchProviderError):
+            pass
+        return results
