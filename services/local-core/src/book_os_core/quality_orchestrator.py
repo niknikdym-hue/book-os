@@ -254,6 +254,7 @@ class QualityLoopOrchestrator:
             raise QualityLoopGateError("independent critic must not share Writer executor identity")
 
         findings: list[FindingView] = []
+        quality_finding_ids: list[str] = []
         proposals: list[ProposalView] = []
         for proposed in review.findings:
             finding = self._editorial.create_finding(
@@ -278,11 +279,10 @@ class QualityLoopOrchestrator:
                     risks=proposed.risks,
                     actor=review.executor_identity,
                     actor_kind="AI",
-                    run_id=run.run_id,
                 ),
             )
             findings.append(finding)
-            self._machine.record_finding(
+            quality_finding = self._machine.record_finding(
                 run,
                 role="CRITIC",
                 severity=self._finding_severity(proposed.severity),
@@ -292,6 +292,7 @@ class QualityLoopOrchestrator:
                 actor_kind="AI",
                 actor=review.executor_identity,
             )
+            quality_finding_ids.append(quality_finding.finding_id)
             if proposed.proposed_text:
                 proposal = self._editorial.create_manuscript_proposal(
                     book_id,
@@ -312,7 +313,8 @@ class QualityLoopOrchestrator:
             actor=review.executor_identity,
             evidence={
                 "summary": review.summary,
-                "finding_ids": [item.finding_id for item in findings],
+                "finding_ids": quality_finding_ids,
+                "editorial_finding_ids": [item.finding_id for item in findings],
             },
         )
 
@@ -324,6 +326,7 @@ class QualityLoopOrchestrator:
                 "source_revision_id": draft.revision_id,
                 "source_revision_hash": draft.revision_hash,
                 "finding_ids": [item.finding_id for item in findings],
+                "quality_finding_ids": quality_finding_ids,
                 "proposal_ids": [item.proposal_id for item in proposals],
                 "proposal_hashes": [item.proposed_content_hash for item in proposals],
             },
