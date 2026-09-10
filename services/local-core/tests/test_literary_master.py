@@ -14,6 +14,7 @@ from book_os_core.bookbench import BookBenchService
 from book_os_core.bookbench_registry import registry_hash
 from book_os_core.db import create_database
 from book_os_core.literary_master import LiteraryMasterGateError, LiteraryMasterService
+from test_support_task017 import record_independent_adversarial_review_for_test
 
 
 def _build_release_fixture(
@@ -252,6 +253,7 @@ def _build_release_fixture(
                 },
             )
     engine.dispose()
+    record_independent_adversarial_review_for_test(data_dir, book_id)
     return book_id
 
 
@@ -320,7 +322,7 @@ def test_master_and_exports_are_deterministic_and_append_only(tmp_path: Path) ->
 
     backup_dir = tmp_path / "backup"
     _, manifest_path = create_backup(database, backup_dir)
-    assert json.loads(manifest_path.read_text(encoding="utf-8"))["alembic_revision"] == "0015"
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["alembic_revision"] == "0016"
 
 
 def test_release_gate_requires_full_deterministic_bookbench_suite(tmp_path: Path) -> None:

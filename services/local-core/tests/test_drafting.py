@@ -27,6 +27,7 @@ from book_os_core.projects import (
     NewBookRequest,
     ProjectService,
 )
+from test_support_task017 import ensure_writing_allowed_for_test
 
 
 def book_contract() -> BookContractPayload:
@@ -99,6 +100,7 @@ def ready_project(data_dir: Path) -> tuple[ProjectService, str, str]:
     chapter_id = project.chapters[0].chapter_id
     service.save_chapter_contract(project.book_id, chapter_id, chapter_contract())
     service.approve_chapter_contract(project.book_id, chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, chapter_id)
     return service, project.book_id, chapter_id
 
 

@@ -26,6 +26,7 @@ from book_os_core.projects import (
 )
 from book_os_core.research import ClaimCreateRequest, ClaimReviewRequest, ResearchService
 from book_os_core.research_adapters import ResearchGateway
+from test_support_task017 import ensure_writing_allowed_for_test
 
 
 def book_contract() -> BookContractPayload:
@@ -113,6 +114,8 @@ def ready_book(data_dir: Path) -> dict[str, str]:
         project.book_id, second_chapter.chapter_id, chapter_contract("second")
     )
     projects.approve_chapter_contract(project.book_id, second_chapter.chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, first_chapter.chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, second_chapter.chapter_id)
 
     duplicate_objective = (
         "Точный повторяемый фрагмент связывает решение владельца с наблюдаемым результатом "
@@ -200,7 +203,7 @@ def test_m7_schema_snapshot_exactness_and_currentness(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0015"
+            == "0016"
         )
         assert connection.execute(
             text("SELECT COUNT(*) FROM evaluation_snapshot_targets WHERE snapshot_id=:snapshot_id"),

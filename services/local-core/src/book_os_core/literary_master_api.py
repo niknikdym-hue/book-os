@@ -12,6 +12,7 @@ from .literary_master import (
     LiteraryMasterNotFound,
     LiteraryMasterService,
 )
+from .series_production_api import build_series_production_router
 
 
 class LiteraryMasterCreateRequest(BaseModel):
@@ -24,6 +25,7 @@ def build_literary_master_router(
 ) -> APIRouter:
     service = LiteraryMasterService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
+    router.include_router(build_series_production_router(data_dir, require_token))
 
     def raise_http(exc: LiteraryMasterError) -> None:
         if isinstance(exc, LiteraryMasterNotFound):

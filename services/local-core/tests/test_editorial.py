@@ -33,6 +33,7 @@ from book_os_core.research import (
     ResearchService,
 )
 from book_os_core.research_adapters import ResearchGateway
+from test_support_task017 import ensure_writing_allowed_for_test
 
 
 def book_contract() -> BookContractPayload:
@@ -120,6 +121,8 @@ def ready_editorial_book(data_dir: Path) -> dict[str, str]:
         project.book_id, second_chapter.chapter_id, chapter_contract("second")
     )
     projects.approve_chapter_contract(project.book_id, second_chapter.chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, first_chapter.chapter_id)
+    ensure_writing_allowed_for_test(data_dir, project.book_id, second_chapter.chapter_id)
 
     duplicate_objective = (
         "Repeat this bounded editorial passage with enough shared words to prove current repetition"
@@ -246,7 +249,7 @@ def test_m6_schema_and_finding_exact_baseline_do_not_mutate_authority(tmp_path: 
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0015"
+            == "0016"
         )
         tables = {
             row[0]
