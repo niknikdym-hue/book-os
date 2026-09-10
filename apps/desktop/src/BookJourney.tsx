@@ -31,9 +31,39 @@ const stageRank: Record<string, number> = {
   "LITERARY MASTER": 5,
 };
 
+const workflowSummary: Record<string, string> = {
+  research: "Проверка фактов и источников",
+  editorial: "Редактура книги",
+  bookbench: "BookBench",
+  master: "Literary Master",
+};
+
+function openAndScroll(element: Element | null) {
+  if (!element) return;
+  if (element instanceof HTMLDetailsElement) element.open = true;
+  element.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function moveTo(target?: string) {
   if (!target) return;
-  document.querySelector(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  if (target === "context") {
+    openAndScroll(document.querySelector<HTMLDetailsElement>(".studio-context-drawer"));
+    return;
+  }
+
+  if (target.startsWith("workflow:")) {
+    const key = target.slice("workflow:".length);
+    const expected = workflowSummary[key];
+    if (!expected) return;
+    const drawer = Array.from(
+      document.querySelectorAll<HTMLDetailsElement>("details.workflow-drawer"),
+    ).find((item) => item.querySelector(":scope > summary")?.textContent?.includes(expected));
+    openAndScroll(drawer ?? null);
+    return;
+  }
+
+  openAndScroll(document.querySelector(target));
 }
 
 export function BookJourney({ project, chapter }: Props) {
@@ -90,7 +120,7 @@ export function BookJourney({ project, chapter }: Props) {
       shortLabel: "Редактура",
       description: "Факты, повторы, аргумент и литературная правка.",
       status: rank < 3 ? "locked" : rank > 3 ? "done" : "current",
-      target: ".workflow-drawer",
+      target: "workflow:editorial",
     },
     {
       id: "bookbench",
@@ -98,7 +128,7 @@ export function BookJourney({ project, chapter }: Props) {
       shortLabel: "Проверить",
       description: "Независимый контроль качества перед выпуском.",
       status: rank < 4 ? "locked" : rank > 4 ? "done" : "current",
-      target: ".workflow-drawer",
+      target: "workflow:bookbench",
     },
     {
       id: "master",
@@ -106,14 +136,14 @@ export function BookJourney({ project, chapter }: Props) {
       shortLabel: "Выпустить",
       description: "Финальная воспроизводимая версия.",
       status: rank < 5 ? "locked" : "current",
-      target: ".workflow-drawer",
+      target: "workflow:master",
     },
   ];
 
   let actionTitle = "Настройте контекст книги";
   let actionText =
     "Автор, серия, стиль и объём должны быть зафиксированы до содержательного AI-планирования.";
-  let actionTarget = ".book-context-panel";
+  let actionTarget = "context";
 
   if (project.book_contract && !contractApproved) {
     actionTitle = "Проверьте контракт книги";
@@ -144,17 +174,17 @@ export function BookJourney({ project, chapter }: Props) {
     actionTitle = "Довести книгу редактурой";
     actionText =
       "Свяжите существенные утверждения с источниками, устраните повторы и слабые места и проведите сквозную литературную редактуру.";
-    actionTarget = ".workflow-drawer";
+    actionTarget = "workflow:editorial";
   } else if (rank === 4) {
     actionTitle = "Пройти финальный BookBench";
     actionText =
       "Проверьте выполнение контракта, доказательность, голос, структуру и машинные патологии. Финальное решение остаётся человеческим.";
-    actionTarget = ".workflow-drawer";
+    actionTarget = "workflow:bookbench";
   } else if (rank >= 5) {
     actionTitle = "Собрать Literary Master";
     actionText =
       "Финальная версия должна ссылаться на точные утверждённые ревизии и проверки и быть готовой к воспроизводимому выпуску.";
-    actionTarget = ".workflow-drawer";
+    actionTarget = "workflow:master";
   }
 
   const doneCount = steps.filter((step) => step.status === "done").length;
