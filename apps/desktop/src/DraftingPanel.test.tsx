@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it } from "vitest";
 import { DraftingPanel } from "./DraftingPanel";
 import type { DraftApi, DraftRunView } from "./draftingTypes";
@@ -193,14 +193,15 @@ it("never renders a late draft response from the previously selected chapter", a
   };
 
   const view = render(<DraftingPanel project={project} chapter={chapter} api={raceApi} />);
-  expect(await screen.findByText("1. The mechanism")).toBeInTheDocument();
+  const writer = within(view.container);
+  expect(await writer.findByText("1. The mechanism")).toBeInTheDocument();
 
   view.rerender(<DraftingPanel project={project} chapter={secondChapter} api={raceApi} />);
-  expect(await screen.findByText("2. The next mechanism")).toBeInTheDocument();
-  expect(screen.queryByText("A bounded generated section.")).not.toBeInTheDocument();
+  expect(await writer.findByText("2. The next mechanism")).toBeInTheDocument();
+  expect(writer.queryByText("A bounded generated section.")).not.toBeInTheDocument();
 
   resolveFirstChapter([success()]);
   await waitFor(() =>
-    expect(screen.queryByText("A bounded generated section.")).not.toBeInTheDocument(),
+    expect(writer.queryByText("A bounded generated section.")).not.toBeInTheDocument(),
   );
 });
