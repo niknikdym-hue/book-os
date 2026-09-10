@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coreApi } from "./api";
 import type { DraftRunView, DraftingPanelProps } from "./draftingTypes";
 import {
@@ -80,6 +80,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const draftLoadSequence = useRef(0);
 
   const approved =
     chapter?.chapter_contract?.authority_status === "APPROVED" ||
@@ -128,16 +129,17 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   }, [api, project.book_id]);
 
   const reloadDrafts = useCallback(async () => {
-    if (!chapter) {
-      setRuns([]);
-      return;
-    }
-    setRuns(
-      await api<DraftRunView[]>(
-        "GET",
-        `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
-      ),
+    const loadId = ++draftLoadSequence.current;
+    setRuns([]);
+    setCopied(false);
+    if (!chapter) return;
+    const value = await api<DraftRunView[]>(
+      "GET",
+      `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
     );
+    if (loadId === draftLoadSequence.current) {
+      setRuns(value);
+    }
   }, [api, chapter, project.book_id]);
 
   useEffect(() => {
