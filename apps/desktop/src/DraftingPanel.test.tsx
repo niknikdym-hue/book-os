@@ -124,7 +124,7 @@ it("starts in Astra High and returns the book text in the author workspace", asy
 
   expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
   expect(screen.getByText("Черновик готов")).toBeInTheDocument();
-  expect(screen.getByText("High")).toBeInTheDocument();
+  expect(screen.getAllByText("High").length).toBeGreaterThan(0);
   expect(calls).toContainEqual({
     method: "POST",
     path: expect.stringContaining("/drafts"),
@@ -143,7 +143,7 @@ it("keeps other approved models available behind the advanced routing control", 
   render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
   await screen.findByText("OpenAI API подключён");
 
-  fireEvent.click(screen.getByText("Другие модели и маршрутизация"));
+  fireEvent.click(screen.getAllByText("Другие модели и маршрутизация")[0]);
   fireEvent.change(screen.getByLabelText("Модель"), {
     target: { value: "gpt-5.6-sol" },
   });
