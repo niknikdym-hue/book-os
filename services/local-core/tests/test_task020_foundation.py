@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from book_os_core.local_brain import (
     LocalHardwareFacts,
@@ -143,6 +144,141 @@ def admitted_chapter(*, writing_allowed: bool = True) -> ChapterAdmissionStatusV
     )
 
 
+def advance_to_human_review(machine: QualityLoopStateMachine):
+    run = machine.start(admitted_chapter(), actor_kind="SYSTEM", actor="test")
+    machine.advance(
+        run,
+        QualityLoopStage.MICRO_PLAN,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"micro_plan": "One bounded deterministic micro-plan."},
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.EVIDENCE_PLAN,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={
+            "evidence_required": True,
+            "evidence_ready": True,
+            "evidence_summary": "Rights-clean deterministic evidence fixture.",
+        },
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.SECTION_INTENT,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"section_intent": "Add one bounded mechanism."},
+    )
+    draft = machine.propose_artifact(
+        run,
+        kind="DRAFT_CANDIDATE",
+        role="WRITER",
+        payload={
+            "unit_id": "unit-1",
+            "revision_id": "revision-1",
+            "revision_hash": "a" * 64,
+            "provider": "fake",
+            "model": "fake-writer",
+            "run_id": "writer-run-1",
+        },
+        actor_kind="AI",
+        actor="fake:fake-writer",
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.DRAFT_CANDIDATE,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"artifact_id": draft.artifact_id},
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.DETERMINISTIC_CHECKS,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"result": "PASS", "draft_revision_id": "revision-1"},
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.EVIDENCE_CHECKS,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={
+            "result": "PASS",
+            "required": True,
+            "summary": "Rights-clean deterministic evidence fixture.",
+        },
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.NOVELTY_CHECK,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"result": "PASS", "evidence": "No semantic overlap in deterministic fixture."},
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.INDEPENDENT_CRITIC,
+        actor_kind="AI",
+        actor="critic:deterministic-v1",
+        evidence={"summary": "Independent deterministic review complete.", "finding_ids": []},
+    )
+    revision = machine.propose_artifact(
+        run,
+        kind="TARGETED_REVISION_PROPOSAL",
+        role="EDITOR",
+        payload={
+            "source_revision_id": "revision-1",
+            "source_revision_hash": "a" * 64,
+            "finding_ids": [],
+            "proposal_ids": [],
+            "proposal_hashes": [],
+        },
+        actor_kind="AI",
+        actor="critic:deterministic-v1",
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.REVISION_PROPOSAL,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"artifact_id": revision.artifact_id},
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.POST_REVISION_CHECKS,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={"result": "PASS", "proposal_count": 0, "all_exact_baseline": True},
+    )
+    machine.advance(
+        run,
+        QualityLoopStage.HUMAN_REVIEW,
+        actor_kind="SYSTEM",
+        actor="manager",
+        evidence={
+            "draft_artifact_id": draft.artifact_id,
+            "revision_artifact_id": revision.artifact_id,
+            "material_status": "PROPOSED",
+        },
+    )
+    return run, draft, revision
+
+
+def accept_material(machine: QualityLoopStateMachine, run, *artifacts) -> None:
+    for artifact in artifacts:
+        machine.decide_artifact(
+            run,
+            artifact.artifact_id,
+            decision="ACCEPTED",
+            actor_kind="OWNER",
+            actor="owner",
+            reason="Reviewed against exact deterministic provenance.",
+        )
+
+
 def test_quality_loop_reuses_task017_admission_and_fails_closed() -> None:
     machine = QualityLoopStateMachine()
 
@@ -155,59 +291,37 @@ def test_quality_loop_reuses_task017_admission_and_fails_closed() -> None:
     assert run.events[0].evidence == {"admission_id": run.admission_id}
 
 
-def test_quality_loop_is_ordered_and_material_output_cannot_self_approve() -> None:
+def test_quality_loop_rejects_generic_stage_evidence_bypass() -> None:
     machine = QualityLoopStateMachine()
     run = machine.start(admitted_chapter(), actor_kind="SYSTEM", actor="test")
-    proposal = machine.propose_artifact(
-        run,
-        kind="SECTION_DRAFT",
-        role="WRITER",
-        payload={"text": "candidate"},
-        actor_kind="AI",
-        actor="fake-writer",
-    )
-    assert proposal.status == "PROPOSED"
+
+    with pytest.raises(QualityLoopGateError, match="MICRO_PLAN"):
+        machine.advance(
+            run,
+            QualityLoopStage.MICRO_PLAN,
+            actor_kind="SYSTEM",
+            actor="state-machine-test",
+            evidence={"completed": QualityLoopStage.MICRO_PLAN.value},
+        )
+
+    assert run.stage == QualityLoopStage.ADMISSION_VERIFIED
+
+
+def test_quality_loop_is_ordered_and_material_output_cannot_self_approve() -> None:
+    machine = QualityLoopStateMachine()
+    run, draft, revision = advance_to_human_review(machine)
 
     with pytest.raises(QualityLoopGateError, match="HUMAN/OWNER"):
         machine.decide_artifact(
             run,
-            proposal.artifact_id,
+            draft.artifact_id,
             decision="ACCEPTED",
             actor_kind="AI",  # type: ignore[arg-type]
-            actor="same-model",
+            actor="fake:fake-writer",
             reason="self approval must fail",
         )
 
-    machine.decide_artifact(
-        run,
-        proposal.artifact_id,
-        decision="ACCEPTED",
-        actor_kind="OWNER",
-        actor="owner",
-        reason="Reviewed as a bounded synthetic proposal",
-    )
-
-    stages = [
-        QualityLoopStage.MICRO_PLAN,
-        QualityLoopStage.EVIDENCE_PLAN,
-        QualityLoopStage.SECTION_INTENT,
-        QualityLoopStage.DRAFT_CANDIDATE,
-        QualityLoopStage.DETERMINISTIC_CHECKS,
-        QualityLoopStage.EVIDENCE_CHECKS,
-        QualityLoopStage.NOVELTY_CHECK,
-        QualityLoopStage.INDEPENDENT_CRITIC,
-        QualityLoopStage.REVISION_PROPOSAL,
-        QualityLoopStage.POST_REVISION_CHECKS,
-        QualityLoopStage.HUMAN_REVIEW,
-    ]
-    for stage in stages:
-        machine.advance(
-            run,
-            stage,
-            actor_kind="SYSTEM",
-            actor="state-machine-test",
-            evidence={"completed": stage.value},
-        )
+    accept_material(machine, run, draft, revision)
 
     with pytest.raises(QualityLoopGateError, match="HUMAN/OWNER"):
         machine.advance(
@@ -215,7 +329,7 @@ def test_quality_loop_is_ordered_and_material_output_cannot_self_approve() -> No
             QualityLoopStage.COMPLETE,
             actor_kind="AI",
             actor="fake-judge",
-            evidence={"verdict": "PASS"},
+            evidence={"decision": "ACCEPT"},
         )
 
     machine.advance(
@@ -238,6 +352,63 @@ def test_quality_loop_is_ordered_and_material_output_cannot_self_approve() -> No
         )
 
 
+def test_blocking_finding_requires_explicit_non_ai_resolution_before_completion() -> None:
+    machine = QualityLoopStateMachine()
+    run, draft, revision = advance_to_human_review(machine)
+    blocking = machine.record_finding(
+        run,
+        role="BOOKBENCH_JUDGE",
+        severity="BLOCKING",
+        location="draft candidate",
+        evidence="Deterministic contradiction fixture.",
+        recommended_action="Repair the contradiction and rerun checks.",
+        actor_kind="SYSTEM",
+        actor="bookbench",
+    )
+    accept_material(machine, run, draft, revision)
+
+    with pytest.raises(QualityLoopGateError, match="unresolved blocking findings"):
+        machine.advance(
+            run,
+            QualityLoopStage.COMPLETE,
+            actor_kind="OWNER",
+            actor="owner",
+            evidence={"decision": "ACCEPT"},
+        )
+
+    with pytest.raises(QualityLoopGateError, match="AI cannot resolve"):
+        machine.resolve_finding(
+            run,
+            blocking.finding_id,
+            disposition="RESOLVED",
+            actor_kind="AI",
+            actor="same-model",
+            reason="model self-clear must fail",
+        )
+
+    resolved = machine.resolve_finding(
+        run,
+        blocking.finding_id,
+        disposition="RESOLVED",
+        actor_kind="SYSTEM",
+        actor="deterministic-checker",
+        reason="Exact rerun passed after the bounded repair.",
+        evidence={"check": "contradiction", "result": "PASS"},
+    )
+    assert resolved.disposition == "RESOLVED"
+    assert resolved.resolved_by_kind == "SYSTEM"
+    assert resolved.resolution_evidence == {"check": "contradiction", "result": "PASS"}
+
+    machine.advance(
+        run,
+        QualityLoopStage.COMPLETE,
+        actor_kind="OWNER",
+        actor="owner",
+        evidence={"decision": "ACCEPT"},
+    )
+    assert run.stage == QualityLoopStage.COMPLETE
+
+
 def test_local_readiness_is_explicit_and_operation_promotion_is_not_global() -> None:
     runtime = FakeLocalRuntime()
     manifest = local_manifest()
@@ -251,6 +422,20 @@ def test_local_readiness_is_explicit_and_operation_promotion_is_not_global() -> 
     low_memory = LocalReadinessService(runtime, apple_hardware(4 * 1024**3)).check(manifest)
     assert low_memory.ready is False
     assert "INSUFFICIENT_MEMORY" in low_memory.reasons
+
+
+def test_local_manifest_cannot_advertise_task_without_gateway_execution_seam() -> None:
+    with pytest.raises(ValidationError, match="supported_task_classes"):
+        LocalModelManifest(
+            runtime_id="mlx-lm",
+            model_id="local-test-model",
+            model_version="1",
+            source_identifier="rights-clean:test-fixture",
+            license_identifier="test-license",
+            context_limit=32_768,
+            supported_task_classes=["TARGETED_REWRITE"],  # type: ignore[list-item]
+            supports_structured_output=True,
+        )
 
 
 def test_local_adapter_runs_through_model_gateway_with_zero_external_calls() -> None:
