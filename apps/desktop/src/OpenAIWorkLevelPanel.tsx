@@ -1,22 +1,13 @@
 import { useEffect, useState } from "react";
 import {
   getPendingOpenAIWorkLevel,
+  OPENAI_ASTRA_MODELS,
   OPENAI_WORK_LEVEL_OPTIONS,
   openAIWorkLevelLabel,
   setPendingOpenAIWorkLevel,
   subscribeOpenAIWorkLevel,
   type OpenAIWorkLevel,
 } from "./openaiWorkLevel";
-
-// Validated against this account's non-billable OpenAI Models metadata on 2026-09-10.
-// Keep model identity separate from reasoning effort: they are different API fields.
-export const OPENAI_ASTRA_MODELS = [
-  {
-    id: "gpt-6-astra",
-    label: "GPT-6 Astra",
-    workLevels: ["medium", "high", "xhigh"] as const,
-  },
-] as const;
 
 export function OpenAIWorkLevelPanel() {
   const [workLevel, setWorkLevel] = useState<OpenAIWorkLevel | null>(
