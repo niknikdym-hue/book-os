@@ -51,32 +51,36 @@ const providers = [
 ];
 
 const calls: Array<{ method: string; path: string; body?: unknown }> = [];
-const success: DraftRunView = {
-  task_id: "01JTASK0000000000000000000",
-  run_id: "01JRUN00000000000000000000",
-  task_status: "SUCCEEDED",
-  run_status: "SUCCEEDED",
-  provider: "openai",
-  model: "gpt-5.6-sol",
-  selection_mode: "MANUAL",
-  selection_scope: "OPERATION",
-  routing_rationale: "Human manual model pin for operation SECTION_DRAFT",
-  prompt_id: "section_draft_v1",
-  prompt_version: "1.1.0",
-  prompt_hash: "a".repeat(64),
-  input_revision_id: chapter.chapter_contract?.authority_revision_id ?? "",
-  input_revision_hash: "b".repeat(64),
-  unit_id: "01JUNIT0000000000000000000",
-  revision_id: "01JDRAFTREV00000000000000",
-  revision_hash: "c".repeat(64),
-  revision_status: "DRAFT",
-  text: "A bounded generated section.",
-  notes: ["not approved"],
-  provider_run_id: "resp_mock",
-  usage: { output_tokens: 40 },
-  error_code: null,
-  error_message: null,
-};
+
+function success(model = "gpt-6-astra", reasoning = "high"): DraftRunView {
+  return {
+    task_id: "01JTASK0000000000000000000",
+    run_id: "01JRUN00000000000000000000",
+    task_status: "SUCCEEDED",
+    run_status: "SUCCEEDED",
+    provider: "openai",
+    model,
+    selection_mode: "MANUAL",
+    selection_scope: "OPERATION",
+    routing_rationale: "Human manual model pin for operation SECTION_DRAFT",
+    reasoning_effort: reasoning as DraftRunView["reasoning_effort"],
+    prompt_id: "section_draft_v1",
+    prompt_version: "1.1.0",
+    prompt_hash: "a".repeat(64),
+    input_revision_id: chapter.chapter_contract?.authority_revision_id ?? "",
+    input_revision_hash: "b".repeat(64),
+    unit_id: "01JUNIT0000000000000000000",
+    revision_id: "01JDRAFTREV00000000000000",
+    revision_hash: "c".repeat(64),
+    revision_status: "DRAFT",
+    text: "A bounded generated section.",
+    notes: ["not approved"],
+    provider_run_id: "resp_mock",
+    usage: { output_tokens: 40 },
+    error_code: null,
+    error_message: null,
+  };
+}
 
 const fakeApi: DraftApi = async function fakeApi<T>(
   method: "GET" | "POST" | "PUT",
@@ -95,7 +99,10 @@ const fakeApi: DraftApi = async function fakeApi<T>(
     return { book_pin: null, providers } as T;
   }
   if (method === "GET" && path.endsWith("/drafts")) return [] as T;
-  if (method === "POST" && path.endsWith("/drafts")) return success as T;
+  if (method === "POST" && path.endsWith("/drafts")) {
+    const request = body as { model?: string | null; reasoning_effort?: string | null };
+    return success(request.model ?? "gpt-6-astra", request.reasoning_effort ?? "high") as T;
+  }
   throw new Error(`unexpected request: ${method} ${path}`);
 };
 
@@ -103,36 +110,43 @@ beforeEach(() => {
   calls.length = 0;
 });
 
-it("generates a bounded DRAFT with explicit per-operation model routing", async () => {
+it("starts in Astra High and returns the book text in the author workspace", async () => {
   render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
 
-  expect(await screen.findByRole("button", { name: "AI Pro" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "GPT-6 Astra" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
+
   fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), {
     target: { value: "Explain the bounded mechanism" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Ручной" }));
-  fireEvent.change(screen.getByLabelText("Модель"), {
-    target: { value: "gpt-5.6-sol" },
-  });
-  fireEvent.change(screen.getByLabelText("Максимальная стоимость запроса, USD"), {
-    target: { value: "1.00" },
-  });
   fireEvent.click(screen.getByRole("checkbox"));
-  fireEvent.click(screen.getByRole("button", { name: "Создать черновик" }));
+  fireEvent.click(screen.getByRole("button", { name: "Запустить Astra" }));
 
   expect(await screen.findByText("A bounded generated section.")).toBeInTheDocument();
-  expect(screen.getAllByText("DRAFT").length).toBeGreaterThan(0);
-  expect(screen.getByText(/AI Pro · gpt-5.6-sol/)).toBeInTheDocument();
-  expect(screen.getByText(/MANUAL · OPERATION/)).toBeInTheDocument();
+  expect(screen.getByText("Черновик готов")).toBeInTheDocument();
+  expect(screen.getByText("High")).toBeInTheDocument();
   expect(calls).toContainEqual({
     method: "POST",
     path: expect.stringContaining("/drafts"),
     body: expect.objectContaining({
       section_objective: "Explain the bounded mechanism",
       provider: "openai",
-      model: "gpt-5.6-sol",
+      model: "gpt-6-astra",
       selection_mode: "MANUAL",
       selection_scope: "OPERATION",
+      reasoning_effort: "high",
     }),
   });
+});
+
+it("keeps other approved models available behind the advanced routing control", async () => {
+  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
+  await screen.findByText("OpenAI API подключён");
+
+  fireEvent.click(screen.getByText("Другие модели и маршрутизация"));
+  fireEvent.change(screen.getByLabelText("Модель"), {
+    target: { value: "gpt-5.6-sol" },
+  });
+
+  expect(screen.getByRole("heading", { name: "GPT-5.6 Sol" })).toBeInTheDocument();
 });
