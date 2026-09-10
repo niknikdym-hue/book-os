@@ -300,3 +300,17 @@ class StylePreviewService:
             total_cap_usd=request.max_cost_usd_per_request * len(styles),
             previews=previews,
         )
+
+    def delete_preview(self, book_id: str, preview_id: str) -> None:
+        """Delete an isolated preview only; manuscript and authority records are untouched."""
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                result = connection.execute(
+                    text("DELETE FROM style_preview_runs WHERE book_id=:book_id AND preview_id=:preview_id"),
+                    {"book_id": book_id, "preview_id": preview_id},
+                )
+                if result.rowcount != 1:
+                    raise StylePreviewError("style preview was not found")
+        finally:
+            engine.dispose()

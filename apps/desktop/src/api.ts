@@ -9,14 +9,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function requiresOpenAIWorkLevel(
-  method: "GET" | "POST" | "PUT",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   body: unknown,
 ): body is Record<string, unknown> {
   return method !== "GET" && isRecord(body) && body.provider === "openai";
 }
 
 export async function coreApi<T>(
-  method: "GET" | "POST" | "PUT",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {

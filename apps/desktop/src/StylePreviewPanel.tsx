@@ -200,6 +200,17 @@ export function StylePreviewPanel({ bookId }: Props) {
     }
   }
 
+  async function deletePreview(previewId: string) {
+    if (!window.confirm("Удалить этот тестовый вариант с этого Mac? Книга и её настройки не изменятся.")) return;
+    setBusy(true);
+    try {
+      await coreApi("DELETE", `/api/projects/${bookId}/style-previews/${previewId}`);
+      setResult((current) => current ? { ...current, previews: current.previews.filter((item) => item.preview_id !== previewId) } : current);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="panel" aria-label="Сравнение манер письма">
       <div className="panel-heading">
@@ -422,6 +433,9 @@ export function StylePreviewPanel({ bookId }: Props) {
               <small className="muted">
                 {item.provider_label} · {item.model} · {item.selection_mode === "AUTO" ? "Авто" : "Ручной"}
               </small>
+              <button className="ghost small" type="button" disabled={busy} onClick={() => void deletePreview(item.preview_id)}>
+                Удалить тест
+              </button>
             </article>
           ))}
         </div>
