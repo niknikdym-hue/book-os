@@ -184,7 +184,7 @@ def record_independent_adversarial_review_for_test(data_dir: Path, book_id: str)
     assert blockers == []
 '''
 
-(ROOT / "test_support_task017.py").write_text(SUPPORT, encoding="utf-8")
+(TESTS / "test_support_task017.py").write_text(SUPPORT, encoding="utf-8")
 
 # Drafting legacy positive fixture. The intentionally unapproved negative test does not use ready_project.
 path = TESTS / "test_drafting.py"
