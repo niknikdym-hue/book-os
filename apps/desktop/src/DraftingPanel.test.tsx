@@ -144,7 +144,7 @@ it("keeps other approved models available behind the advanced routing control", 
   await screen.findByText("OpenAI API подключён");
 
   fireEvent.click(screen.getAllByText("Другие модели и маршрутизация")[0]);
-  fireEvent.change(screen.getByLabelText("Модель"), {
+  fireEvent.change(screen.getAllByLabelText("Модель")[0], {
     target: { value: "gpt-5.6-sol" },
   });
 
