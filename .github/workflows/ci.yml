@@ -1,5 +1,10 @@
 name: CI
 on: [pull_request, push]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   local-core:
     runs-on: ubuntu-latest
@@ -87,13 +92,9 @@ jobs:
           test -x "$EXEC"
           test -x "$BUNDLED_CORE"
           /usr/bin/plutil -lint "$APP/Contents/Info.plist"
-          # Embedding the generated Local Core mutates the bundle after Tauri's initial
-          # signing pass. Re-sign the final bundle and every nested executable before
-          # verification, exactly as the Desktop self-install path already does.
           /usr/bin/codesign --force --deep --sign - "$APP"
           /usr/bin/codesign --verify --deep --strict "$APP"
 
-          # Prove the production app cannot fall back to the source checkout or build venv.
           mv services/local-core/.venv "$RUNNER_TEMP/book-os-build-venv"
           mv services/local-core/src "$RUNNER_TEMP/book-os-source-hidden"
           test ! -e services/local-core/.venv
@@ -108,9 +109,7 @@ jobs:
           trap cleanup EXIT
 
           for _ in {1..300}; do
-            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ]; then
-              break
-            fi
+            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ]; then break; fi
             if ! kill -0 "$PID" 2>/dev/null; then
               dump_logs
               echo "BOOK OS packaged app exited before frontend/core readiness"
@@ -152,9 +151,7 @@ jobs:
           PID=$!
 
           for _ in {1..300}; do
-            if [ -s "$DESKTOP_FRONTEND_MARKER" ] && [ -s "$DESKTOP_CORE_MARKER" ]; then
-              break
-            fi
+            if [ -s "$DESKTOP_FRONTEND_MARKER" ] && [ -s "$DESKTOP_CORE_MARKER" ]; then break; fi
             if ! kill -0 "$PID" 2>/dev/null; then
               LOG="$DESKTOP_LOG" dump_logs
               echo "Installed BOOK OS Desktop app exited before frontend/core readiness"
