@@ -33,6 +33,14 @@ LocalTaskClass = Literal[
     "TARGETED_REWRITE",
     "CONTRADICTION_REPETITION",
 ]
+ExecutableLocalTaskClass = Literal[
+    "BOOK_CONTRACT_PROPOSAL",
+    "ARCHITECTURE_PROPOSAL",
+    "CHAPTER_CONTRACT_PROPOSAL",
+    "SECTION_DRAFT",
+    "BOOKBENCH_JUDGE",
+    "BOOKBENCH_PAIRWISE",
+]
 PromotionState = Literal["EXPERIMENTAL", "SHADOW", "ELIGIBLE", "PREFERRED", "SUSPENDED"]
 BenchmarkStatus = Literal["NOT_RUN", "PASS", "ATTENTION", "FAIL"]
 
@@ -48,7 +56,7 @@ class LocalModelManifest(BaseModel):
     config_hash: str | None = Field(default=None, min_length=8, max_length=128)
     quantization: str | None = Field(default=None, max_length=120)
     context_limit: int = Field(ge=1024)
-    supported_task_classes: list[LocalTaskClass] = Field(min_length=1)
+    supported_task_classes: list[ExecutableLocalTaskClass] = Field(min_length=1)
     supports_structured_output: bool
     supports_tools: bool = False
     memory_required_bytes: int | None = Field(default=None, ge=0)
@@ -258,7 +266,7 @@ class LocalModelAdapter:
                 f"local model request {request.model} does not match manifest {self.manifest.model_id}"
             )
 
-        task_class = cast(LocalTaskClass, request.task_type)
+        task_class = cast(ExecutableLocalTaskClass, request.task_type)
         if task_class not in self.manifest.supported_task_classes:
             raise ModelProviderError(
                 f"local model does not support task class: {request.task_type}"
