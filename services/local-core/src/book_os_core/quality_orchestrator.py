@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .drafting import DraftRunView, DraftSectionRequest, DraftingService
 from .editorial import (
@@ -63,6 +63,12 @@ class QualityLoopOrchestrationRequest(BaseModel):
     novelty_pass: bool = True
     novelty_evidence: str = Field(default="", max_length=12000)
     untrusted_context: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_novelty_evidence(self) -> QualityLoopOrchestrationRequest:
+        if self.novelty_pass and not self.novelty_evidence.strip():
+            raise ValueError("novelty_evidence is required when novelty_pass is true")
+        return self
 
 
 class QualityLoopOrchestrationResult(BaseModel):
