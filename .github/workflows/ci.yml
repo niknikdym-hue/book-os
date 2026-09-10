@@ -73,6 +73,7 @@ jobs:
           LOG="$RUNNER_TEMP/book-os-native-launch.log"
           FRONTEND_MARKER="$RUNNER_TEMP/book-os-frontend-ready"
           CORE_MARKER="$RUNNER_TEMP/book-os-core-ready"
+          PROJECT_MARKER="$RUNNER_TEMP/book-os-project-created"
           CORE_STARTUP_LOG="$HOME/Library/Application Support/com.bookos.desktop/local-core-startup.log"
           DESKTOP_APP="$HOME/Desktop/BOOK OS.app"
           DESKTOP_EXEC="$DESKTOP_APP/Contents/MacOS/BOOK OS"
@@ -100,19 +101,20 @@ jobs:
           test ! -e services/local-core/.venv
           test ! -e services/local-core/src
 
-          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$CORE_STARTUP_LOG"
+          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$PROJECT_MARKER" "$CORE_STARTUP_LOG"
           BOOK_OS_FRONTEND_READY_FILE="$FRONTEND_MARKER" \
           BOOK_OS_CORE_READY_FILE="$CORE_MARKER" \
+          BOOK_OS_PACKAGED_PROJECT_PROBE_FILE="$PROJECT_MARKER" \
           "$EXEC" >"$LOG" 2>&1 &
           PID=$!
           cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
           trap cleanup EXIT
 
           for _ in {1..300}; do
-            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ]; then break; fi
+            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ] && [ -s "$PROJECT_MARKER" ]; then break; fi
             if ! kill -0 "$PID" 2>/dev/null; then
               dump_logs
-              echo "BOOK OS packaged app exited before frontend/core readiness"
+              echo "BOOK OS packaged app exited before frontend/core/project readiness"
               exit 1
             fi
             sleep 0.25
@@ -128,9 +130,15 @@ jobs:
             echo "BOOK OS packaged app stayed alive but the bundled Local Core never became healthy"
             exit 1
           fi
+          if [ ! -s "$PROJECT_MARKER" ]; then
+            dump_logs
+            echo "Bundled Local Core started but could not create the first migrated book project"
+            exit 1
+          fi
 
           grep -F "ready" "$FRONTEND_MARKER"
           grep -F "healthy" "$CORE_MARKER"
+          grep -E '^[0-9A-HJKMNP-TV-Z]{26}$' "$PROJECT_MARKER"
           grep -F "BOOK OS frontend ready" "$LOG"
           grep -F "BOOK OS local core healthy" "$LOG"
           grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
