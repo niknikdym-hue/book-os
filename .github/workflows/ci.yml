@@ -47,28 +47,31 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/desktop/pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@stable
-      - name: Prepare local Python Core
+      - name: Prepare standalone Local Core
         run: |
           python3.12 -m venv services/local-core/.venv
           services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-build.lock
       - name: Install desktop dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile --prod=false
       - name: Build production macOS app bundle
         working-directory: apps/desktop
         run: pnpm tauri build --bundles app
-      - name: Launch packaged and installed Desktop apps with frontend plus local core
+      - name: Launch self-contained packaged and Desktop apps
         env:
           RUST_BACKTRACE: '1'
         run: |
           APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
           EXEC="$APP/Contents/MacOS/BOOK OS"
+          BUNDLED_CORE="$APP/Contents/Resources/book-os-core"
           LOG="$RUNNER_TEMP/book-os-native-launch.log"
           FRONTEND_MARKER="$RUNNER_TEMP/book-os-frontend-ready"
           CORE_MARKER="$RUNNER_TEMP/book-os-core-ready"
           CORE_STARTUP_LOG="$HOME/Library/Application Support/com.bookos.desktop/local-core-startup.log"
           DESKTOP_APP="$HOME/Desktop/BOOK OS.app"
           DESKTOP_EXEC="$DESKTOP_APP/Contents/MacOS/BOOK OS"
+          DESKTOP_CORE="$DESKTOP_APP/Contents/Resources/book-os-core"
           DESKTOP_LOG="$RUNNER_TEMP/book-os-desktop-launch.log"
           DESKTOP_FRONTEND_MARKER="$RUNNER_TEMP/book-os-desktop-frontend-ready"
           DESKTOP_CORE_MARKER="$RUNNER_TEMP/book-os-desktop-core-ready"
@@ -82,9 +85,17 @@ jobs:
 
           test -d "$APP"
           test -x "$EXEC"
+          test -x "$BUNDLED_CORE"
           /usr/bin/plutil -lint "$APP/Contents/Info.plist"
-          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$CORE_STARTUP_LOG"
+          /usr/bin/codesign --verify --deep --strict "$APP"
 
+          # Prove the production app cannot fall back to the source checkout or build venv.
+          mv services/local-core/.venv "$RUNNER_TEMP/book-os-build-venv"
+          mv services/local-core/src "$RUNNER_TEMP/book-os-source-hidden"
+          test ! -e services/local-core/.venv
+          test ! -e services/local-core/src
+
+          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$CORE_STARTUP_LOG"
           BOOK_OS_FRONTEND_READY_FILE="$FRONTEND_MARKER" \
           BOOK_OS_CORE_READY_FILE="$CORE_MARKER" \
           "$EXEC" >"$LOG" 2>&1 &
@@ -92,7 +103,6 @@ jobs:
           cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
           trap cleanup EXIT
 
-          # Match the desktop Core startup budget and leave margin for a loaded macOS runner.
           for _ in {1..300}; do
             if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ]; then
               break
@@ -112,7 +122,7 @@ jobs:
           fi
           if [ ! -s "$CORE_MARKER" ]; then
             dump_logs
-            echo "BOOK OS packaged app stayed alive but the local core never became healthy"
+            echo "BOOK OS packaged app stayed alive but the bundled Local Core never became healthy"
             exit 1
           fi
 
@@ -120,9 +130,11 @@ jobs:
           grep -F "healthy" "$CORE_MARKER"
           grep -F "BOOK OS frontend ready" "$LOG"
           grep -F "BOOK OS local core healthy" "$LOG"
+          grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
           cat "$CORE_STARTUP_LOG"
 
           test -x "$DESKTOP_EXEC"
+          test -x "$DESKTOP_CORE"
           /usr/bin/plutil -lint "$DESKTOP_APP/Contents/Info.plist"
           /usr/bin/codesign --verify --deep --strict "$DESKTOP_APP"
           grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$LOG"
@@ -154,7 +166,7 @@ jobs:
           fi
           if [ ! -s "$DESKTOP_CORE_MARKER" ]; then
             LOG="$DESKTOP_LOG" dump_logs
-            echo "Installed BOOK OS Desktop app stayed alive but the local core never became healthy"
+            echo "Installed BOOK OS Desktop app stayed alive but the bundled Local Core never became healthy"
             exit 1
           fi
 
@@ -163,7 +175,21 @@ jobs:
           grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$DESKTOP_LOG"
           grep -F "BOOK OS frontend ready" "$DESKTOP_LOG"
           grep -F "BOOK OS local core healthy" "$DESKTOP_LOG"
+          grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
           cat "$CORE_STARTUP_LOG"
+      - name: Package installable BOOK OS app
+        run: |
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            "$HOME/Desktop/BOOK OS.app" \
+            "$RUNNER_TEMP/BOOK-OS-macOS.zip"
+          test -s "$RUNNER_TEMP/BOOK-OS-macOS.zip"
+      - name: Upload installable BOOK OS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOOK-OS-macOS
+          path: ${{ runner.temp }}/BOOK-OS-macOS.zip
+          if-no-files-found: error
+          retention-days: 7
   secret-scan:
     runs-on: ubuntu-latest
     permissions:
