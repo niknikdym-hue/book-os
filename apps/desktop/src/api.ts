@@ -2,7 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   clearPendingOpenAIWorkLevel,
   getPendingOpenAIWorkLevel,
+  type OpenAIWorkLevel,
 } from "./openaiWorkLevel";
+
+const DEFAULT_OPENAI_WORK_LEVEL: OpenAIWorkLevel = "high";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -15,6 +18,11 @@ function requiresOpenAIWorkLevel(
   return method !== "GET" && isRecord(body) && body.provider === "openai";
 }
 
+function explicitOpenAIWorkLevel(body: Record<string, unknown>): OpenAIWorkLevel | null {
+  const value = body.reasoning_effort;
+  return value === "medium" || value === "high" || value === "xhigh" ? value : null;
+}
+
 export async function coreApi<T>(
   method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
@@ -24,14 +32,11 @@ export async function coreApi<T>(
   let consumeWorkLevel = false;
 
   if (requiresOpenAIWorkLevel(method, body)) {
-    const workLevel = getPendingOpenAIWorkLevel();
-    if (!workLevel) {
-      throw new Error(
-        "Выберите уровень работы OpenAI для следующей операции: Medium, High или Extra High.",
-      );
-    }
+    const pendingWorkLevel = getPendingOpenAIWorkLevel();
+    const workLevel =
+      explicitOpenAIWorkLevel(body) ?? pendingWorkLevel ?? DEFAULT_OPENAI_WORK_LEVEL;
     requestBody = { ...body, reasoning_effort: workLevel };
-    consumeWorkLevel = true;
+    consumeWorkLevel = pendingWorkLevel !== null;
   }
 
   try {
