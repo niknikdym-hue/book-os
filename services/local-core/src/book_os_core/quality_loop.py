@@ -138,6 +138,11 @@ class QualityLoopStateMachine:
             raise QualityLoopTransitionError("quality loop is already complete")
 
     @staticmethod
+    def _require_actor_kind(actor_kind: object) -> None:
+        if actor_kind not in {"HUMAN", "OWNER", "AI", "SYSTEM"}:
+            raise QualityLoopGateError(f"unknown quality-loop actor kind: {actor_kind}")
+
+    @staticmethod
     def _touch(run: QualityLoopRun) -> None:
         run.updated_at = utc_now()
 
@@ -165,6 +170,16 @@ class QualityLoopStateMachine:
         if event is None:
             raise QualityLoopGateError(f"missing provenance event for {stage.value}")
         return event
+
+    def _stage_artifact(
+        self,
+        run: QualityLoopRun,
+        stage: QualityLoopStage,
+        *,
+        kind: str,
+    ) -> QualityLoopArtifact:
+        event = self._stage_event(run, stage)
+        return self._artifact(run, event.evidence.get("artifact_id"), kind=kind)
 
     def _validate_stage_evidence(
         self,
@@ -227,10 +242,9 @@ class QualityLoopStateMachine:
                 raise QualityLoopGateError(
                     "DETERMINISTIC_CHECKS requires an exact draft_revision_id"
                 )
-            draft_event = self._stage_event(run, QualityLoopStage.DRAFT_CANDIDATE)
-            artifact = self._artifact(
+            artifact = self._stage_artifact(
                 run,
-                draft_event.evidence.get("artifact_id"),
+                QualityLoopStage.DRAFT_CANDIDATE,
                 kind="DRAFT_CANDIDATE",
             )
             if artifact.payload.get("revision_id") != revision_id:
@@ -300,6 +314,18 @@ class QualityLoopStateMachine:
                     raise QualityLoopGateError(
                         f"TARGETED_REVISION_PROPOSAL artifact requires non-empty {field}"
                     )
+            draft = self._stage_artifact(
+                run,
+                QualityLoopStage.DRAFT_CANDIDATE,
+                kind="DRAFT_CANDIDATE",
+            )
+            if (
+                artifact.payload.get("source_revision_id") != draft.payload.get("revision_id")
+                or artifact.payload.get("source_revision_hash") != draft.payload.get("revision_hash")
+            ):
+                raise QualityLoopGateError(
+                    "TARGETED_REVISION_PROPOSAL must match the exact draft revision baseline"
+                )
             return
 
         if next_stage == QualityLoopStage.POST_REVISION_CHECKS:
@@ -308,11 +334,30 @@ class QualityLoopStateMachine:
                     "POST_REVISION_CHECKS requires PASS against the exact baseline"
                 )
             proposal_count = evidence.get("proposal_count")
-            if not isinstance(proposal_count, int) or isinstance(proposal_count, bool) or proposal_count < 0:
+            if (
+                not isinstance(proposal_count, int)
+                or isinstance(proposal_count, bool)
+                or proposal_count < 0
+            ):
                 raise QualityLoopGateError(
                     "POST_REVISION_CHECKS requires a non-negative proposal_count"
                 )
-            self._stage_event(run, QualityLoopStage.REVISION_PROPOSAL)
+            revision = self._stage_artifact(
+                run,
+                QualityLoopStage.REVISION_PROPOSAL,
+                kind="TARGETED_REVISION_PROPOSAL",
+            )
+            proposal_ids = revision.payload.get("proposal_ids")
+            if not isinstance(proposal_ids, list) or any(
+                not isinstance(item, str) or not item for item in proposal_ids
+            ):
+                raise QualityLoopGateError(
+                    "TARGETED_REVISION_PROPOSAL requires a list of exact proposal_ids"
+                )
+            if proposal_count != len(proposal_ids):
+                raise QualityLoopGateError(
+                    "POST_REVISION_CHECKS proposal_count does not match revision proposal"
+                )
             return
 
         if next_stage == QualityLoopStage.HUMAN_REVIEW:
@@ -337,6 +382,21 @@ class QualityLoopStateMachine:
         if next_stage == QualityLoopStage.COMPLETE:
             if evidence.get("decision") != "ACCEPT":
                 raise QualityLoopGateError("quality loop completion requires decision=ACCEPT")
+            review = self._stage_event(run, QualityLoopStage.HUMAN_REVIEW).evidence
+            draft_artifact = self._artifact(
+                run,
+                review.get("draft_artifact_id"),
+                kind="DRAFT_CANDIDATE",
+            )
+            revision_artifact = self._artifact(
+                run,
+                review.get("revision_artifact_id"),
+                kind="TARGETED_REVISION_PROPOSAL",
+            )
+            if draft_artifact.status != "ACCEPTED" or revision_artifact.status != "ACCEPTED":
+                raise QualityLoopGateError(
+                    "quality loop completion requires accepted draft and revision material"
+                )
 
     def start(
         self,
@@ -345,6 +405,7 @@ class QualityLoopStateMachine:
         actor_kind: QualityActorKind,
         actor: str,
     ) -> QualityLoopRun:
+        self._require_actor_kind(actor_kind)
         if not admission.writing_allowed:
             blockers = ", ".join(admission.blockers) if admission.blockers else "unknown"
             raise QualityLoopGateError(f"WRITING_NOT_ALLOWED: {blockers}")
@@ -396,6 +457,7 @@ class QualityLoopStateMachine:
         evidence: dict[str, Any],
     ) -> QualityLoopRun:
         self._require_open(run)
+        self._require_actor_kind(actor_kind)
         expected = self._ALLOWED[run.stage]
         if expected != next_stage:
             expected_text = expected.value if expected is not None else "none"
@@ -455,6 +517,7 @@ class QualityLoopStateMachine:
         actor: str,
     ) -> QualityLoopArtifact:
         self._require_open(run)
+        self._require_actor_kind(actor_kind)
         if not payload:
             raise QualityLoopGateError("material proposal payload cannot be empty")
         artifact = QualityLoopArtifact(
@@ -482,11 +545,14 @@ class QualityLoopStateMachine:
         reason: str,
     ) -> QualityLoopArtifact:
         self._require_open(run)
+        self._require_actor_kind(actor_kind)
         if actor_kind not in {"HUMAN", "OWNER"}:
             raise QualityLoopGateError("material decision requires HUMAN/OWNER authority")
         artifact = next((item for item in run.artifacts if item.artifact_id == artifact_id), None)
         if artifact is None:
             raise QualityLoopGateError(f"unknown quality-loop artifact: {artifact_id}")
+        if actor == artifact.created_by:
+            raise QualityLoopGateError("material producer cannot approve or reject its own output")
         if artifact.status != "PROPOSED":
             raise QualityLoopGateError("material proposal already has a human decision")
         if not reason.strip():
@@ -512,6 +578,7 @@ class QualityLoopStateMachine:
         actor: str,
     ) -> QualityLoopFinding:
         self._require_open(run)
+        self._require_actor_kind(actor_kind)
         finding = QualityLoopFinding(
             finding_id=new_ulid(),
             role=role,
@@ -539,8 +606,11 @@ class QualityLoopStateMachine:
         evidence: dict[str, Any] | None = None,
     ) -> QualityLoopFinding:
         self._require_open(run)
-        if actor_kind == "AI":
-            raise QualityLoopGateError("AI cannot resolve or supersede quality-loop findings")
+        self._require_actor_kind(actor_kind)
+        if actor_kind not in {"HUMAN", "OWNER", "SYSTEM"}:
+            raise QualityLoopGateError(
+                "quality-loop finding resolution requires HUMAN/OWNER/SYSTEM authority"
+            )
         finding = next((item for item in run.findings if item.finding_id == finding_id), None)
         if finding is None:
             raise QualityLoopGateError(f"unknown quality-loop finding: {finding_id}")
