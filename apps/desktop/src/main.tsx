@@ -5,6 +5,7 @@ import { App } from "./App";
 import "./styles.css";
 import "./launchUx.css";
 import "./studio.css";
+import "./authorStudio.css";
 
 const rootCandidate = document.getElementById("root");
 if (!rootCandidate) {
