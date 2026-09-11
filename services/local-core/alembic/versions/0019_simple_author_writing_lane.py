@@ -59,7 +59,10 @@ def _create_trigger(*, allow_simple_author_lane: bool) -> None:
         )
         clauses.append(_owner_auto_book_authorization_sql())
     allowed = " OR ".join(clauses)
-    op.execute(
+    # Use the DBAPI driver's literal SQL path here. SQLAlchemy's text() parser treats
+    # the JSON fragment `:true` inside the LIKE pattern as a bind parameter, which
+    # breaks fresh/bundled database migrations before Local Core can start.
+    op.get_bind().exec_driver_sql(
         "CREATE TRIGGER require_current_writing_admission BEFORE INSERT ON bounded_tasks "
         "WHEN NEW.task_type='SECTION_DRAFT' BEGIN "
         f"SELECT CASE WHEN NOT ({allowed}) "
