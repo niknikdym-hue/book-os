@@ -177,7 +177,7 @@ def test_existing_series_reference_accepts_real_docx_container(tmp_path: Path) -
     document_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:body>'
+        "<w:body>"
         + "".join(
             f'<w:p><w:r><w:t xml:space="preserve">{paragraph}</w:t></w:r></w:p>'
             for paragraph in paragraphs
@@ -252,7 +252,9 @@ def test_reference_style_reaches_auto_book_without_exposing_full_reference(tmp_p
     assert book_context["style_profile"]["profile_id"] == reference.style_profile_id
     prohibited = book_context["style_profile"]["content"]["prohibited_patterns"]
     assert "Не копировать и не перефразировать содержание эталонной книги." in prohibited
-    assert "Не повторять сцены, примеры, кейсы, метафоры и аналогии других книг серии." in prohibited
+    assert (
+        "Не повторять сцены, примеры, кейсы, метафоры и аналогии других книг серии." in prohibited
+    )
 
     full_reference_text = "\n\n".join(reference_paragraphs())
     serialized_context = json.dumps(request.authoritative_context, ensure_ascii=False)
