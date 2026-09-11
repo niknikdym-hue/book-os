@@ -6,6 +6,7 @@ import {
 } from "./openaiWorkLevel";
 
 const DEFAULT_OPENAI_WORK_LEVEL: OpenAIWorkLevel = "high";
+let coreReadyPromise: Promise<unknown> | null = null;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -28,6 +29,16 @@ function explicitOpenAIWorkLevel(body: Record<string, unknown>): OpenAIWorkLevel
   return value === "medium" || value === "high" || value === "xhigh" ? value : null;
 }
 
+async function ensureCoreReady(): Promise<void> {
+  if (coreReadyPromise === null) {
+    coreReadyPromise = invoke("core_health").catch((reason: unknown) => {
+      coreReadyPromise = null;
+      throw reason;
+    });
+  }
+  await coreReadyPromise;
+}
+
 export async function coreApi<T>(
   method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
@@ -35,6 +46,11 @@ export async function coreApi<T>(
 ): Promise<T> {
   let requestBody = body ?? null;
   let consumeWorkLevel = false;
+
+  // A newly launched Desktop app may render before the bundled Local Core has
+  // announced its port. Always wait for the real health gate before forwarding
+  // an API request; never expose "local core is still starting" as a book error.
+  await ensureCoreReady();
 
   // Reasoning levels are a first-class control for GPT-6 Astra only. Do not
   // silently attach Astra reasoning parameters to Sol or to automatic routing.
