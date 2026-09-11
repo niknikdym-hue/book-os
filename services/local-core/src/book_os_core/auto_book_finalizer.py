@@ -13,7 +13,7 @@ from .authority import AuthorityService, new_ulid
 from .authority_types import JSONValue
 from .auto_book import AutoBookGateError, AutoBookRunView
 from .book_context import BookContextService
-from .bookbench import BookBenchService
+from .bookbench import BookBenchReport, BookBenchService
 from .db import create_database
 from .editorial import EditorialService
 from .editorial_diagnostics import EditorialDiagnostics
@@ -29,7 +29,7 @@ from .model_gateway import (
 from .model_routing import ModelRoutingService
 from .projects import ProjectService
 from .prompts import PromptTemplate
-from .series_production import SeriesProductionService
+from .series_production import ProductionCheckpointRequest, SeriesProductionService
 
 
 AUTO_BOOK_FINAL_EDIT_V1 = PromptTemplate(
@@ -328,7 +328,7 @@ class AutoBookFinalizer:
                 "final editorial review requires rework before Literary Master: " + summary
             )
 
-    def _run_bookbench(self, book_id: str) -> str:
+    def _run_bookbench(self, book_id: str) -> BookBenchReport:
         snapshot = self.bookbench.create_snapshot(book_id, scope="BOOK")
         runs = self.bookbench.run_deterministic_suite(book_id, snapshot.snapshot_id)
         failed = [run for run in runs if run.status != "SUCCEEDED"]
@@ -343,17 +343,50 @@ class AutoBookFinalizer:
             raise AutoBookGateError(
                 "BookBench has BLOCKING dimensions: " + ", ".join(report.blocking_dimensions)
             )
-        return snapshot.snapshot_id
+        return report
 
-    def _require_series_final_gate(self, book_id: str) -> None:
-        context = self.contexts.get_context(book_id)
-        if context.series_profile is None:
-            return
+    def _record_adversarial_review(self, book_id: str, report: BookBenchReport) -> None:
+        findings: list[dict[str, Any]] = []
+        attention = False
+        blocking = False
+        for dimension in report.dimensions:
+            if dimension.state == "PASS":
+                continue
+            if dimension.state == "BLOCKING":
+                blocking = True
+            else:
+                attention = True
+            findings.append(
+                {
+                    "dimension": dimension.dimension,
+                    "state": dimension.state,
+                    "finding_ids": [item.finding_id for item in dimension.findings],
+                    "categories": [item.category for item in dimension.findings],
+                    "run_ids": dimension.run_ids,
+                }
+            )
+        status = "BLOCKING" if blocking else "ATTENTION" if attention else "PASS"
+        checkpoint = self.series.record_checkpoint(
+            book_id,
+            ProductionCheckpointRequest(
+                kind="ADVERSARIAL_REVIEW",
+                status=status,
+                findings=findings,
+                actor_kind="SYSTEM",
+                actor="system:auto-book-independent-release-review",
+                executor_identity="bookbench-deterministic-independent-auditor-v1",
+                snapshot_hash=report.snapshot_hash,
+                independent=True,
+            ),
+        )
+        if checkpoint.status == "BLOCKING":
+            raise AutoBookGateError(
+                "independent Adversarial Review found BLOCKING release issues"
+            )
         ready, blockers = self.series.adversarial_review_gate(book_id)
         if not ready:
             raise AutoBookGateError(
-                "series final independent review is required before Literary Master: "
-                + "; ".join(blockers)
+                "independent Adversarial Review gate failed: " + "; ".join(blockers)
             )
 
     @classmethod
@@ -478,7 +511,6 @@ class AutoBookFinalizer:
         *,
         prepare_litres_docx: bool,
     ) -> AutoBookFinalizationView:
-        context = self.contexts.get_context(book_id)
         book_context = self._book_context(book_id)
         units = self._current_units(book_id)
         if not units:
@@ -487,9 +519,8 @@ class AutoBookFinalizer:
             self._final_edit_unit(book_id, state, unit, book_context)
 
         self._run_editorial_gates(book_id)
-        snapshot_id = self._run_bookbench(book_id)
-        if context.series_profile is not None:
-            self._require_series_final_gate(book_id)
+        report = self._run_bookbench(book_id)
+        self._record_adversarial_review(book_id, report)
 
         master = self.literary.create_master(
             book_id,
@@ -501,7 +532,7 @@ class AutoBookFinalizer:
         return AutoBookFinalizationView(
             master_id=master.master_id,
             master_manifest_hash=master.manifest_hash,
-            bookbench_snapshot_id=snapshot_id,
+            bookbench_snapshot_id=report.snapshot_id,
             output_path=output_path,
             requests_used=state.requests_used,
             authorized_cost_usd=state.authorized_cost_usd,
