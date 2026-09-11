@@ -7,6 +7,7 @@ import "./launchUx.css";
 import "./studio.css";
 import "./authorStudio.css";
 import "./authorStudioCorrections.css";
+import "./bookSidebar.css";
 
 const rootCandidate = document.getElementById("root");
 if (!rootCandidate) {

@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { App } from "./App";
 import type { ProjectView } from "./types";
@@ -50,8 +50,13 @@ beforeEach(() => {
   invokeMock.mockReset();
 });
 
+afterEach(() => {
+  cleanup();
+});
+
 function commonGet(request: { method: string; path: string }) {
   if (request.method === "GET" && request.path === "/api/anti-junk") return [];
+  if (request.method === "GET" && request.path === "/api/library") return [];
   if (request.method === "GET" && request.path === "/api/launch/readiness") {
     return {
       openai_credential_state: "AVAILABLE",

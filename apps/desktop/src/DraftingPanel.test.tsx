@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import { DraftingPanel } from "./DraftingPanel";
 import type { DraftApi, DraftRunView } from "./draftingTypes";
 import type { ChapterView, ProjectView } from "./types";
@@ -98,6 +98,10 @@ const fakeApi: DraftApi = async function fakeApi<T>(
 
 beforeEach(() => {
   calls.length = 0;
+});
+
+afterEach(() => {
+  cleanup();
 });
 
 it("shows exactly the three first-class GPT-6 Astra modes with High selected", async () => {

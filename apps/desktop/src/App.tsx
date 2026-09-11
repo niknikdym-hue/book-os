@@ -6,6 +6,7 @@ import { ArchitectureEditor } from "./ArchitectureEditor";
 import { BookBenchPanel } from "./BookBenchPanel";
 import { BookJourney } from "./BookJourney";
 import { BookMemoryPanel } from "./BookMemoryPanel";
+import { BookSidebar } from "./BookSidebar";
 import { BookStartPanel } from "./BookStartPanel";
 import { DraftingPanel } from "./DraftingPanel";
 import { EditorialPanel } from "./EditorialPanel";
@@ -190,6 +191,17 @@ export function App() {
     setProjects(items);
   }
 
+  async function handleProjectListChanged(removedBookId?: string) {
+    if (removedBookId && project?.book_id === removedBookId) {
+      setProject(null);
+      setSelectedChapterId(null);
+      setBookContract(clone(emptyBookContract));
+      setArchitecture(clone(emptyArchitecture));
+      setChapterContract(clone(emptyChapterContract));
+    }
+    await refreshProjects();
+  }
+
   async function openProject(bookId: string) {
     setBusy(true);
     setError(null);
@@ -325,29 +337,15 @@ export function App() {
       {error && <div className="alert">{error}</div>}
 
       <div className="workspace">
-        <aside className="sidebar">
-          <div className="sidebar-heading">
-            <h2>Книги</h2>
-            <button className="primary small" onClick={() => setShowNewBook(true)} disabled={busy}>
-              + Новая
-            </button>
-          </div>
-          {projects.length === 0 && <p className="muted">Проектов книг пока нет.</p>}
-          <nav>
-            {projects.map((item) => (
-              <button
-                key={item.book_id}
-                className={`project-link ${project?.book_id === item.book_id ? "active" : ""}`}
-                onClick={() => void openProject(item.book_id)}
-                disabled={busy}
-              >
-                <strong>{item.working_title}</strong>
-                <span>{subtypeLabel(item.primary_subtype)}</span>
-                <small>{stageLabel(item.workflow_stage)}</small>
-              </button>
-            ))}
-          </nav>
-        </aside>
+        <BookSidebar
+          projects={projects}
+          activeBookId={project?.book_id ?? null}
+          busy={busy}
+          onNew={() => setShowNewBook(true)}
+          onOpen={(bookId) => void openProject(bookId)}
+          onProjectListChanged={(removedBookId) => void handleProjectListChanged(removedBookId)}
+          stageLabel={stageLabel}
+        />
 
         <section className="content">
           {showNewBook && (

@@ -20,6 +20,7 @@ from .pilot import (
     PilotService,
     PilotStageEventRequest,
 )
+from .project_lifecycle import build_project_lifecycle_router
 from .secrets import MacOSKeychainSecretStore
 
 
@@ -59,6 +60,7 @@ def build_pilot_router(data_dir: Path, require_token: Callable[..., None]) -> AP
         anti_junk,
     )
     router.include_router(build_launch_router(data_dir, require_token, launch_gateway))
+    router.include_router(build_project_lifecycle_router(data_dir, require_token))
 
     def raise_http(exc: PilotError) -> None:
         if isinstance(exc, PilotNotFound):
