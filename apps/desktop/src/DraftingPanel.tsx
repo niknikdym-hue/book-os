@@ -1,39 +1,74 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { coreApi } from "./api";
 import type { DraftRunView, DraftingPanelProps } from "./draftingTypes";
-import {
-  openAIWorkLevelLabel,
-  setPendingOpenAIWorkLevel,
-  type OpenAIWorkLevel,
-} from "./openaiWorkLevel";
+import { openAIWorkLevelLabel, type OpenAIWorkLevel } from "./openaiWorkLevel";
 
 type LaunchReadiness = {
   openai_credential_state: "AVAILABLE" | "NOT_AVAILABLE";
 };
 
-type AstraMode = {
-  effort: OpenAIWorkLevel;
+type WriterChoiceId = "AUTO" | "ASTRA_MEDIUM" | "ASTRA_HIGH" | "ASTRA_XHIGH" | "SOL";
+
+type WriterChoice = {
+  id: WriterChoiceId;
   label: string;
+  model: string | null;
+  effort: OpenAIWorkLevel | null;
+  selectionMode: "AUTO" | "MANUAL";
 };
 
-const ASTRA_MODES: readonly AstraMode[] = [
-  { effort: "medium", label: "GPT-6 Astra Medium" },
-  { effort: "high", label: "GPT-6 Astra High" },
-  { effort: "xhigh", label: "GPT-6 Astra Extra High" },
+const WRITER_CHOICES: readonly WriterChoice[] = [
+  { id: "AUTO", label: "Автоматически", model: null, effort: null, selectionMode: "AUTO" },
+  {
+    id: "ASTRA_MEDIUM",
+    label: "GPT-6 Astra Medium",
+    model: "gpt-6-astra",
+    effort: "medium",
+    selectionMode: "MANUAL",
+  },
+  {
+    id: "ASTRA_HIGH",
+    label: "GPT-6 Astra High",
+    model: "gpt-6-astra",
+    effort: "high",
+    selectionMode: "MANUAL",
+  },
+  {
+    id: "ASTRA_XHIGH",
+    label: "GPT-6 Astra Extra High",
+    model: "gpt-6-astra",
+    effort: "xhigh",
+    selectionMode: "MANUAL",
+  },
+  {
+    id: "SOL",
+    label: "GPT-5.6 Sol",
+    model: "gpt-5.6-sol",
+    effort: null,
+    selectionMode: "MANUAL",
+  },
 ];
 
-function modeLabel(effort: OpenAIWorkLevel) {
-  return ASTRA_MODES.find((item) => item.effort === effort)?.label ?? "GPT-6 Astra";
+function choiceById(id: WriterChoiceId): WriterChoice {
+  return WRITER_CHOICES.find((item) => item.id === id) ?? WRITER_CHOICES[2];
 }
 
 function optional(value: string | null | undefined) {
   return value && value.trim() ? value : "—";
 }
 
+function resultModelLabel(run: DraftRunView) {
+  if (run.model === "gpt-6-astra") {
+    return `GPT-6 Astra ${openAIWorkLevelLabel(run.reasoning_effort)}`;
+  }
+  if (run.model === "gpt-5.6-sol") return "GPT-5.6 Sol";
+  return run.model;
+}
+
 export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanelProps) {
   const [objective, setObjective] = useState("");
   const [context, setContext] = useState("");
-  const [workLevel, setWorkLevel] = useState<OpenAIWorkLevel>("high");
+  const [choiceId, setChoiceId] = useState<WriterChoiceId>("ASTRA_HIGH");
   const [maxCostUsd, setMaxCostUsd] = useState("0.50");
   const [allowPaid, setAllowPaid] = useState(false);
   const [runs, setRuns] = useState<DraftRunView[]>([]);
@@ -43,6 +78,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   const [copied, setCopied] = useState(false);
   const draftLoadSequence = useRef(0);
 
+  const selectedChoice = choiceById(choiceId);
   const approved =
     chapter?.chapter_contract?.authority_status === "APPROVED" ||
     chapter?.chapter_contract?.authority_status === "LOCKED";
@@ -58,7 +94,6 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     cost > 0 &&
     !busy;
   const latest = runs[0] ?? null;
-  const selectedModeLabel = modeLabel(workLevel);
 
   const reloadReadiness = useCallback(async () => {
     setReadiness(await api<LaunchReadiness>("GET", "/api/launch/readiness"));
@@ -93,21 +128,22 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     setError(null);
     setCopied(false);
     try {
-      setPendingOpenAIWorkLevel(workLevel);
+      const request: Record<string, unknown> = {
+        section_objective: objective.trim(),
+        provider: "openai",
+        model: selectedChoice.model,
+        selection_mode: selectedChoice.selectionMode,
+        selection_scope: selectedChoice.selectionMode === "MANUAL" ? "OPERATION" : null,
+        untrusted_context: context.trim() ? [context.trim()] : [],
+        max_output_tokens: 3500,
+        max_cost_usd: cost,
+      };
+      if (selectedChoice.effort) request.reasoning_effort = selectedChoice.effort;
+
       const run = await api<DraftRunView>(
         "POST",
         `/api/projects/${project.book_id}/chapters/${chapter.chapter_id}/drafts`,
-        {
-          section_objective: objective.trim(),
-          provider: "openai",
-          model: "gpt-6-astra",
-          selection_mode: "MANUAL",
-          selection_scope: "OPERATION",
-          reasoning_effort: workLevel,
-          untrusted_context: context.trim() ? [context.trim()] : [],
-          max_output_tokens: 3500,
-          max_cost_usd: cost,
-        },
+        request,
       );
       setRuns((current) => [run, ...current]);
       setAllowPaid(false);
@@ -130,12 +166,19 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     }
   }
 
+  const runButton =
+    selectedChoice.id === "SOL"
+      ? "Запустить Sol"
+      : selectedChoice.id === "AUTO"
+        ? "Запустить автоматически"
+        : "Запустить Astra";
+
   return (
     <section className="writer-studio drafting-panel" aria-label="Writer Studio">
       <header className="writer-studio-head">
         <div>
           <p className="writer-kicker"><span aria-hidden="true" /> AUTHOR STUDIO</p>
-          <h3>{selectedModeLabel}</h3>
+          <h3>{selectedChoice.label}</h3>
           <p className="writer-chapter">
             {chapter ? `${chapter.ordinal}. ${chapter.working_title}` : "Выберите главу для работы"}
           </p>
@@ -168,7 +211,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
                   <span className="writer-overline">ЗАДАЧА ДЛЯ МОДЕЛИ</span>
                   <h4>Что сделать с книгой сейчас?</h4>
                 </div>
-                <span className="writer-chip">{selectedModeLabel}</span>
+                <span className="writer-chip">{selectedChoice.label}</span>
               </div>
 
               <label className="writer-prompt-label">
@@ -206,17 +249,15 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
                   </header>
                   <div className="writer-manuscript">{latest.text}</div>
                   <p className="writer-note">
-                    {latest.model === "gpt-6-astra"
-                      ? `GPT-6 Astra ${openAIWorkLevelLabel(latest.reasoning_effort)}`
-                      : latest.model}
+                    {resultModelLabel(latest)}
                     {latest.revision_status ? ` · ${latest.revision_status}` : ""}
                   </p>
                 </article>
               ) : (
                 <div className="writer-result-empty">
-                  <span aria-hidden="true">A</span>
+                  <span aria-hidden="true">AI</span>
                   <div>
-                    <strong>Результат Astra появится здесь</strong>
+                    <strong>Результат появится здесь</strong>
                     <p>Сразу в книге — без терминала, логов и отдельного окна.</p>
                   </div>
                 </div>
@@ -227,24 +268,29 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
 
         <aside className="writer-inspector" aria-label="Настройки Writer">
           <section>
-            <span className="writer-overline">РЕЖИМ ASTRA</span>
-            <div className="writer-levels writer-astra-modes" role="group" aria-label="Режим Astra">
-              {ASTRA_MODES.map((mode) => (
+            <span className="writer-overline">МОДЕЛЬ</span>
+            <div className="writer-levels writer-astra-modes" role="group" aria-label="Модель Writer">
+              {WRITER_CHOICES.map((choice) => (
                 <button
-                  key={mode.effort}
+                  key={choice.id}
                   type="button"
-                  className={workLevel === mode.effort ? "active" : ""}
-                  aria-pressed={workLevel === mode.effort}
+                  className={choiceId === choice.id ? "active" : ""}
+                  aria-pressed={choiceId === choice.id}
                   disabled={busy}
                   onClick={() => {
-                    setWorkLevel(mode.effort);
+                    setChoiceId(choice.id);
                     setAllowPaid(false);
                   }}
                 >
-                  {mode.label}
+                  {choice.label}
                 </button>
               ))}
             </div>
+            {selectedChoice.id === "AUTO" && (
+              <p className="writer-note">
+                BOOK OS выберет подходящую OpenAI-модель для операции. Фактическая модель сохранится с результатом.
+              </p>
+            )}
           </section>
 
           {!credentialAvailable && (
@@ -282,7 +328,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
           </label>
 
           <button type="button" className="writer-run" disabled={!canRun} onClick={() => void generate()}>
-            <span>{busy ? "Astra работает…" : "Запустить Astra"}</span>
+            <span>{busy ? "Модель работает…" : runButton}</span>
             <strong aria-hidden="true">→</strong>
           </button>
 
@@ -307,7 +353,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
             </p>
             <dl className="writer-provenance">
               <div><dt>Модель</dt><dd>{latest.model}</dd></div>
-              <div><dt>Уровень</dt><dd>{openAIWorkLevelLabel(latest.reasoning_effort)}</dd></div>
+              <div><dt>Уровень</dt><dd>{latest.reasoning_effort ? openAIWorkLevelLabel(latest.reasoning_effort) : "—"}</dd></div>
               <div><dt>Provider</dt><dd>{latest.provider}</dd></div>
               <div><dt>Selection</dt><dd>{latest.selection_mode} · {optional(latest.selection_scope)}</dd></div>
               <div><dt>Routing</dt><dd>{optional(latest.routing_rationale)}</dd></div>
@@ -320,9 +366,6 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
               <div><dt>Output revision</dt><dd>{optional(latest.revision_id)}</dd></div>
               <div><dt>Output hash</dt><dd>{optional(latest.revision_hash)}</dd></div>
               <div><dt>Provider run</dt><dd>{optional(latest.provider_run_id)}</dd></div>
-              <div><dt>Статус</dt><dd>{latest.revision_status ?? latest.run_status}</dd></div>
-              <div><dt>Notes</dt><dd>{latest.notes.length ? latest.notes.join(" · ") : "—"}</dd></div>
-              <div><dt>Usage</dt><dd><code>{JSON.stringify(latest.usage)}</code></dd></div>
             </dl>
           </div>
         </details>

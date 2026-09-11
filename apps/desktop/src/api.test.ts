@@ -16,7 +16,7 @@ beforeEach(() => {
   clearPendingOpenAIWorkLevel();
 });
 
-it("defaults an OpenAI execution to High when no operation-specific mode was selected", async () => {
+it("defaults an Astra execution to High when no operation-specific mode was selected", async () => {
   await coreApi("POST", "/api/projects/book/planning/architecture", {
     provider: "openai",
     model: "gpt-6-astra",
@@ -37,7 +37,7 @@ it("defaults an OpenAI execution to High when no operation-specific mode was sel
   });
 });
 
-it("maps Extra High to xhigh, consumes it after one attempt, then returns to High", async () => {
+it("maps Extra High to xhigh, consumes it after one Astra attempt, then returns to High", async () => {
   setPendingOpenAIWorkLevel("xhigh");
 
   await coreApi("POST", "/api/projects/book/chapters/chapter/drafts", {
@@ -78,7 +78,7 @@ it("maps Extra High to xhigh, consumes it after one attempt, then returns to Hig
   });
 });
 
-it("preserves an explicit operation effort even if a pending value exists", async () => {
+it("preserves an explicit Astra effort even if a pending value exists", async () => {
   setPendingOpenAIWorkLevel("medium");
 
   await coreApi("POST", "/api/projects/book/chapters/chapter/drafts", {
@@ -97,6 +97,26 @@ it("preserves an explicit operation effort even if a pending value exists", asyn
         model: "gpt-6-astra",
         max_cost_usd: 1,
         reasoning_effort: "xhigh",
+      },
+    },
+  });
+});
+
+it("does not attach an Astra reasoning level to GPT-5.6 Sol", async () => {
+  await coreApi("POST", "/api/projects/book/chapters/chapter/drafts", {
+    provider: "openai",
+    model: "gpt-5.6-sol",
+    max_cost_usd: 1,
+  });
+
+  expect(invokeMock).toHaveBeenCalledWith("core_api", {
+    request: {
+      method: "POST",
+      path: "/api/projects/book/chapters/chapter/drafts",
+      body: {
+        provider: "openai",
+        model: "gpt-5.6-sol",
+        max_cost_usd: 1,
       },
     },
   });

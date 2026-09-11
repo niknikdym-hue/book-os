@@ -49,18 +49,22 @@ const project: ProjectView = {
 
 const calls: Array<{ method: string; path: string; body?: unknown }> = [];
 
-function success(reasoning = "high"): DraftRunView {
+function success(
+  model = "gpt-6-astra",
+  reasoning: DraftRunView["reasoning_effort"] = "high",
+  selectionMode = "MANUAL",
+): DraftRunView {
   return {
     task_id: "01JTASK0000000000000000000",
     run_id: "01JRUN00000000000000000000",
     task_status: "SUCCEEDED",
     run_status: "SUCCEEDED",
     provider: "openai",
-    model: "gpt-6-astra",
-    selection_mode: "MANUAL",
-    selection_scope: "OPERATION",
-    routing_rationale: "Human manual model pin for operation SECTION_DRAFT",
-    reasoning_effort: reasoning as DraftRunView["reasoning_effort"],
+    model,
+    selection_mode: selectionMode,
+    selection_scope: selectionMode === "MANUAL" ? "OPERATION" : null,
+    routing_rationale: selectionMode === "AUTO" ? "BOOK OS Auto routing for SECTION_DRAFT" : "Human manual model pin for operation SECTION_DRAFT",
+    reasoning_effort: reasoning,
     prompt_id: "section_draft_v1",
     prompt_version: "1.1.0",
     prompt_hash: "a".repeat(64),
@@ -73,7 +77,7 @@ function success(reasoning = "high"): DraftRunView {
     text: "A bounded generated section.",
     notes: ["not approved"],
     provider_run_id: "resp_mock",
-    usage: { output_tokens: 40, cost_guard: { reasoning_effort: reasoning } },
+    usage: { output_tokens: 40 },
     error_code: null,
     error_message: null,
   };
@@ -90,8 +94,13 @@ const fakeApi: DraftApi = async function fakeApi<T>(
   }
   if (method === "GET" && path.endsWith("/drafts")) return [] as T;
   if (method === "POST" && path.endsWith("/drafts")) {
-    const request = body as { reasoning_effort?: string | null };
-    return success(request.reasoning_effort ?? "high") as T;
+    const request = body as {
+      model?: string | null;
+      reasoning_effort?: DraftRunView["reasoning_effort"];
+      selection_mode?: string;
+    };
+    if (request.selection_mode === "AUTO") return success("gpt-6-astra", "high", "AUTO") as T;
+    return success(request.model ?? "gpt-6-astra", request.reasoning_effort ?? null) as T;
   }
   throw new Error(`unexpected request: ${method} ${path}`);
 };
@@ -104,24 +113,17 @@ afterEach(() => {
   cleanup();
 });
 
-it("shows exactly the three first-class GPT-6 Astra modes with High selected", async () => {
+it("shows Auto, three Astra modes and GPT-5.6 Sol with Astra High selected", async () => {
   render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
 
   await screen.findByText("OpenAI API подключён");
-  const modeGroup = screen.getByRole("group", { name: "Режим Astra" });
-  expect(within(modeGroup).getByRole("button", { name: "GPT-6 Astra Medium" })).toBeInTheDocument();
-  expect(within(modeGroup).getByRole("button", { name: "GPT-6 Astra High" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  expect(within(modeGroup).getByRole("button", { name: "GPT-6 Astra Extra High" })).toBeInTheDocument();
-  expect(within(modeGroup).getAllByRole("button")).toHaveLength(3);
-
-  expect(screen.queryByLabelText("Модель Astra")).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("AI-провайдер")).not.toBeInTheDocument();
-  expect(screen.queryByText("Подобрать Astra")).not.toBeInTheDocument();
-  expect(screen.queryByText("Другие модели и маршрутизация")).not.toBeInTheDocument();
-  expect(screen.queryByText("GPT-5.6 Sol")).not.toBeInTheDocument();
+  const group = screen.getByRole("group", { name: "Модель Writer" });
+  expect(within(group).getByRole("button", { name: "Автоматически" })).toBeInTheDocument();
+  expect(within(group).getByRole("button", { name: "GPT-6 Astra Medium" })).toBeInTheDocument();
+  expect(within(group).getByRole("button", { name: "GPT-6 Astra High" })).toHaveAttribute("aria-pressed", "true");
+  expect(within(group).getByRole("button", { name: "GPT-6 Astra Extra High" })).toBeInTheDocument();
+  expect(within(group).getByRole("button", { name: "GPT-5.6 Sol" })).toBeInTheDocument();
+  expect(within(group).getAllByRole("button")).toHaveLength(5);
   expect(screen.queryByText("GPT-5.6 Terra")).not.toBeInTheDocument();
   expect(screen.queryByText("GPT-5.6 Luna")).not.toBeInTheDocument();
   expect(screen.queryByText("Yandex AI")).not.toBeInTheDocument();
@@ -155,12 +157,48 @@ it.each([
       reasoning_effort: effort,
     }),
   });
+});
 
-  const provenance = screen.getByLabelText("Технические данные запуска");
-  expect(within(provenance).getByText("gpt-6-astra")).toBeInTheDocument();
-  expect(within(provenance).getByText("01JRUN00000000000000000000")).toBeInTheDocument();
-  expect(within(provenance).getByText("01JTASK0000000000000000000")).toBeInTheDocument();
-  expect(within(provenance).getByText("section_draft_v1 · v1.1.0")).toBeInTheDocument();
+it("sends Sol without an Astra reasoning level", async () => {
+  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
+  await screen.findByText("OpenAI API подключён");
+
+  fireEvent.click(screen.getByRole("button", { name: "GPT-5.6 Sol" }));
+  fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), { target: { value: "Use Sol" } });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Запустить Sol" }));
+
+  await screen.findByText("A bounded generated section.");
+  const post = calls.find((item) => item.method === "POST" && item.path.endsWith("/drafts"));
+  expect(post?.body).toEqual(expect.objectContaining({
+    provider: "openai",
+    model: "gpt-5.6-sol",
+    selection_mode: "MANUAL",
+    selection_scope: "OPERATION",
+  }));
+  expect(post?.body).not.toHaveProperty("reasoning_effort");
+});
+
+it("sends Auto without pretending a model was manually selected", async () => {
+  render(<DraftingPanel project={project} chapter={chapter} api={fakeApi} />);
+  await screen.findByText("OpenAI API подключён");
+
+  fireEvent.click(screen.getByRole("button", { name: "Автоматически" }));
+  fireEvent.change(screen.getByLabelText("Задача этого фрагмента"), { target: { value: "Use Auto" } });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Запустить автоматически" }));
+
+  await screen.findByText("A bounded generated section.");
+  expect(calls).toContainEqual({
+    method: "POST",
+    path: expect.stringContaining("/drafts"),
+    body: expect.objectContaining({
+      provider: "openai",
+      model: null,
+      selection_mode: "AUTO",
+      selection_scope: null,
+    }),
+  });
 });
 
 it("never renders a late draft response from the previously selected chapter", async () => {
@@ -193,7 +231,5 @@ it("never renders a late draft response from the previously selected chapter", a
   expect(writer.queryByText("A bounded generated section.")).not.toBeInTheDocument();
 
   resolveFirstChapter([success()]);
-  await waitFor(() =>
-    expect(writer.queryByText("A bounded generated section.")).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(writer.queryByText("A bounded generated section.")).not.toBeInTheDocument());
 });

@@ -11,11 +11,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function requiresOpenAIWorkLevel(
+function isAstraRequest(
   method: "GET" | "POST" | "PUT" | "DELETE",
   body: unknown,
 ): body is Record<string, unknown> {
-  return method !== "GET" && isRecord(body) && body.provider === "openai";
+  return (
+    method !== "GET" &&
+    isRecord(body) &&
+    body.provider === "openai" &&
+    body.model === "gpt-6-astra"
+  );
 }
 
 function explicitOpenAIWorkLevel(body: Record<string, unknown>): OpenAIWorkLevel | null {
@@ -31,7 +36,9 @@ export async function coreApi<T>(
   let requestBody = body ?? null;
   let consumeWorkLevel = false;
 
-  if (requiresOpenAIWorkLevel(method, body)) {
+  // Reasoning levels are a first-class control for GPT-6 Astra only. Do not
+  // silently attach Astra reasoning parameters to Sol or to automatic routing.
+  if (isAstraRequest(method, body)) {
     const pendingWorkLevel = getPendingOpenAIWorkLevel();
     const workLevel =
       explicitOpenAIWorkLevel(body) ?? pendingWorkLevel ?? DEFAULT_OPENAI_WORK_LEVEL;
