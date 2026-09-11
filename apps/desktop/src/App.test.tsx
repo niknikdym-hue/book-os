@@ -57,6 +57,7 @@ afterEach(() => {
 function commonGet(request: { method: string; path: string }) {
   if (request.method === "GET" && request.path === "/api/anti-junk") return [];
   if (request.method === "GET" && request.path === "/api/library") return [];
+  if (request.method === "GET" && request.path.endsWith("/auto-book")) return null;
   if (request.method === "GET" && request.path === "/api/launch/readiness") {
     return {
       openai_credential_state: "AVAILABLE",
@@ -120,7 +121,7 @@ it("показывает реальный каталог тем, отражае�
   expect(screen.getByRole("heading", { name: "Производственный маршрут книги" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Контракт/ })).toBeEnabled();
   expect(screen.getByRole("button", { name: /Архитектура/ })).toBeDisabled();
-  expect(screen.getAllByText("Опишите идею книги").length).toBeGreaterThan(0);
+  expect(screen.getByRole("heading", { name: "Создать книгу автоматически" })).toBeInTheDocument();
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
