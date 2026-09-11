@@ -1,3 +1,4 @@
+import { useState } from "react";
 import "./launchUx.css";
 import {
   AVAILABLE_BUSINESS_SUBTYPES,
@@ -29,11 +30,12 @@ export function BookStartPanel({
   onCreate,
   onClose,
 }: Props) {
+  const [topicConfirmed, setTopicConfirmed] = useState(false);
   const availableTopics = BUSINESS_TOPICS.filter(
     (topic) => topic.availability === "AVAILABLE" && Boolean(topic.subtype),
   );
   const titleReady = newTitle.trim().length > 0;
-  const topicReady = Boolean(primarySubtype);
+  const topicReady = topicConfirmed && Boolean(primarySubtype);
   const canCreate = !busy && titleReady && topicReady;
 
   return (
@@ -71,14 +73,18 @@ export function BookStartPanel({
           </span>
           <div className="topic-grid start-topic-grid" role="group" aria-label="Доступные темы книги">
             {availableTopics.map((topic) => {
-              const selected = topic.subtype === primarySubtype;
+              const selected = topicConfirmed && topic.subtype === primarySubtype;
               return (
                 <button
                   key={topic.id}
                   type="button"
                   className={`topic-card available compact ${selected ? "selected" : ""}`}
                   aria-pressed={selected}
-                  onClick={() => topic.subtype && setPrimarySubtype(topic.subtype)}
+                  onClick={() => {
+                    if (!topic.subtype) return;
+                    setPrimarySubtype(topic.subtype);
+                    setTopicConfirmed(true);
+                  }}
                 >
                   <span className={`availability ${selected ? "ready" : "soon"}`}>
                     {selected ? "Выбрано ✓" : "Выбрать"}
@@ -99,7 +105,7 @@ export function BookStartPanel({
             <select
               value={secondarySubtype}
               onChange={(event) => setSecondarySubtype(event.target.value)}
-              disabled={!primarySubtype}
+              disabled={!topicReady}
             >
               <option value="">Нет</option>
               {AVAILABLE_BUSINESS_SUBTYPES.filter((value) => value !== primarySubtype).map((value) => (
