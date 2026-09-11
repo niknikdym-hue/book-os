@@ -2,12 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { SeriesStudio } from "./SeriesStudio";
 import "./styles.css";
 import "./launchUx.css";
 import "./studio.css";
 import "./authorStudio.css";
 import "./authorStudioCorrections.css";
 import "./bookSidebar.css";
+import "./seriesStudio.css";
 
 const rootCandidate = document.getElementById("root");
 if (!rootCandidate) {
@@ -18,6 +20,7 @@ const rootElement: HTMLElement = rootCandidate;
 createRoot(rootElement).render(
   <StrictMode>
     <App />
+    <SeriesStudio />
   </StrictMode>,
 );
 
