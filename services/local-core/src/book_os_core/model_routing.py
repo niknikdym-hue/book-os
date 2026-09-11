@@ -69,11 +69,11 @@ PROVIDERS: dict[str, ProviderSpec] = {
             ("gpt-5.6-luna", "GPT-5.6 Luna"),
         ),
         auto={
+            # Core book creation is deliberately Astra-first. Sol remains a first-class
+            # manual author choice, but Auto Book must not silently switch families.
             "BOOK_CONTRACT_PROPOSAL": "gpt-6-astra",
             "ARCHITECTURE_PROPOSAL": "gpt-6-astra",
-            "CHAPTER_CONTRACT_PROPOSAL": "gpt-5.6-sol",
-            # The Author Studio's automatic mode is Astra-only. It must not silently
-            # replace an Astra choice with a different OpenAI family.
+            "CHAPTER_CONTRACT_PROPOSAL": "gpt-6-astra",
             "SECTION_DRAFT": "gpt-6-astra",
             "STYLE_PREVIEW": "gpt-5.6-terra",
             "ANNOTATION": "gpt-5.6-terra",
