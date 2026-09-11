@@ -4,8 +4,19 @@ import json
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from book_os_core.book_context import ProfileCreateRequest, ProfileRegistry
-from book_os_core.model_gateway import ModelAdapterResult, ModelGateway
+from book_os_core.auto_book import AutoBookService, AutoBookStartRequest
+from book_os_core.book_context import (
+    BookContextService,
+    BookContextUpdateRequest,
+    ProfileCreateRequest,
+    ProfileRegistry,
+)
+from book_os_core.model_gateway import (
+    DeterministicFakeAdapter,
+    ModelAdapterResult,
+    ModelGateway,
+)
+from book_os_core.projects import NewBookRequest, ProjectService
 from book_os_core.series_reference import SeriesReferenceService, SeriesReferenceUploadRequest
 from book_os_core.series_studio import SeriesCreateWithAIRequest, SeriesStudioService
 
@@ -73,6 +84,23 @@ def reference_paragraphs() -> list[str]:
     ]
 
 
+def upload_text_reference(
+    tmp_path: Path,
+    series_profile_id: str,
+):
+    source = "\n\n".join(reference_paragraphs()).encode("utf-8")
+    service = SeriesReferenceService(tmp_path)
+    return service.upload(
+        series_profile_id,
+        SeriesReferenceUploadRequest(
+            filename="Как-продавать-услуги.txt",
+            content_base64=base64.b64encode(source).decode("ascii"),
+            title="Как продавать услуги — обновлённая редакция",
+            owner_approves_derived_style=True,
+        ),
+    )
+
+
 def test_ai_series_proposal_is_hardened_against_cross_book_cloning(tmp_path: Path) -> None:
     registry = ProfileRegistry(tmp_path)
     author = approved_author(registry)
@@ -112,17 +140,8 @@ def test_existing_series_reference_is_style_evidence_not_content_source(tmp_path
     author = approved_author(registry)
     series = approved_series(registry, author.profile_id)
 
-    source = "\n\n".join(reference_paragraphs()).encode("utf-8")
+    reference = upload_text_reference(tmp_path, series.profile_id)
     service = SeriesReferenceService(tmp_path)
-    reference = service.upload(
-        series.profile_id,
-        SeriesReferenceUploadRequest(
-            filename="Как-продавать-услуги.txt",
-            content_base64=base64.b64encode(source).decode("ascii"),
-            title="Как продавать услуги — обновлённая редакция",
-            owner_approves_derived_style=True,
-        ),
-    )
 
     assert reference.role == "DELIVERY_STYLE_REFERENCE"
     assert reference.characters >= 4000
@@ -186,3 +205,56 @@ def test_existing_series_reference_accepts_real_docx_container(tmp_path: Path) -
     assert reference.representative_excerpts
     assert reference.style_profile_id
     assert registry.get_profile(reference.style_profile_id).status == "APPROVED"
+
+
+def test_reference_style_reaches_auto_book_without_exposing_full_reference(tmp_path: Path) -> None:
+    registry = ProfileRegistry(tmp_path)
+    author = approved_author(registry)
+    series = approved_series(registry, author.profile_id)
+    reference = upload_text_reference(tmp_path, series.profile_id)
+
+    project = ProjectService(tmp_path).create_project(
+        NewBookRequest(working_title="Следующая уникальная книга серии", primary_subtype="Strategy")
+    )
+    context = BookContextService(tmp_path).save_context(
+        project.book_id,
+        BookContextUpdateRequest(
+            author_profile_id=author.profile_id,
+            series_profile_id=series.profile_id,
+            style_profile_id=reference.style_profile_id,
+            target_characters=120_000,
+        ),
+    )
+    assert context.ready_for_planning is True
+
+    adapter = DeterministicFakeAdapter()
+    service = AutoBookService(tmp_path, ModelGateway({"openai": adapter}))
+    state = service.start(
+        project.book_id,
+        AutoBookStartRequest(
+            idea="Уникальная книга о новой задаче внутри серии, без повторения первой книги.",
+            reader_hint="Владелец бизнеса услуг",
+            model_choice="SOL",
+            max_cost_usd_per_request=1.0,
+            max_total_cost_usd=4.0,
+            max_requests=4,
+            prepare_litres_docx=False,
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    service.advance(project.book_id)
+
+    assert state.model_choice == "SOL"
+    request = adapter.last_request
+    assert request is not None
+    book_context = request.authoritative_context["book_context"]
+    assert book_context["series_profile"]["profile_id"] == series.profile_id
+    assert book_context["style_profile"]["profile_id"] == reference.style_profile_id
+    prohibited = book_context["style_profile"]["content"]["prohibited_patterns"]
+    assert "Не копировать и не перефразировать содержание эталонной книги." in prohibited
+    assert "Не повторять сцены, примеры, кейсы, метафоры и аналогии других книг серии." in prohibited
+
+    full_reference_text = "\n\n".join(reference_paragraphs())
+    serialized_context = json.dumps(request.authoritative_context, ensure_ascii=False)
+    assert full_reference_text not in serialized_context
+    assert reference.representative_excerpts[0] in serialized_context
