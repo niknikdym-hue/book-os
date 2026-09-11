@@ -43,20 +43,28 @@ def build_auto_book_router(
 
         Model requests are intentionally not retried automatically: a transport failure can happen
         after the provider has already accepted a paid request. Retrying blindly could duplicate cost.
-        The run stays RUNNING at the same phase so the owner can safely continue from the UI.
+        The uncertain call is conservatively reserved against the owner-authorized budget before the
+        run is exposed as resumable.
         """
 
         state = service.get(book_id)
         if state is not None:
+            try:
+                uncertain_cap = service._remaining_call_cap(state)
+            except AutoBookError:
+                uncertain_cap = None
+            if uncertain_cap is not None:
+                service._consume_call(state, uncertain_cap)
             state.status = "RUNNING"
             state.error = str(exc)
-            state.last_action = "Temporary model connection interruption; progress saved"
+            state.last_action = "Temporary model connection interruption; progress and budget saved"
             service._write(state)
         raise HTTPException(
             status_code=503,
             detail=(
-                "Временный обрыв связи с моделью. Прогресс Auto Book сохранён. "
-                "Нажмите «Продолжить с сохранённого места»."
+                "Временный обрыв связи с моделью. Прогресс Auto Book сохранён, а возможная "
+                "стоимость прерванного запроса учтена в лимите. Нажмите «Продолжить с "
+                "сохранённого места»."
             ),
         ) from exc
 
