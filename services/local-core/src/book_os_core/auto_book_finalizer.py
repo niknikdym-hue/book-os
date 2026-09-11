@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from html import escape as html_escape
-import json
 from pathlib import Path
 from typing import Any, cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 from .authority import AuthorityService, new_ulid
 from .authority_types import JSONValue
@@ -74,7 +74,7 @@ class AutoBookFinalizer:
         self.literary = LiteraryMasterService(data_dir)
         self.series = SeriesProductionService(data_dir)
 
-    def _engine(self, book_id: str):
+    def _engine(self, book_id: str) -> Engine:
         self.projects.get_project(book_id)
         return create_database(self.projects.projects_dir / book_id / "project.sqlite")
 
@@ -334,8 +334,7 @@ class AutoBookFinalizer:
         failed = [run for run in runs if run.status != "SUCCEEDED"]
         if failed:
             raise AutoBookGateError(
-                "BookBench deterministic suite failed: "
-                + ", ".join(run.check_id for run in failed)
+                "BookBench deterministic suite failed: " + ", ".join(run.check_id for run in failed)
             )
         report = self.bookbench.report(book_id, snapshot.snapshot_id)
         if not report.current:
@@ -379,8 +378,7 @@ class AutoBookFinalizer:
             paragraph_lines.clear()
             if value:
                 body.append(
-                    '<w:p><w:r><w:t xml:space="preserve">'
-                    f"{cls._xml_text(value)}</w:t></w:r></w:p>"
+                    f'<w:p><w:r><w:t xml:space="preserve">{cls._xml_text(value)}</w:t></w:r></w:p>'
                 )
 
         for raw_line in manuscript.splitlines():
