@@ -66,11 +66,14 @@ def test_ai_series_proposal_is_hardened_against_cross_book_cloning(tmp_path: Pat
     assert result.profile.status == "DRAFT"
     content = result.profile.content
     assert content["series_name"] == "Секреты продвижения услуг"
-    assert "Запрещён смысловой overlap с другими книгами серии." in content[
-        "cross_book_uniqueness_rules"
-    ]
+    assert (
+        "Запрещён смысловой overlap с другими книгами серии."
+        in content["cross_book_uniqueness_rules"]
+    )
     assert "метафоры и аналогии" in content["exclusion_dimensions"]
-    assert any("cross-book overlap map" in value for value in content["prewriting_overlap_requirements"])
+    assert any(
+        "cross-book overlap map" in value for value in content["prewriting_overlap_requirements"]
+    )
     assert any("SeriesBench" in value for value in content["whole_book_audit_requirements"])
 
 
@@ -128,5 +131,10 @@ def test_existing_series_reference_is_style_evidence_not_content_source(tmp_path
     assert style.content["author_profile_id"] == author.profile_id
     assert style.content["benchmark_excerpts"]
     prohibited = style.content["prohibited_patterns"]
-    assert "Не повторять сцены, примеры, кейсы, метафоры и аналогии других книг серии." in prohibited
-    assert "Не копировать структуру глав, последовательность раскрытия мысли и distinctive wording эталона." in prohibited
+    assert (
+        "Не повторять сцены, примеры, кейсы, метафоры и аналогии других книг серии." in prohibited
+    )
+    assert (
+        "Не копировать структуру глав, последовательность раскрытия мысли и distinctive wording эталона."
+        in prohibited
+    )
