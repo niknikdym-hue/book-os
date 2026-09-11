@@ -98,6 +98,14 @@ def build_auto_book_router(
                 state,
                 prepare_litres_docx=state.prepare_litres_docx,
             )
+        except httpx.TransportError:
+            if draft_output is not None:
+                draft_output.unlink(missing_ok=True)
+            state.status = "RUNNING"
+            state.phase = "EXPORT"
+            state.output_path = None
+            service._write(state)
+            raise
         except Exception as exc:
             if draft_output is not None:
                 draft_output.unlink(missing_ok=True)
