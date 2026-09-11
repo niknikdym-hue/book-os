@@ -230,7 +230,9 @@ class SeriesStudioService:
             raw["author_profile_id"] = author.profile_id
             proposed = SeriesProfileContent.model_validate(raw)
         except ValidationError as exc:
-            raise ModelOutputError("series planner output failed Series Profile validation") from exc
+            raise ModelOutputError(
+                "series planner output failed Series Profile validation"
+            ) from exc
 
         hardened = self._harden(proposed)
         profile = self.profiles.create_profile(
