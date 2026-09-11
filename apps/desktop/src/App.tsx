@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { coreApi } from "./api";
+import { coreApi, coreHealth } from "./api";
 import { AntiJunkPanel } from "./AntiJunkPanel";
 import { ArchitectureEditor } from "./ArchitectureEditor";
 import { BookBenchPanel } from "./BookBenchPanel";
@@ -214,7 +213,7 @@ export function App() {
   }
 
   useEffect(() => {
-    void invoke<CoreHealth>("core_health")
+    void coreHealth<CoreHealth>()
       .then(async (value) => {
         setHealth(value);
         await refreshProjects();
