@@ -144,9 +144,13 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
     engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
     try:
         with engine.connect() as connection:
-            masters = connection.execute(
-                text("SELECT master_id,status,manifest_hash FROM literary_masters")
-            ).mappings().all()
+            masters = (
+                connection.execute(
+                    text("SELECT master_id,status,manifest_hash FROM literary_masters")
+                )
+                .mappings()
+                .all()
+            )
             export_formats = set(
                 connection.execute(text("SELECT format FROM literary_master_exports")).scalars()
             )
