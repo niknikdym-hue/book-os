@@ -47,7 +47,8 @@ def build_auto_book_router(
             series_production.require_writing_allowed(book_id, state.current_chapter_id)
         except SeriesProductionGateError as exc:
             raise AutoBookGateError(
-                "Series Auto Book cannot bypass the approved cross-book uniqueness lane: " + str(exc)
+                "Series Auto Book cannot bypass the approved cross-book uniqueness lane: "
+                + str(exc)
             ) from exc
 
     @staticmethod
