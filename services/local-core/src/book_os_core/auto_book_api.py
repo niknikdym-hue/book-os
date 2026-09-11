@@ -51,7 +51,6 @@ def build_auto_book_router(
                 + str(exc)
             ) from exc
 
-    @staticmethod
     def finalization_complete(state: AutoBookRunView) -> bool:
         if state.status != "DONE":
             return False
