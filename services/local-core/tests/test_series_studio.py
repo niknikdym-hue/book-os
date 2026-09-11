@@ -1,6 +1,8 @@
 import base64
+from io import BytesIO
 import json
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from book_os_core.book_context import ProfileCreateRequest, ProfileRegistry
 from book_os_core.model_gateway import ModelAdapterResult, ModelGateway
@@ -43,6 +45,34 @@ def approved_author(registry: ProfileRegistry):
     return registry.approve_profile(author.profile_id)
 
 
+def approved_series(registry: ProfileRegistry, author_profile_id: str):
+    series = registry.create_profile(
+        ProfileCreateRequest(
+            kind="SERIES",
+            content={
+                "series_name": "Секреты продвижения услуг",
+                "author_profile_id": author_profile_id,
+                "purpose_positioning": "Самостоятельные книги о разных задачах продвижения услуг.",
+                "planned_books": ["Как продавать услуги"],
+                "cross_book_uniqueness_rules": ["Нулевой смысловой overlap"],
+                "exclusion_dimensions": ["тезисы", "механизмы", "аналогии"],
+            },
+        )
+    )
+    return registry.approve_profile(series.profile_id)
+
+
+def reference_paragraphs() -> list[str]:
+    return [
+        (
+            "Это эталонный абзац о манере подачи материала. Он показывает ритм, глубину разбора, "
+            "плотность объяснения и переход от наблюдения к механизму. Содержание этого текста "
+            "никогда не должно становиться материалом другой книги серии."
+        )
+        for _ in range(40)
+    ]
+
+
 def test_ai_series_proposal_is_hardened_against_cross_book_cloning(tmp_path: Path) -> None:
     registry = ProfileRegistry(tmp_path)
     author = approved_author(registry)
@@ -80,30 +110,9 @@ def test_ai_series_proposal_is_hardened_against_cross_book_cloning(tmp_path: Pat
 def test_existing_series_reference_is_style_evidence_not_content_source(tmp_path: Path) -> None:
     registry = ProfileRegistry(tmp_path)
     author = approved_author(registry)
-    series = registry.create_profile(
-        ProfileCreateRequest(
-            kind="SERIES",
-            content={
-                "series_name": "Секреты продвижения услуг",
-                "author_profile_id": author.profile_id,
-                "purpose_positioning": "Самостоятельные книги о разных задачах продвижения услуг.",
-                "planned_books": ["Как продавать услуги"],
-                "cross_book_uniqueness_rules": ["Нулевой смысловой overlap"],
-                "exclusion_dimensions": ["тезисы", "механизмы", "аналогии"],
-            },
-        )
-    )
-    series = registry.approve_profile(series.profile_id)
+    series = approved_series(registry, author.profile_id)
 
-    paragraphs = [
-        (
-            "Это эталонный абзац о манере подачи материала. Он показывает ритм, глубину разбора, "
-            "плотность объяснения и переход от наблюдения к механизму. Содержание этого текста "
-            "никогда не должно становиться материалом другой книги серии."
-        )
-        for _ in range(40)
-    ]
-    source = "\n\n".join(paragraphs).encode("utf-8")
+    source = "\n\n".join(reference_paragraphs()).encode("utf-8")
     service = SeriesReferenceService(tmp_path)
     reference = service.upload(
         series.profile_id,
@@ -138,3 +147,42 @@ def test_existing_series_reference_is_style_evidence_not_content_source(tmp_path
         "Не копировать структуру глав, последовательность раскрытия мысли и distinctive wording эталона."
         in prohibited
     )
+
+
+def test_existing_series_reference_accepts_real_docx_container(tmp_path: Path) -> None:
+    registry = ProfileRegistry(tmp_path)
+    author = approved_author(registry)
+    series = approved_series(registry, author.profile_id)
+
+    paragraphs = reference_paragraphs()
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body>'
+        + "".join(
+            f'<w:p><w:r><w:t xml:space="preserve">{paragraph}</w:t></w:r></w:p>'
+            for paragraph in paragraphs
+        )
+        + "</w:body></w:document>"
+    )
+    payload = BytesIO()
+    with ZipFile(payload, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", document_xml)
+
+    service = SeriesReferenceService(tmp_path)
+    reference = service.upload(
+        series.profile_id,
+        SeriesReferenceUploadRequest(
+            filename="Как-продавать-услуги.docx",
+            content_base64=base64.b64encode(payload.getvalue()).decode("ascii"),
+            title="Как продавать услуги — обновлённая редакция DOCX",
+            owner_approves_derived_style=True,
+        ),
+    )
+
+    assert reference.format == "DOCX"
+    assert reference.characters >= 4000
+    assert reference.paragraphs == len(paragraphs)
+    assert reference.representative_excerpts
+    assert reference.style_profile_id
+    assert registry.get_profile(reference.style_profile_id).status == "APPROVED"
