@@ -380,9 +380,7 @@ class AutoBookFinalizer:
             ),
         )
         if checkpoint.status == "BLOCKING":
-            raise AutoBookGateError(
-                "independent Adversarial Review found BLOCKING release issues"
-            )
+            raise AutoBookGateError("independent Adversarial Review found BLOCKING release issues")
         ready, blockers = self.series.adversarial_review_gate(book_id)
         if not ready:
             raise AutoBookGateError(
