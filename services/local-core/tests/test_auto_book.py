@@ -110,7 +110,9 @@ def run_auto_book(tmp_path: Path, book_id: str) -> tuple[AutoBookService, object
     return service, state
 
 
-def assert_completed_book(tmp_path: Path, book_id: str, service: AutoBookService, state: object) -> None:
+def assert_completed_book(
+    tmp_path: Path, book_id: str, service: AutoBookService, state: object
+) -> None:
     assert getattr(state, "status") == "DONE"
     assert getattr(state, "phase") == "DONE"
     assert getattr(state, "requests_used") == 6
@@ -161,7 +163,9 @@ def test_series_auto_book_uses_owner_authorization_without_fake_passes(tmp_path:
     try:
         with engine.connect() as connection:
             fake_gate_counts = {
-                "definitions": connection.execute(text("SELECT COUNT(*) FROM definition_packs")).scalar_one(),
+                "definitions": connection.execute(
+                    text("SELECT COUNT(*) FROM definition_packs")
+                ).scalar_one(),
                 "production_contracts": connection.execute(
                     text("SELECT COUNT(*) FROM chapter_production_contracts")
                 ).scalar_one(),
