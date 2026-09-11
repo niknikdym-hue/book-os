@@ -99,6 +99,10 @@ def test_provider_disconnect_pauses_auto_book_without_losing_progress(tmp_path: 
     payload = state.json()
     assert payload["status"] == "RUNNING"
     assert payload["phase"] == "BOOK_CONTRACT"
-    assert payload["requests_used"] == 0
+    assert payload["requests_used"] == 1
+    assert payload["authorized_cost_usd"] == 1.0
     assert "Server disconnected" in payload["error"]
-    assert payload["last_action"] == "Temporary model connection interruption; progress saved"
+    assert (
+        payload["last_action"]
+        == "Temporary model connection interruption; progress and budget saved"
+    )
