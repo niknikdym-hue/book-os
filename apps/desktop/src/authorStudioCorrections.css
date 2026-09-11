@@ -1,0 +1,28 @@
+/* Exact launch-critical corrections layered after authorStudio.css. */
+body:has(.writer-studio) .writer-levels {
+  display: grid;
+}
+
+body:has(.writer-studio) .legacy-openai-work-level-panel {
+  display: none;
+}
+
+body:has(.writer-studio) .studio-context-drawer {
+  display: block;
+  margin: 8px 24px 14px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body:has(.writer-studio) .studio-context-drawer > summary {
+  padding: 9px 2px;
+  color: #77766f;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+body:has(.writer-studio) .studio-context-drawer[open] {
+  padding-top: 4px;
+  border-top: 1px solid rgba(30, 33, 29, 0.09);
+}

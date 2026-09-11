@@ -326,17 +326,40 @@ class OpenAIResponsesAdapter:
 
     @staticmethod
     def output_schema(task_type: str = "SECTION_DRAFT") -> dict[str, Any]:
+        schema: dict[str, Any]
         if task_type == "BOOK_CONTRACT_PROPOSAL":
-            return BookContractProposalOutput.model_json_schema()
-        if task_type == "ARCHITECTURE_PROPOSAL":
-            return BookArchitectureProposalOutput.model_json_schema()
-        if task_type == "CHAPTER_CONTRACT_PROPOSAL":
-            return ChapterContractProposalOutput.model_json_schema()
-        if task_type == "BOOKBENCH_JUDGE":
-            return BookBenchJudgeOutput.model_json_schema()
-        if task_type == "BOOKBENCH_PAIRWISE":
-            return BookBenchPairwiseOutput.model_json_schema()
-        return SectionDraftOutput.model_json_schema()
+            schema = BookContractProposalOutput.model_json_schema()
+        elif task_type == "ARCHITECTURE_PROPOSAL":
+            schema = BookArchitectureProposalOutput.model_json_schema()
+        elif task_type == "CHAPTER_CONTRACT_PROPOSAL":
+            schema = ChapterContractProposalOutput.model_json_schema()
+        elif task_type == "BOOKBENCH_JUDGE":
+            schema = BookBenchJudgeOutput.model_json_schema()
+        elif task_type == "BOOKBENCH_PAIRWISE":
+            schema = BookBenchPairwiseOutput.model_json_schema()
+        else:
+            schema = SectionDraftOutput.model_json_schema()
+        return OpenAIResponsesAdapter._strict_json_schema(schema)
+
+    @staticmethod
+    def _strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+        """Normalize Pydantic's schema to the strict subset required by Responses."""
+        normalized: dict[str, Any] = json.loads(json.dumps(schema))
+
+        def visit(node: object) -> None:
+            if isinstance(node, dict):
+                properties = node.get("properties")
+                if isinstance(properties, dict):
+                    node["additionalProperties"] = False
+                    node["required"] = list(properties)
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for value in node:
+                    visit(value)
+
+        visit(normalized)
+        return normalized
 
     @classmethod
     def pricing_registered(cls, model: str) -> bool:
@@ -481,6 +504,23 @@ class OpenAIResponsesAdapter:
                         return text_value
         raise ModelOutputError("OpenAI response contains no output_text")
 
+    @staticmethod
+    def _safe_error_detail(response: httpx.Response) -> str:
+        """Return the provider's diagnostic without ever including credentials or request content."""
+        try:
+            payload = response.json()
+        except (json.JSONDecodeError, ValueError):
+            return ""
+        if not isinstance(payload, dict):
+            return ""
+        error = payload.get("error")
+        if not isinstance(error, dict):
+            return ""
+        message = error.get("message")
+        if not isinstance(message, str):
+            return ""
+        return f": {message.strip()[:500]}" if message.strip() else ""
+
     def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
         body = self._body(request, prompt)
         cost_guard = self._budget_guard(request, body)
@@ -492,7 +532,9 @@ class OpenAIResponsesAdapter:
             timeout=self._timeout_seconds,
         )
         if response.status_code >= 400:
-            raise ModelProviderError(f"OpenAI HTTP {response.status_code}")
+            raise ModelProviderError(
+                f"OpenAI HTTP {response.status_code}{self._safe_error_detail(response)}"
+            )
         payload = response.json()
         if not isinstance(payload, dict):
             raise ModelOutputError("OpenAI response JSON must be an object")

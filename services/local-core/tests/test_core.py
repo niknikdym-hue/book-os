@@ -21,7 +21,7 @@ def test_fresh_database_runs_current_migrations_with_foreign_keys_and_wal(tmp_pa
         assert connection.execute(text("PRAGMA journal_mode")).scalar_one() == "wal"
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0016"
+            == "0020"
         )
         assert set(connection.execute(text("SELECT version FROM schema_metadata")).scalars()) == {
             "0001",
@@ -40,4 +40,8 @@ def test_fresh_database_runs_current_migrations_with_foreign_keys_and_wal(tmp_pa
             "0014",
             "0015",
             "0016",
+            "0017",
+            "0018",
+            "0019",
+            "0020",
         }

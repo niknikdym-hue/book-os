@@ -1,5 +1,13 @@
 name: CI
-on: [pull_request, push]
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   local-core:
     runs-on: ubuntu-latest
@@ -47,28 +55,32 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/desktop/pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@stable
-      - name: Prepare local Python Core
+      - name: Prepare standalone Local Core
         run: |
           python3.12 -m venv services/local-core/.venv
           services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-build.lock
       - name: Install desktop dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile --prod=false
       - name: Build production macOS app bundle
         working-directory: apps/desktop
         run: pnpm tauri build --bundles app
-      - name: Launch packaged and installed Desktop apps with frontend plus local core
+      - name: Launch self-contained packaged and Desktop apps
         env:
           RUST_BACKTRACE: '1'
         run: |
           APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
           EXEC="$APP/Contents/MacOS/BOOK OS"
+          BUNDLED_CORE="$APP/Contents/Resources/book-os-core"
           LOG="$RUNNER_TEMP/book-os-native-launch.log"
           FRONTEND_MARKER="$RUNNER_TEMP/book-os-frontend-ready"
           CORE_MARKER="$RUNNER_TEMP/book-os-core-ready"
+          PROJECT_MARKER="$RUNNER_TEMP/book-os-project-created"
           CORE_STARTUP_LOG="$HOME/Library/Application Support/com.bookos.desktop/local-core-startup.log"
           DESKTOP_APP="$HOME/Desktop/BOOK OS.app"
           DESKTOP_EXEC="$DESKTOP_APP/Contents/MacOS/BOOK OS"
+          DESKTOP_CORE="$DESKTOP_APP/Contents/Resources/book-os-core"
           DESKTOP_LOG="$RUNNER_TEMP/book-os-desktop-launch.log"
           DESKTOP_FRONTEND_MARKER="$RUNNER_TEMP/book-os-desktop-frontend-ready"
           DESKTOP_CORE_MARKER="$RUNNER_TEMP/book-os-desktop-core-ready"
@@ -82,24 +94,30 @@ jobs:
 
           test -d "$APP"
           test -x "$EXEC"
+          test -x "$BUNDLED_CORE"
           /usr/bin/plutil -lint "$APP/Contents/Info.plist"
-          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$CORE_STARTUP_LOG"
+          /usr/bin/codesign --force --deep --sign - "$APP"
+          /usr/bin/codesign --verify --deep --strict "$APP"
 
+          mv services/local-core/.venv "$RUNNER_TEMP/book-os-build-venv"
+          mv services/local-core/src "$RUNNER_TEMP/book-os-source-hidden"
+          test ! -e services/local-core/.venv
+          test ! -e services/local-core/src
+
+          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$PROJECT_MARKER" "$CORE_STARTUP_LOG"
           BOOK_OS_FRONTEND_READY_FILE="$FRONTEND_MARKER" \
           BOOK_OS_CORE_READY_FILE="$CORE_MARKER" \
+          BOOK_OS_PACKAGED_PROJECT_PROBE_FILE="$PROJECT_MARKER" \
           "$EXEC" >"$LOG" 2>&1 &
           PID=$!
           cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
           trap cleanup EXIT
 
-          # Match the desktop Core startup budget and leave margin for a loaded macOS runner.
           for _ in {1..300}; do
-            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ]; then
-              break
-            fi
+            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ] && [ -s "$PROJECT_MARKER" ]; then break; fi
             if ! kill -0 "$PID" 2>/dev/null; then
               dump_logs
-              echo "BOOK OS packaged app exited before frontend/core readiness"
+              echo "BOOK OS packaged app exited before frontend/core/project readiness"
               exit 1
             fi
             sleep 0.25
@@ -112,17 +130,25 @@ jobs:
           fi
           if [ ! -s "$CORE_MARKER" ]; then
             dump_logs
-            echo "BOOK OS packaged app stayed alive but the local core never became healthy"
+            echo "BOOK OS packaged app stayed alive but the bundled Local Core never became healthy"
+            exit 1
+          fi
+          if [ ! -s "$PROJECT_MARKER" ]; then
+            dump_logs
+            echo "Bundled Local Core started but could not create the first migrated book project"
             exit 1
           fi
 
           grep -F "ready" "$FRONTEND_MARKER"
           grep -F "healthy" "$CORE_MARKER"
+          grep -E '^[0-9A-HJKMNP-TV-Z]{26}$' "$PROJECT_MARKER"
           grep -F "BOOK OS frontend ready" "$LOG"
           grep -F "BOOK OS local core healthy" "$LOG"
+          grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
           cat "$CORE_STARTUP_LOG"
 
           test -x "$DESKTOP_EXEC"
+          test -x "$DESKTOP_CORE"
           /usr/bin/plutil -lint "$DESKTOP_APP/Contents/Info.plist"
           /usr/bin/codesign --verify --deep --strict "$DESKTOP_APP"
           grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$LOG"
@@ -136,9 +162,7 @@ jobs:
           PID=$!
 
           for _ in {1..300}; do
-            if [ -s "$DESKTOP_FRONTEND_MARKER" ] && [ -s "$DESKTOP_CORE_MARKER" ]; then
-              break
-            fi
+            if [ -s "$DESKTOP_FRONTEND_MARKER" ] && [ -s "$DESKTOP_CORE_MARKER" ]; then break; fi
             if ! kill -0 "$PID" 2>/dev/null; then
               LOG="$DESKTOP_LOG" dump_logs
               echo "Installed BOOK OS Desktop app exited before frontend/core readiness"
@@ -154,7 +178,7 @@ jobs:
           fi
           if [ ! -s "$DESKTOP_CORE_MARKER" ]; then
             LOG="$DESKTOP_LOG" dump_logs
-            echo "Installed BOOK OS Desktop app stayed alive but the local core never became healthy"
+            echo "Installed BOOK OS Desktop app stayed alive but the bundled Local Core never became healthy"
             exit 1
           fi
 
@@ -163,7 +187,132 @@ jobs:
           grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$DESKTOP_LOG"
           grep -F "BOOK OS frontend ready" "$DESKTOP_LOG"
           grep -F "BOOK OS local core healthy" "$DESKTOP_LOG"
+          grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
           cat "$CORE_STARTUP_LOG"
+      - name: Package owner-test BOOK OS app
+        run: |
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            "$HOME/Desktop/BOOK OS.app" \
+            "$RUNNER_TEMP/BOOK-OS-macOS-owner-test.zip"
+          test -s "$RUNNER_TEMP/BOOK-OS-macOS-owner-test.zip"
+      - name: Upload owner-test BOOK OS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOOK-OS-macOS-owner-test
+          path: ${{ runner.temp }}/BOOK-OS-macOS-owner-test.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-signing-preflight:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Require Apple distribution credentials
+        shell: bash
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name GitHub Actions secret is required for Developer ID signing and notarization"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+  macos-production-release:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: [local-core, desktop, tauri-smoke, macos-native-launch, macos-signing-preflight]
+    runs-on: macos-latest
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/desktop/pnpm-lock.yaml }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Import Developer ID Application certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/book-os-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/book-os-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          APPLE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "::error::The imported certificate is not a valid Developer ID Application signing identity"
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "BOOK_OS_BUILD_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+      - name: Prepare standalone Local Core
+        run: |
+          python3.12 -m venv services/local-core/.venv
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-build.lock
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --prod=false
+      - name: Build signed and notarized macOS app
+        working-directory: apps/desktop
+        run: pnpm tauri build --bundles app
+      - name: Verify Developer ID signature and notarization ticket
+        shell: bash
+        run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          test -d "$APP"
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP"
+          /usr/bin/codesign -dv --verbose=4 "$APP" 2>&1 | grep -F "Authority=Developer ID Application:"
+          /usr/bin/xcrun stapler validate "$APP"
+          /usr/sbin/spctl --assess --type execute --verbose=4 "$APP"
+      - name: Package and Gatekeeper-check final quarantined artifact
+        shell: bash
+        run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          ZIP="$RUNNER_TEMP/BOOK-OS-macOS.zip"
+          PROBE_DIR="$RUNNER_TEMP/book-os-release-probe"
+          PROBE_APP="$PROBE_DIR/BOOK OS.app"
+
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+          test -s "$ZIP"
+          rm -rf "$PROBE_DIR"
+          mkdir -p "$PROBE_DIR"
+          /usr/bin/ditto -x -k "$ZIP" "$PROBE_DIR"
+          test -d "$PROBE_APP"
+          /usr/bin/xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");BOOK-OS-CI;" "$PROBE_APP"
+          /usr/bin/codesign --verify --deep --strict "$PROBE_APP"
+          /usr/bin/xcrun stapler validate "$PROBE_APP"
+          /usr/sbin/spctl --assess --type execute --verbose=4 "$PROBE_APP"
+      - name: Upload production BOOK OS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOOK-OS-macOS
+          path: ${{ runner.temp }}/BOOK-OS-macOS.zip
+          if-no-files-found: error
+          retention-days: 7
+
   secret-scan:
     runs-on: ubuntu-latest
     permissions:

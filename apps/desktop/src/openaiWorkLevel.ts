@@ -1,5 +1,15 @@
 export type OpenAIWorkLevel = "medium" | "high" | "xhigh";
 
+// Validated against this account's non-billable OpenAI Models metadata on 2026-09-10.
+// Model identity and reasoning effort are separate API fields.
+export const OPENAI_ASTRA_MODELS = [
+  {
+    id: "gpt-6-astra",
+    label: "GPT-6 Astra",
+    workLevels: ["medium", "high", "xhigh"] as const,
+  },
+] as const;
+
 export const OPENAI_WORK_LEVEL_OPTIONS: ReadonlyArray<{
   value: OpenAIWorkLevel;
   label: string;

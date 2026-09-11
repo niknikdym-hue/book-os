@@ -142,6 +142,10 @@ class DraftingService:
             "target_characters": context.target_characters,
             "min_characters": context.min_characters,
             "max_characters": context.max_characters,
+            "include_bibliography": context.include_bibliography,
+            "plan_illustrations": context.plan_illustrations,
+            "visual_asset_format": context.visual_asset_format,
+            "visual_materials_policy": context.visual_materials_policy,
             "characters_unit": context.characters_unit,
         }
 
@@ -166,6 +170,10 @@ class DraftingService:
         run_id = new_ulid()
         try:
             choice = self._resolve_choice(book_id, request)
+            if request.reasoning_effort is not None and choice.provider in PROVIDERS:
+                self._routing.validate_work_level(
+                    choice.provider, choice.model, request.reasoning_effort
+                )
             book_context = self._book_context_payload(
                 book_id, required=choice.provider in PROVIDERS
             )
@@ -371,6 +379,11 @@ class DraftingService:
                 "selection_mode": choice.selection_mode,
                 "selection_scope": choice.selection_scope,
                 "routing_rationale": choice.rationale,
+                "model_label": (
+                    ModelRoutingService.model_label(choice.provider, choice.model)
+                    if choice.provider in PROVIDERS
+                    else choice.model
+                ),
                 "reasoning_effort": reasoning_effort,
                 "book_context_hashes": cast(
                     dict[str, JSONValue], model_request.task_payload.get("book_context_hashes", {})

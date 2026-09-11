@@ -1,53 +1,103 @@
-import { useEffect, useState } from "react";
-import {
-  getPendingOpenAIWorkLevel,
-  OPENAI_WORK_LEVEL_OPTIONS,
-  openAIWorkLevelLabel,
-  setPendingOpenAIWorkLevel,
-  subscribeOpenAIWorkLevel,
-  type OpenAIWorkLevel,
-} from "./openaiWorkLevel";
+import { useCallback, useEffect, useState } from "react";
+import { coreApi } from "./api";
 
-export function OpenAIWorkLevelPanel() {
-  const [workLevel, setWorkLevel] = useState<OpenAIWorkLevel | null>(
-    getPendingOpenAIWorkLevel(),
-  );
+type SettingsApi = <T>(
+  method: "GET" | "POST" | "PUT",
+  path: string,
+  body?: unknown,
+) => Promise<T>;
 
-  useEffect(() => subscribeOpenAIWorkLevel(setWorkLevel), []);
+type LaunchReadiness = {
+  openai_credential_state: "AVAILABLE" | "NOT_AVAILABLE";
+};
+
+type Props = {
+  api?: SettingsApi;
+};
+
+export function OpenAIWorkLevelPanel({ api = coreApi }: Props) {
+  const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setReadiness(await api<LaunchReadiness>("GET", "/api/launch/readiness"));
+  }, [api]);
+
+  useEffect(() => {
+    void reload().catch((reason: unknown) => setError(String(reason)));
+  }, [reload]);
+
+  async function saveOpenAIKey() {
+    if (!apiKey.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api("POST", "/api/launch/openai-key", { api_key: apiKey.trim() });
+      setApiKey("");
+      await reload();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const available = readiness?.openai_credential_state === "AVAILABLE";
 
   return (
-    <section className="panel" aria-label="Уровень работы OpenAI">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">OPENAI · СЛЕДУЮЩАЯ ОПЕРАЦИЯ</p>
-          <h3>Уровень работы модели</h3>
+    <details className="utility-drawer global-advanced-settings" id="openai-settings">
+      <summary>Настройки / Advanced</summary>
+      <section className="panel" aria-label="Настройки OpenAI">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">СЛУЖЕБНЫЕ НАСТРОЙКИ</p>
+            <h3>OpenAI API</h3>
+          </div>
+          <span className={`badge ${available ? "approved" : "draft"}`}>
+            {available ? "ПОДКЛЮЧЁН" : "НЕ ПОДКЛЮЧЁН"}
+          </span>
         </div>
-        <span className={`badge ${workLevel ? "approved" : "draft"}`}>
-          {openAIWorkLevelLabel(workLevel)}
-        </span>
-      </div>
-      <p className="muted">
-        Выберите уровень для следующей OpenAI-операции. После любой попытки BOOK OS сбросит выбор,
-        поэтому следующая существенная операция снова потребует явного решения. Authority, этапы,
-        quality gates и редакционные правила от уровня модели не меняются.
-      </p>
-      <div className="actions planning-action">
-        {OPENAI_WORK_LEVEL_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className={workLevel === option.value ? "primary" : "ghost"}
-            aria-pressed={workLevel === option.value}
-            onClick={() => setPendingOpenAIWorkLevel(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      <small className="muted">
-        Medium = medium · High = high · Extra High = xhigh. Точный уровень сохраняется в provenance
-        модельного запуска.
-      </small>
-    </section>
+
+        <p className="muted">
+          Здесь находится техническое подключение OpenAI. В обычной авторской панели остаются только
+          работа над книгой, три режима GPT-6 Astra и ограничение стоимости вызова.
+        </p>
+
+        {!available && (
+          <div className="credential-setup">
+            <label className="field">
+              <span>API-ключ OpenAI</span>
+              <small>Ключ сохраняется локально в macOS Keychain и не выводится обратно в интерфейс.</small>
+              <input
+                aria-label="API-ключ OpenAI"
+                type="password"
+                autoComplete="off"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder="sk-…"
+              />
+            </label>
+            <button
+              className="primary"
+              type="button"
+              disabled={busy || apiKey.trim().length < 10}
+              onClick={() => void saveOpenAIKey()}
+            >
+              {busy ? "Сохраняю…" : "Сохранить OpenAI в Keychain"}
+            </button>
+          </div>
+        )}
+
+        {available && (
+          <p className="selected-topic-summary" role="status">
+            OpenAI подключён. Смена ключа не требуется для обычной работы над книгой.
+          </p>
+        )}
+
+        {error && <div className="alert inline-alert">{error}</div>}
+      </section>
+    </details>
   );
 }

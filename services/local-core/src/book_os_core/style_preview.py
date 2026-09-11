@@ -30,7 +30,9 @@ class StylePreviewError(RuntimeError):
 
 class StylePreviewRequest(BaseModel):
     author_profile_id: str = Field(min_length=26, max_length=26)
-    style_profile_ids: list[str] = Field(min_length=2, max_length=3)
+    # A preview can be a comparison, but a writer must also be able to try one
+    # chosen set of settings before committing it to the book.
+    style_profile_ids: list[str] = Field(min_length=1, max_length=3)
     content_brief: str = Field(min_length=20, max_length=5000)
     provider: Literal["openai", "yandex"]
     selection_mode: Literal["AUTO", "MANUAL"] = "AUTO"
@@ -300,3 +302,19 @@ class StylePreviewService:
             total_cap_usd=request.max_cost_usd_per_request * len(styles),
             previews=previews,
         )
+
+    def delete_preview(self, book_id: str, preview_id: str) -> None:
+        """Delete an isolated preview only; manuscript and authority records are untouched."""
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                result = connection.execute(
+                    text(
+                        "DELETE FROM style_preview_runs WHERE book_id=:book_id AND preview_id=:preview_id"
+                    ),
+                    {"book_id": book_id, "preview_id": preview_id},
+                )
+                if result.rowcount != 1:
+                    raise StylePreviewError("style preview was not found")
+        finally:
+            engine.dispose()

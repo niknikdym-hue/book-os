@@ -1,13 +1,25 @@
 from pathlib import Path
+import sys
 from typing import Any
+
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 
 
+def migration_root() -> Path:
+    """Return the migration root for source and PyInstaller-frozen Local Core runtimes."""
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if isinstance(frozen_root, str) and frozen_root:
+        return Path(frozen_root)
+    return Path(__file__).parents[2]
+
+
 def alembic_config(path: Path) -> Config:
-    config = Config(str(Path(__file__).parents[2] / "alembic.ini"))
+    root = migration_root()
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "alembic"))
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
     return config
 

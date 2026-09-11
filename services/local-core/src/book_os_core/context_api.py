@@ -95,4 +95,12 @@ def build_context_router(
         except (StylePreviewError, BookContextError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @router.delete("/api/projects/{book_id}/style-previews/{preview_id}")
+    def delete_style_preview(book_id: str, preview_id: str) -> dict[str, bool]:
+        try:
+            style_previews.delete_preview(book_id, preview_id)
+            return {"deleted": True}
+        except StylePreviewError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     return router

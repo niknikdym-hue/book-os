@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { App } from "./App";
 import type { ProjectView } from "./types";
@@ -50,8 +50,14 @@ beforeEach(() => {
   invokeMock.mockReset();
 });
 
+afterEach(() => {
+  cleanup();
+});
+
 function commonGet(request: { method: string; path: string }) {
   if (request.method === "GET" && request.path === "/api/anti-junk") return [];
+  if (request.method === "GET" && request.path === "/api/library") return [];
+  if (request.method === "GET" && request.path.endsWith("/auto-book")) return null;
   if (request.method === "GET" && request.path === "/api/launch/readiness") {
     return {
       openai_credential_state: "AVAILABLE",
@@ -115,7 +121,7 @@ it("показывает реальный каталог тем, отражае�
   expect(screen.getByRole("heading", { name: "Производственный маршрут книги" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Контракт/ })).toBeEnabled();
   expect(screen.getByRole("button", { name: /Архитектура/ })).toBeDisabled();
-  expect(screen.getAllByText("Опишите идею книги").length).toBeGreaterThan(0);
+  expect(screen.getByRole("heading", { name: "Создать книгу автоматически" })).toBeInTheDocument();
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
@@ -155,7 +161,8 @@ it("показывает автору следующий шаг и сохран�
 
   render(<App />);
   await screen.findByText("Локальное ядро: работает");
-  fireEvent.click(await screen.findByRole("button", { name: /Operating Book/ }));
+  const activeBooks = screen.getByRole("navigation", { name: "Активные книги" });
+  fireEvent.click(within(activeBooks).getByRole("button", { name: /^Operating Book/ }));
   expect(await screen.findByText("ЧЕРНОВИК")).toBeInTheDocument();
   expect(screen.getByText("Проверьте контракт книги")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: "Перейти к шагу" }).length).toBeGreaterThan(0);

@@ -141,3 +141,36 @@ def test_manual_whole_book_selection_from_preview_persists_explicit_pin(tmp_path
     assert pin is not None
     assert pin.provider == "openai"
     assert pin.model == "gpt-6-astra"
+
+
+def test_one_style_can_be_tried_without_mutating_the_manuscript(tmp_path: Path) -> None:
+    project_service = ProjectService(tmp_path)
+    project = project_service.create_project(
+        NewBookRequest(working_title="Один пробный вариант", primary_subtype="Strategy")
+    )
+    registry = ProfileRegistry(tmp_path)
+    author = approved_author(registry)
+    selected_style = style(registry, author.profile_id, "Современная проза", "Ясный регистр")
+    service = StylePreviewService(
+        tmp_path,
+        ModelGateway({"openai": DeterministicFakeAdapter(), "yandex": DeterministicFakeAdapter()}),
+    )
+
+    result = service.generate(
+        project.book_id,
+        StylePreviewRequest(
+            author_profile_id=author.profile_id,
+            style_profile_ids=[selected_style.profile_id],
+            content_brief="Показать короткую сцену, в которой герой делает важный выбор для своей команды.",
+            provider="openai",
+            selection_mode="MANUAL",
+            selection_scope="OPERATION",
+            model="gpt-6-astra",
+            max_cost_usd_per_request=0.20,
+        ),
+    )
+
+    assert len(result.previews) == 1
+    assert result.previews[0].model == "gpt-6-astra"
+    assert result.total_cap_usd == 0.20
+    assert project_service.get_project(project.book_id).chapters == []
