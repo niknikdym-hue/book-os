@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .anti_junk import AntiJunkService
+from .auto_book_api import build_auto_book_router
 from .launch_api import build_launch_router
 from .model_gateway import ModelGateway, OpenAIResponsesAdapter
 from .model_gateway_anti_junk import AntiJunkModelGateway
@@ -60,6 +61,7 @@ def build_pilot_router(data_dir: Path, require_token: Callable[..., None]) -> AP
         anti_junk,
     )
     router.include_router(build_launch_router(data_dir, require_token, launch_gateway))
+    router.include_router(build_auto_book_router(data_dir, require_token, launch_gateway))
     router.include_router(build_project_lifecycle_router(data_dir, require_token))
 
     def raise_http(exc: PilotError) -> None:
