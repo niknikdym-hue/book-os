@@ -13,6 +13,7 @@ from .launch_api import build_launch_router
 from .model_gateway import ModelGateway
 from .provider_adapters import BookOSOpenAIResponsesAdapter, YandexChatCompletionsAdapter
 from .secrets import MacOSKeychainSecretStore
+from .series_studio_api import build_series_studio_router
 
 
 class ReadyServer(uvicorn.Server):
@@ -54,6 +55,7 @@ def main() -> None:
 
     app.include_router(build_context_router(data_dir, require_token, gateway))
     app.include_router(build_launch_router(data_dir, require_token, gateway))
+    app.include_router(build_series_studio_router(data_dir, require_token, gateway))
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
