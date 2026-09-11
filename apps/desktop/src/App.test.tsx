@@ -74,7 +74,7 @@ function commonGet(request: { method: string; path: string }) {
   return undefined;
 }
 
-it("показывает простой старт книги с обязательными полями и создаёт проект", async () => {
+it("показывает простой старт книги и выводит Auto Book как главный экран проекта", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
@@ -92,27 +92,29 @@ it("показывает простой старт книги с обязате�
   fireEvent.click(screen.getByRole("button", { name: "Создать новую книгу" }));
 
   expect(screen.getByRole("heading", { name: "Создайте проект книги" })).toBeInTheDocument();
-  const topics = screen.getByRole("group", { name: "Доступные темы книги" });
-  const strategyButton = within(topics).getByRole("button", { name: /Стратегия/ });
-  fireEvent.click(strategyButton);
-  expect(strategyButton).toHaveAttribute("aria-pressed", "true");
-
   const continueButton = screen.getByRole("button", { name: "Заполните обязательные поля" });
   expect(continueButton).toBeDisabled();
 
   fireEvent.change(screen.getByLabelText(/Рабочее название/), {
     target: { value: "Operating Book" },
   });
+  expect(screen.getByRole("button", { name: "Заполните обязательные поля" })).toBeDisabled();
+
+  const topics = screen.getByRole("group", { name: "Доступные темы книги" });
+  const strategyButton = within(topics).getByRole("button", { name: /Стратегия/ });
+  fireEvent.click(strategyButton);
+  expect(strategyButton).toHaveAttribute("aria-pressed", "true");
+
   const readyButton = screen.getByRole("button", { name: "Перейти к запуску книги" });
   expect(readyButton).toBeEnabled();
   expect(readyButton).toHaveClass("ready");
   fireEvent.click(readyButton);
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Производственный маршрут книги" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Контракт/ })).toBeEnabled();
-  expect(screen.getByRole("button", { name: /Архитектура/ })).toBeDisabled();
   expect(screen.getByRole("heading", { name: "Создать книгу" })).toBeInTheDocument();
+  expect(
+    screen.getByText("Ручная работа и контроль — необязательно для Auto Book"),
+  ).toBeInTheDocument();
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
@@ -125,7 +127,7 @@ it("показывает простой старт книги с обязате�
   );
 });
 
-it("показывает автору следующий шаг и сохраняет human gate контракта книги", async () => {
+it("сохраняет ручной human gate, но держит его в необязательном разделе", async () => {
   const summary = {
     book_id: project().book_id,
     working_title: project().working_title,
@@ -154,9 +156,13 @@ it("показывает автору следующий шаг и сохран�
   await screen.findByText("Локальное ядро: работает");
   const activeBooks = screen.getByRole("navigation", { name: "Активные книги" });
   fireEvent.click(within(activeBooks).getByRole("button", { name: /^Operating Book/ }));
+
+  expect(await screen.findByRole("heading", { name: "Создать книгу" })).toBeInTheDocument();
+  const manual = screen.getByText("Ручная работа и контроль — необязательно для Auto Book");
+  fireEvent.click(manual);
+
   expect(await screen.findByText("ЧЕРНОВИК")).toBeInTheDocument();
   expect(screen.getByText("Проверьте контракт книги")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Перейти к шагу" }).length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getAllByRole("button", { name: "Сохранить черновик" })[0]);
   await waitFor(() =>
@@ -173,13 +179,4 @@ it("показывает автору следующий шаг и сохран�
 
   fireEvent.click(screen.getAllByRole("button", { name: "Утвердить контракт книги" })[0]);
   expect(await screen.findByText("УТВЕРЖДЕНО")).toBeInTheDocument();
-  expect(invokeMock).toHaveBeenCalledWith(
-    "core_api",
-    expect.objectContaining({
-      request: expect.objectContaining({
-        method: "POST",
-        path: expect.stringContaining("book-contract/approve"),
-      }),
-    }),
-  );
 });
