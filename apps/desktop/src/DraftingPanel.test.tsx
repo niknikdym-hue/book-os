@@ -52,7 +52,7 @@ const calls: Array<{ method: string; path: string; body?: unknown }> = [];
 function success(
   model = "gpt-6-astra",
   reasoning: DraftRunView["reasoning_effort"] = "high",
-  selectionMode = "MANUAL",
+  selectionMode: DraftRunView["selection_mode"] = "MANUAL",
 ): DraftRunView {
   return {
     task_id: "01JTASK0000000000000000000",
