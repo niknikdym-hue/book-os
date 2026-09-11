@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+import httpx
 
 from .auto_book import (
     AutoBookError,
@@ -15,7 +16,7 @@ from .auto_book import (
 )
 from .auto_book_finalizer import AutoBookFinalizer
 from .book_context import BookContextService
-from .model_gateway import ModelGateway
+from .model_gateway import ModelGateway, ModelProviderError
 from .series_production import SeriesProductionGateError, SeriesProductionService
 
 
@@ -36,6 +37,28 @@ def build_auto_book_router(
         if isinstance(exc, AutoBookGateError):
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def pause_after_provider_disconnect(book_id: str, exc: Exception) -> None:
+        """Keep an Auto Book run resumable after a provider/network interruption.
+
+        Model requests are intentionally not retried automatically: a transport failure can happen
+        after the provider has already accepted a paid request. Retrying blindly could duplicate cost.
+        The run stays RUNNING at the same phase so the owner can safely continue from the UI.
+        """
+
+        state = service.get(book_id)
+        if state is not None:
+            state.status = "RUNNING"
+            state.error = str(exc)
+            state.last_action = "Temporary model connection interruption; progress saved"
+            service._write(state)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Временный обрыв связи с моделью. Прогресс Auto Book сохранён. "
+                "Нажмите «Продолжить с сохранённого места»."
+            ),
+        ) from exc
 
     def require_series_writing_gate(book_id: str, state: AutoBookRunView) -> None:
         if state.phase != "CHAPTER_DRAFT" or state.current_chapter_id is None:
@@ -131,6 +154,8 @@ def build_auto_book_router(
             require_series_writing_gate(book_id, current)
             state = service.advance(book_id)
             return finalize_if_needed(book_id, state).model_dump(mode="json")
+        except (httpx.TransportError, ModelProviderError) as exc:
+            pause_after_provider_disconnect(book_id, exc)
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
