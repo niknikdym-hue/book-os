@@ -73,9 +73,7 @@ class ProjectLifecycleService:
                 working_title=str(row["working_title"]),
                 primary_subtype=str(row["primary_subtype"]),
                 secondary_subtype=(
-                    str(row["secondary_subtype"])
-                    if row["secondary_subtype"] is not None
-                    else None
+                    str(row["secondary_subtype"]) if row["secondary_subtype"] is not None else None
                 ),
                 workflow_stage=str(row["workflow_stage"]),
             )
@@ -127,9 +125,7 @@ class ProjectLifecycleService:
             raise ProjectLifecycleError(f"failed to delete book project: {book_id}") from exc
 
 
-def build_project_lifecycle_router(
-    data_dir: Path, require_token: Callable[..., None]
-) -> APIRouter:
+def build_project_lifecycle_router(data_dir: Path, require_token: Callable[..., None]) -> APIRouter:
     service = ProjectLifecycleService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
 
