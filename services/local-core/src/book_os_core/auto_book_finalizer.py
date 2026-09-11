@@ -365,7 +365,7 @@ class AutoBookFinalizer:
                     "run_ids": dimension.run_ids,
                 }
             )
-        status = "BLOCKING" if blocking else "ATTENTION" if attention else "PASS"
+        status = cast(Any, "BLOCKING" if blocking else "ATTENTION" if attention else "PASS")
         checkpoint = self.series.record_checkpoint(
             book_id,
             ProductionCheckpointRequest(
