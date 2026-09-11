@@ -171,18 +171,13 @@ class SeriesReferenceService:
     def _clean_text(value: str) -> str:
         normalized = value.replace("\r\n", "\n").replace("\r", "\n")
         paragraphs = [
-            re.sub(r"[ \t]+", " ", item).strip()
-            for item in re.split(r"\n\s*\n", normalized)
+            re.sub(r"[ \t]+", " ", item).strip() for item in re.split(r"\n\s*\n", normalized)
         ]
         return "\n\n".join(item for item in paragraphs if item)
 
     @staticmethod
     def _sentences(text_value: str) -> list[str]:
-        return [
-            item.strip()
-            for item in re.split(r"(?<=[.!?…])\s+", text_value)
-            if item.strip()
-        ]
+        return [item.strip() for item in re.split(r"(?<=[.!?…])\s+", text_value) if item.strip()]
 
     @classmethod
     def _calibration(cls, text_value: str) -> tuple[dict[str, Any], list[str]]:
@@ -302,7 +297,9 @@ class SeriesReferenceService:
             )
         )
         if request.owner_approves_derived_style is not True:
-            raise SeriesReferenceError("explicit owner approval is required for derived Style Profile")
+            raise SeriesReferenceError(
+                "explicit owner approval is required for derived Style Profile"
+            )
         style = self.profiles.approve_profile(style.profile_id)
 
         series_dir = self.storage_dir / series_profile_id / reference_id
