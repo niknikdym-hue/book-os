@@ -16,7 +16,7 @@ from .auto_book import (
 )
 from .auto_book_finalizer import AutoBookFinalizer
 from .book_context import BookContextService
-from .model_gateway import ModelGateway, ModelProviderError
+from .model_gateway import ModelGateway
 from .series_production import SeriesProductionGateError, SeriesProductionService
 
 
@@ -154,7 +154,7 @@ def build_auto_book_router(
             require_series_writing_gate(book_id, current)
             state = service.advance(book_id)
             return finalize_if_needed(book_id, state).model_dump(mode="json")
-        except (httpx.TransportError, ModelProviderError) as exc:
+        except httpx.TransportError as exc:
             pause_after_provider_disconnect(book_id, exc)
         except AutoBookError as exc:
             raise_http(exc)
