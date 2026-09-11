@@ -587,7 +587,9 @@ class AutoBookService:
                 state.phase = "DONE"
                 state.status = "DONE"
                 state.last_action = (
-                    "LitRes-ready DOCX created" if state.output_path else "Auto Book draft completed"
+                    "LitRes-ready DOCX created"
+                    if state.output_path
+                    else "Auto Book draft completed"
                 )
 
             elif state.phase == "DONE":
@@ -636,12 +638,12 @@ class AutoBookService:
         body_parts: list[str] = []
         for title, chapter_text in chapters:
             body_parts.append(
-                "<w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr>"
+                '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
                 f"<w:r><w:t>{self._xml_text(title)}</w:t></w:r></w:p>"
             )
             for paragraph in [item.strip() for item in chapter_text.split("\n\n") if item.strip()]:
                 body_parts.append(
-                    "<w:p><w:r><w:t xml:space=\"preserve\">"
+                    '<w:p><w:r><w:t xml:space="preserve">'
                     f"{self._xml_text(paragraph)}"
                     "</w:t></w:r></w:p>"
                 )
