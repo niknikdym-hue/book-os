@@ -153,10 +153,12 @@ export function LaunchPlanningPanel({
     ]);
     setBookContext(context);
     setProfiles(availableProfiles);
-    if (context.target_characters && targetCharacters === "180000") {
-      setTargetCharacters(String(context.target_characters));
-    }
-  }, [api, project.book_id, targetCharacters]);
+    setTargetCharacters((current) =>
+      context.target_characters && current === "180000"
+        ? String(context.target_characters)
+        : current,
+    );
+  }, [api, project.book_id]);
 
   useEffect(() => {
     void Promise.all([reloadReadiness(), reloadAutoState(), reloadContext()]).catch(
