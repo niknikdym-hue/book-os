@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+import httpx
 
 from .auto_book import (
     AutoBookError,
@@ -36,6 +37,36 @@ def build_auto_book_router(
         if isinstance(exc, AutoBookGateError):
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def pause_after_provider_disconnect(book_id: str, exc: Exception) -> None:
+        """Keep an Auto Book run resumable after a provider/network interruption.
+
+        Model requests are intentionally not retried automatically: a transport failure can happen
+        after the provider has already accepted a paid request. Retrying blindly could duplicate cost.
+        The uncertain call is conservatively reserved against the owner-authorized budget before the
+        run is exposed as resumable.
+        """
+
+        state = service.get(book_id)
+        if state is not None:
+            try:
+                uncertain_cap = service._remaining_call_cap(state)
+            except AutoBookError:
+                uncertain_cap = None
+            if uncertain_cap is not None:
+                service._consume_call(state, uncertain_cap)
+            state.status = "RUNNING"
+            state.error = str(exc)
+            state.last_action = "Temporary model connection interruption; progress and budget saved"
+            service._write(state)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Временный обрыв связи с моделью. Прогресс Auto Book сохранён, а возможная "
+                "стоимость прерванного запроса учтена в лимите. Нажмите «Продолжить с "
+                "сохранённого места»."
+            ),
+        ) from exc
 
     def require_series_writing_gate(book_id: str, state: AutoBookRunView) -> None:
         if state.phase != "CHAPTER_DRAFT" or state.current_chapter_id is None:
@@ -75,6 +106,14 @@ def build_auto_book_router(
                 state,
                 prepare_litres_docx=state.prepare_litres_docx,
             )
+        except httpx.TransportError:
+            if draft_output is not None:
+                draft_output.unlink(missing_ok=True)
+            state.status = "RUNNING"
+            state.phase = "EXPORT"
+            state.output_path = None
+            service._write(state)
+            raise
         except Exception as exc:
             if draft_output is not None:
                 draft_output.unlink(missing_ok=True)
@@ -131,6 +170,8 @@ def build_auto_book_router(
             require_series_writing_gate(book_id, current)
             state = service.advance(book_id)
             return finalize_if_needed(book_id, state).model_dump(mode="json")
+        except httpx.TransportError as exc:
+            pause_after_provider_disconnect(book_id, exc)
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")

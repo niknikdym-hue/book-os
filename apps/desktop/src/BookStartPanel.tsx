@@ -1,8 +1,7 @@
-import { useRef } from "react";
+import { useState } from "react";
 import "./launchUx.css";
 import {
   AVAILABLE_BUSINESS_SUBTYPES,
-  BOOK_CATEGORIES,
   BUSINESS_TOPICS,
   SUBTYPE_LABELS,
   type BusinessSubtype,
@@ -31,22 +30,22 @@ export function BookStartPanel({
   onCreate,
   onClose,
 }: Props) {
-  const topicsRef = useRef<HTMLDivElement>(null);
-  const detailsRef = useRef<HTMLDivElement>(null);
-
-  function goTo(element: HTMLDivElement | null) {
-    element?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-  }
+  const [topicConfirmed, setTopicConfirmed] = useState(false);
+  const availableTopics = BUSINESS_TOPICS.filter(
+    (topic) => topic.availability === "AVAILABLE" && Boolean(topic.subtype),
+  );
+  const titleReady = newTitle.trim().length > 0;
+  const topicReady = topicConfirmed && Boolean(primarySubtype);
+  const canCreate = !busy && titleReady && topicReady;
 
   return (
-    <section className="panel new-book book-start-panel" aria-label="Создание новой книги">
+    <section className="panel new-book book-start-panel simplified-book-start" aria-label="Создание новой книги">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">НОВАЯ КНИГА · ШАГ 1</p>
-          <h2>Выберите направление книги</h2>
+          <p className="eyebrow">НОВАЯ КНИГА</p>
+          <h2>Создайте проект книги</h2>
           <p className="muted">
-            BOOK OS показывает весь каталог, но открыть можно только те направления, для которых уже
-            есть проверяемый production-профиль.
+            Здесь только два обязательных выбора. После создания проекта откроется единый запуск Auto Book.
           </p>
         </div>
         <button className="ghost" onClick={onClose} type="button">
@@ -54,94 +53,59 @@ export function BookStartPanel({
         </button>
       </div>
 
-      <div className="category-grid" aria-label="Разделы книг">
-        {BOOK_CATEGORIES.map((category) => {
-          const available = category.availability === "AVAILABLE";
-          return (
-            <button
-              key={category.id}
-              type="button"
-              className={`category-card ${available ? "available selected" : "locked"}`}
-              disabled={!available}
-              aria-label={`${category.label}${available ? ", доступно" : ", в разработке"}`}
-              onClick={() => available && goTo(topicsRef.current)}
-            >
-              <span className={`availability ${available ? "ready" : "soon"}`}>
-                {available ? "Доступно" : "В разработке"}
-              </span>
-              <strong>{category.label}</strong>
-              <small>{category.description}</small>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="catalog-section" ref={topicsRef}>
-        <div className="subheading">
-          <div>
-            <p className="eyebrow">БИЗНЕС</p>
-            <h3>Выберите тему</h3>
-          </div>
-          <span className="muted">Активны только реально поддерживаемые темы</span>
-        </div>
-        <div className="topic-grid" aria-label="Темы раздела Бизнес">
-          {BUSINESS_TOPICS.map((topic) => {
-            const available = topic.availability === "AVAILABLE" && Boolean(topic.subtype);
-            const selected = available && topic.subtype === primarySubtype;
-            return (
-              <button
-                key={topic.id}
-                type="button"
-                className={`topic-card ${selected ? "selected" : ""} ${available ? "available" : "locked"}`}
-                disabled={!available}
-                aria-pressed={selected}
-                aria-label={`${topic.label}${available ? ", доступно" : ", в разработке"}`}
-                onClick={() => {
-                  if (!topic.subtype) return;
-                  setPrimarySubtype(topic.subtype);
-                  goTo(detailsRef.current);
-                }}
-                title={topic.note ?? topic.description}
-              >
-                <span className={`availability ${available ? "ready" : "soon"}`}>
-                  {selected ? "Выбрано ✓" : available ? "Доступно сейчас" : "В разработке"}
-                </span>
-                <strong>{topic.label}</strong>
-                <small>{topic.description}</small>
-                {!available && topic.note && <em>{topic.note}</em>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="start-details" ref={detailsRef}>
-        <div>
-          <p className="eyebrow">ШАГ 2</p>
-          <h3>Назовите рабочий проект</h3>
-          <p className="muted">
-            Название можно изменить позже. После создания проекта BOOK OS попросит описать саму идею
-            книги и предложит контракт.
-          </p>
-        </div>
-        <label className="field">
-          <span>Рабочее название</span>
+      <div className="start-details simple-start-details">
+        <label className="field required-field">
+          <span>
+            Рабочее название <b className="required-mark">*</b>
+          </span>
           <input
             value={newTitle}
             onChange={(event) => setNewTitle(event.target.value)}
-            placeholder="Например: Бизнес держится на мне"
+            placeholder="Например: Как продавать услуги"
+            aria-invalid={!titleReady}
           />
+          <small>Название можно изменить позже.</small>
         </label>
+
+        <div className="field required-field">
+          <span>
+            Тема книги <b className="required-mark">*</b>
+          </span>
+          <div className="topic-grid start-topic-grid" role="group" aria-label="Доступные темы книги">
+            {availableTopics.map((topic) => {
+              const selected = topicConfirmed && topic.subtype === primarySubtype;
+              return (
+                <button
+                  key={topic.id}
+                  type="button"
+                  className={`topic-card available compact ${selected ? "selected" : ""}`}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    if (!topic.subtype) return;
+                    setPrimarySubtype(topic.subtype);
+                    setTopicConfirmed(true);
+                  }}
+                >
+                  <span className={`availability ${selected ? "ready" : "soon"}`}>
+                    {selected ? "Выбрано ✓" : "Выбрать"}
+                  </span>
+                  <strong>{topic.label}</strong>
+                  <small>{topic.description}</small>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <details className="advanced-settings">
           <summary>Дополнительная категория — необязательно</summary>
           <label className="field">
             <span>Вторая категория</span>
-            <small>Нужна только если книга действительно лежит на пересечении двух деловых тем.</small>
+            <small>Используйте только если книга действительно лежит на пересечении двух тем.</small>
             <select
               value={secondarySubtype}
               onChange={(event) => setSecondarySubtype(event.target.value)}
-              disabled={!primarySubtype}
+              disabled={!topicReady}
             >
               <option value="">Нет</option>
               {AVAILABLE_BUSINESS_SUBTYPES.filter((value) => value !== primarySubtype).map((value) => (
@@ -153,35 +117,24 @@ export function BookStartPanel({
           </label>
         </details>
 
-        <div className="selected-topic-summary" role="status" aria-live="polite">
-          <small>Выбрано</small>
-          <strong>
-            {primarySubtype ? `Бизнес → ${SUBTYPE_LABELS[primarySubtype]}` : "Сначала выберите тему"}
-          </strong>
+        <div className="launch-readiness compact-readiness" aria-label="Готовность проекта">
+          <span className={titleReady ? "ready" : "missing"}>
+            {titleReady ? "✓" : "○"} Рабочее название
+          </span>
+          <span className={topicReady ? "ready" : "missing"}>
+            {topicReady ? "✓" : "○"} Тема книги
+          </span>
         </div>
 
-        <div className="actions">
-          <button
-            className="primary"
-            onClick={onCreate}
-            disabled={busy || !primarySubtype || newTitle.trim().length === 0}
-          >
-            Создать проект книги
-          </button>
-        </div>
+        <button
+          className={`primary auto-launch-button ${canCreate ? "ready" : ""}`}
+          onClick={onCreate}
+          disabled={!canCreate}
+          type="button"
+        >
+          {canCreate ? "Перейти к запуску книги" : "Заполните обязательные поля"}
+        </button>
       </div>
-
-      <details className="help-drawer">
-        <summary>Как пользоваться BOOK OS</summary>
-        <ol className="help-steps">
-          <li><strong>Выберите направление и тему.</strong> Недоступные профили видны, но не открываются.</li>
-          <li><strong>Опишите идею.</strong> Нескольких точных предложений достаточно для первого предложения BOOK OS.</li>
-          <li><strong>Проверьте и утвердите контракт книги.</strong> AI может предложить, но не может утвердить решение за автора.</li>
-          <li><strong>Проверьте архитектуру.</strong> Части и главы можно править до утверждения.</li>
-          <li><strong>Подготовьте контракт главы и пишите.</strong> BOOK OS ведёт по одной управляемой задаче за раз.</li>
-          <li><strong>Проверьте факты, редактуру и BookBench.</strong> Финал выпускается только после человеческого решения.</li>
-        </ol>
-      </details>
     </section>
   );
 }

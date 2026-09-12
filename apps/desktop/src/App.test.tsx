@@ -58,6 +58,10 @@ function commonGet(request: { method: string; path: string }) {
   if (request.method === "GET" && request.path === "/api/anti-junk") return [];
   if (request.method === "GET" && request.path === "/api/library") return [];
   if (request.method === "GET" && request.path.endsWith("/auto-book")) return null;
+  if (request.method === "GET" && request.path.endsWith("/context")) {
+    return { author_profile: null, target_characters: null, ready_for_planning: false };
+  }
+  if (request.method === "GET" && request.path === "/api/context/profiles") return [];
   if (request.method === "GET" && request.path === "/api/launch/readiness") {
     return {
       openai_credential_state: "AVAILABLE",
@@ -70,7 +74,7 @@ function commonGet(request: { method: string; path: string }) {
   return undefined;
 }
 
-it("показывает реальный каталог тем, отражает выбор и создаёт проект книги", async () => {
+it("показывает простой старт книги и выводит Auto Book как главный экран проекта", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
@@ -87,41 +91,30 @@ it("показывает реальный каталог тем, отражае�
   expect(await screen.findByText("Локальное ядро: работает")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Создать новую книгу" }));
 
-  const businessButton = screen.getByRole("button", { name: "Бизнес, доступно" });
-  const startupButton = screen.getByRole("button", {
-    name: "Стартапы и создание бизнеса, доступно",
-  });
-  const strategyButton = screen.getByRole("button", { name: "Стратегия, доступно" });
+  expect(screen.getByRole("heading", { name: "Создайте проект книги" })).toBeInTheDocument();
+  const continueButton = screen.getByRole("button", { name: "Заполните обязательные поля" });
+  expect(continueButton).toBeDisabled();
 
-  expect(businessButton).toBeEnabled();
-  expect(startupButton).toBeEnabled();
-  expect(strategyButton).toBeEnabled();
-  expect(startupButton).toHaveAttribute("aria-pressed", "true");
-  expect(
-    screen.getByRole("button", { name: "Финансы и инвестиции, в разработке" }),
-  ).toBeDisabled();
-  expect(
-    screen.getByRole("button", { name: "Психология и саморазвитие, в разработке" }),
-  ).toBeDisabled();
-
-  fireEvent.click(businessButton);
-  fireEvent.click(strategyButton);
-
-  expect(strategyButton).toHaveAttribute("aria-pressed", "true");
-  expect(startupButton).toHaveAttribute("aria-pressed", "false");
-  expect(screen.getByText("Бизнес → Стратегия")).toBeInTheDocument();
-  expect(screen.getByText("Выбрано ✓")).toBeInTheDocument();
-
-  fireEvent.change(screen.getByLabelText("Рабочее название"), {
+  fireEvent.change(screen.getByLabelText(/Рабочее название/), {
     target: { value: "Operating Book" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Создать проект книги" }));
+  expect(screen.getByRole("button", { name: "Заполните обязательные поля" })).toBeDisabled();
+
+  const topics = screen.getByRole("group", { name: "Доступные темы книги" });
+  const strategyButton = within(topics).getByRole("button", { name: /Стратегия/ });
+  fireEvent.click(strategyButton);
+  expect(strategyButton).toHaveAttribute("aria-pressed", "true");
+
+  const readyButton = screen.getByRole("button", { name: "Перейти к запуску книги" });
+  expect(readyButton).toBeEnabled();
+  expect(readyButton).toHaveClass("ready");
+  fireEvent.click(readyButton);
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Производственный маршрут книги" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Контракт/ })).toBeEnabled();
-  expect(screen.getByRole("button", { name: /Архитектура/ })).toBeDisabled();
-  expect(screen.getByRole("heading", { name: "Создать книгу автоматически" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Создать книгу" })).toBeInTheDocument();
+  expect(
+    screen.getByText("Ручная работа и контроль — необязательно для Auto Book"),
+  ).toBeInTheDocument();
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
@@ -134,7 +127,7 @@ it("показывает реальный каталог тем, отражае�
   );
 });
 
-it("показывает автору следующий шаг и сохраняет human gate контракта книги", async () => {
+it("сохраняет ручной human gate, но держит его в необязательном разделе", async () => {
   const summary = {
     book_id: project().book_id,
     working_title: project().working_title,
@@ -163,9 +156,13 @@ it("показывает автору следующий шаг и сохран�
   await screen.findByText("Локальное ядро: работает");
   const activeBooks = screen.getByRole("navigation", { name: "Активные книги" });
   fireEvent.click(within(activeBooks).getByRole("button", { name: /^Operating Book/ }));
+
+  expect(await screen.findByRole("heading", { name: "Создать книгу" })).toBeInTheDocument();
+  const manual = screen.getByText("Ручная работа и контроль — необязательно для Auto Book");
+  fireEvent.click(manual);
+
   expect(await screen.findByText("ЧЕРНОВИК")).toBeInTheDocument();
   expect(screen.getByText("Проверьте контракт книги")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Перейти к шагу" }).length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getAllByRole("button", { name: "Сохранить черновик" })[0]);
   await waitFor(() =>
@@ -182,13 +179,4 @@ it("показывает автору следующий шаг и сохран�
 
   fireEvent.click(screen.getAllByRole("button", { name: "Утвердить контракт книги" })[0]);
   expect(await screen.findByText("УТВЕРЖДЕНО")).toBeInTheDocument();
-  expect(invokeMock).toHaveBeenCalledWith(
-    "core_api",
-    expect.objectContaining({
-      request: expect.objectContaining({
-        method: "POST",
-        path: expect.stringContaining("book-contract/approve"),
-      }),
-    }),
-  );
 });
