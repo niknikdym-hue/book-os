@@ -26,3 +26,16 @@ body:has(.writer-studio) .studio-context-drawer[open] {
   padding-top: 4px;
   border-top: 1px solid rgba(30, 33, 29, 0.09);
 }
+
+/* A paid Writer call is visibly ready only after the one-shot owner approval is checked. */
+.writer-approval:has(input:checked) + .writer-run:not(:disabled) {
+  background: #24713b;
+  border-color: #24713b;
+  color: #fff;
+  box-shadow: 0 5px 16px rgba(36, 113, 59, 0.22);
+}
+
+.writer-approval:has(input:checked) + .writer-run:not(:disabled):hover {
+  background: #1e6233;
+  border-color: #1e6233;
+}
