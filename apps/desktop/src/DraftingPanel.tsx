@@ -53,10 +53,6 @@ function choiceById(id: WriterChoiceId): WriterChoice {
   return WRITER_CHOICES.find((item) => item.id === id) ?? WRITER_CHOICES[2];
 }
 
-function optional(value: string | null | undefined) {
-  return value && value.trim() ? value : "—";
-}
-
 function resultModelLabel(run: DraftRunView) {
   if (run.model === "gpt-6-astra") {
     return `GPT-6 Astra ${openAIWorkLevelLabel(run.reasoning_effort)}`;
@@ -94,6 +90,8 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
     cost > 0 &&
     !busy;
   const latest = runs[0] ?? null;
+  const runNumber = runs.length || 1;
+  const modelLabel = latest ? resultModelLabel(latest) : selectedChoice.label;
 
   const reloadReadiness = useCallback(async () => {
     setReadiness(await api<LaunchReadiness>("GET", "/api/launch/readiness"));
@@ -206,6 +204,22 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
 
           {chapter && approved && (
             <>
+              <section
+                className={`writer-work-state ${busy ? "working" : error ? "failed" : latest ? "complete" : "ready"}`}
+                aria-live="polite"
+                aria-label="Состояние работы модели"
+              >
+                <span className="writer-overline">СОСТОЯНИЕ РАБОТЫ МОДЕЛИ</span>
+                {busy ? (
+                  <><h4>{selectedChoice.id.startsWith("ASTRA") ? "Astra запущена · модель работает…" : "Модель работает…"}</h4><p>Сейчас выполняется: {objective.trim() || "задача готовится"}</p></>
+                ) : error ? (
+                  <><h4>Запуск не завершён</h4><p>{error}</p><small>Проверьте условия запуска и, если это безопасно, разрешите один новый запуск.</small></>
+                ) : latest?.text ? (
+                  <><h4>Готово ✓ · запуск №{runNumber}</h4><p>Модель: {modelLabel}</p><p className="writer-state-result">Что сделано: результат показан ниже и готов к копированию.</p></>
+                ) : (
+                  <><h4>Готово к запуску</h4><p>Выбрано: {modelLabel}. Опишите задачу, подтвердите один запуск — и кнопка станет зелёной.</p></>
+                )}
+              </section>
               <div className="writer-section-head">
                 <div>
                   <span className="writer-overline">ЗАДАЧА ДЛЯ МОДЕЛИ</span>
@@ -241,7 +255,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
                   <header>
                     <div>
                       <span className="writer-overline">ПОСЛЕДНИЙ РЕЗУЛЬТАТ</span>
-                      <h4>Черновик готов</h4>
+                      <h4>Что сделано</h4>
                     </div>
                     <button type="button" className="writer-copy" onClick={() => void copyLatest()}>
                       {copied ? "Скопировано" : "Копировать"}
@@ -336,40 +350,13 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
 
           {runs.length > 0 && (
             <div className="writer-history">
-              <span className="writer-overline">ИСТОРИЯ ГЛАВЫ</span>
-              <strong>{runs.length} запусков</strong>
-              <small>Последний результат показан в центре.</small>
+              <span className="writer-overline">ПРЕДЫДУЩИЕ ЗАПУСКИ</span>
+              <strong>{runs.length}</strong>
+              <small>Последний результат — в центральном блоке.</small>
             </div>
           )}
         </aside>
       </div>
-
-      {latest && (
-        <details className="utility-drawer writer-technical-provenance" aria-label="Технические данные запуска">
-          <summary>Настройки / Advanced · технические данные запуска</summary>
-          <div className="panel">
-            <p className="muted">
-              Эти данные нужны для аудита воспроизводимости и не являются частью обычной авторской панели.
-            </p>
-            <dl className="writer-provenance">
-              <div><dt>Модель</dt><dd>{latest.model}</dd></div>
-              <div><dt>Уровень</dt><dd>{latest.reasoning_effort ? openAIWorkLevelLabel(latest.reasoning_effort) : "—"}</dd></div>
-              <div><dt>Provider</dt><dd>{latest.provider}</dd></div>
-              <div><dt>Selection</dt><dd>{latest.selection_mode} · {optional(latest.selection_scope)}</dd></div>
-              <div><dt>Routing</dt><dd>{optional(latest.routing_rationale)}</dd></div>
-              <div><dt>Run ID</dt><dd>{latest.run_id}</dd></div>
-              <div><dt>Task ID</dt><dd>{latest.task_id}</dd></div>
-              <div><dt>Prompt</dt><dd>{latest.prompt_id} · v{latest.prompt_version}</dd></div>
-              <div><dt>Prompt hash</dt><dd>{latest.prompt_hash}</dd></div>
-              <div><dt>Input revision</dt><dd>{latest.input_revision_id}</dd></div>
-              <div><dt>Input hash</dt><dd>{latest.input_revision_hash}</dd></div>
-              <div><dt>Output revision</dt><dd>{optional(latest.revision_id)}</dd></div>
-              <div><dt>Output hash</dt><dd>{optional(latest.revision_hash)}</dd></div>
-              <div><dt>Provider run</dt><dd>{optional(latest.provider_run_id)}</dd></div>
-            </dl>
-          </div>
-        </details>
-      )}
     </section>
   );
 }

@@ -463,8 +463,12 @@ export function App() {
                       <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
                         Сохранить черновик
                       </button>
-                      <button className="primary" onClick={() => void approveBookContract()} disabled={busy}>
-                        Утвердить контракт книги
+                      <button
+                        className={`primary ${contractApproved ? "ready" : ""}`}
+                        onClick={() => void approveBookContract()}
+                        disabled={busy || contractApproved}
+                      >
+                        {contractApproved ? "Утверждено ✓" : "Утвердить контракт книги"}
                       </button>
                     </div>
                   </section>

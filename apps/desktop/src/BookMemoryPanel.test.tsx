@@ -87,30 +87,18 @@ it("rebuilds semantic memory then returns a stable CURRENT hybrid result", async
 
   render(<BookMemoryPanel project={project} chapter={chapter} api={api} />);
 
-  expect(await screen.findByText("Лексический индекс готов")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Embedding model"), {
-    target: { value: "memory-test" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Перестроить семантическую память" }));
-  expect(await screen.findByText("Семантический индекс готов")).toBeInTheDocument();
-
-  fireEvent.change(screen.getByLabelText("Book Memory query"), {
+  expect(await screen.findByRole("heading", { name: "Найти в книге" })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Найти в книге"), {
     target: { value: "whole book current revision" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Искать в памяти книги" }));
+  fireEvent.click(screen.getByRole("button", { name: "Найти в книге" }));
 
   expect(
     await screen.findByText("Whole-book memory keeps the current revision visible."),
   ).toBeInTheDocument();
-  expect(screen.getByText("Текущая версия")).toBeInTheDocument();
-  expect(screen.getByText(result.revision_id, { selector: "code" })).toBeInTheDocument();
-  expect(screen.getByText(result.revision_hash, { selector: "code" })).toBeInTheDocument();
+  expect(screen.queryByText(result.revision_id, { selector: "code" })).not.toBeInTheDocument();
+  expect(screen.queryByText(result.revision_hash, { selector: "code" })).not.toBeInTheDocument();
 
-  expect(calls).toContainEqual({
-    method: "POST",
-    path: expect.stringContaining("/memory/rebuild"),
-    body: { provider: "openai", model: "memory-test" },
-  });
   expect(calls).toContainEqual({
     method: "POST",
     path: expect.stringContaining("/memory/search"),

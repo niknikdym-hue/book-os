@@ -43,9 +43,12 @@ const statuses: Array<"ALL" | FindingStatus> = [
   "ALL",
 ];
 
-function short(value: string): string {
-  return value.length <= 14 ? value : `${value.slice(0, 12)}…`;
-}
+const statusLabels: Record<string, string> = {
+  ALL: "Все", OPEN: "Открыто", RESOLVED: "Исправлено", WAIVED: "Оставлено как есть", SUPERSEDED: "Заменено",
+};
+const severityLabels: Record<string, string> = {
+  ALL: "Любая", CRITICAL: "Критично", MAJOR: "Важно", MINOR: "Небольшое", INFO: "Справка",
+};
 
 export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPanelProps) {
   const [role, setRole] = useState<"ALL" | EditorialRole>("ALL");
@@ -185,33 +188,29 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
     <section className="panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">M6 · РЕШЕНИЯ ЧЕЛОВЕКА</p>
-          <h3>Редактура и решения</h3>
-          <p>
-            Замечание не равно правке. Предложение не равно authority. Существенная правка становится текущей только после решения человека по неизменной точной версии.
-          </p>
+          <p className="eyebrow">РЕДАКТУРА КНИГИ</p>
+          <h3>Проверить книгу</h3>
+          <p>Запустите проверку, затем посмотрите замечания и выберите, как с каждым поступить.</p>
         </div>
         <strong>{items.length} замечаний</strong>
       </div>
 
       <div className="actions">
         <button disabled={busy || !chapter} onClick={() => void runAudit("developmental")}>
-          Проверить структуру главы
+          Проверить текущую главу
         </button>
         <button disabled={busy} onClick={() => void runAudit("cross-book")}>
-          Проверить книгу целиком
+          Проверить всю книгу
         </button>
         <button disabled={busy} onClick={() => void runAudit("fact-check")}>
-          Run Фактчекер
+          Проверить факты
         </button>
       </div>
-      {lastRun && (
-        <p>
-          Последняя проверка: <strong>{lastRun.role}</strong> · {lastRun.findings.length} замечаний · запуск{" "}
-          <code>{short(lastRun.run_id)}</code>
-        </p>
-      )}
+      {busy && <p aria-live="polite"><strong>Проверяю…</strong></p>}
+      {lastRun && <p aria-live="polite"><strong>Проверка завершена · {lastRun.findings.length ? `найдено ${lastRun.findings.length} замечаний` : "существенных замечаний нет"}</strong></p>}
 
+      {items.length > 0 && <details className="editorial-filters">
+        <summary>Фильтры</summary>
       <div className="form-grid">
         <label className="field">
           <span>Роль</span>
@@ -236,7 +235,7 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
           >
             {statuses.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {statusLabels[value]}
               </option>
             ))}
           </select>
@@ -250,12 +249,13 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
           >
             {severities.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {severityLabels[value]}
               </option>
             ))}
           </select>
         </label>
       </div>
+      </details>}
 
       <div className="two-columns">
         <div>
@@ -290,42 +290,29 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
               <p>
                 <strong>Почему:</strong> {selected.finding.why}
               </p>
-              <p>
-                цель {selected.finding.target_kind} · фрагмент {selected.finding.unit_id ?? "—"} · глава{" "}
-                {selected.finding.chapter_id ?? "—"}
-              </p>
-              <p>
-                базовая версия <code>{selected.finding.base_revision_id}</code>
-              </p>
-              <p>
-                базовый хэш <code>{selected.finding.base_revision_hash}</code>
-              </p>
-              <p>
-                уверенность {selected.finding.confidence.toFixed(2)} · серьёзность {selected.finding.severity}
-              </p>
+              <p><strong>Насколько это важно:</strong> {severityLabels[selected.finding.severity] ?? selected.finding.severity}</p>
               {selected.finding.expected_effect && (
                 <p>
-                  <strong>Ожидаемый эффект:</strong> {selected.finding.expected_effect}
+                  <strong>Что изменится после исправления:</strong> {selected.finding.expected_effect}
                 </p>
               )}
               {selected.finding.risks && (
                 <p>
-                  <strong>Риски:</strong> {selected.finding.risks}
+                  <strong>Риск у правки:</strong> {selected.finding.risks}
                 </p>
               )}
 
               {proposal ? (
                 <div>
                   <div className="subheading">
-                    <strong>Предложение {uiLabel(proposal.status)}</strong>
-                    <strong>{proposal.stale ? "УСТАРЕЛО" : "ТЕКУЩАЯ БАЗА"}</strong>
+                    <strong>Предложенный вариант текста</strong>
                   </div>
                   <pre aria-label="Editorial proposal diff">{proposal.diff}</pre>
                 </div>
               ) : selected.finding.target_kind === "MANUSCRIPT_UNIT" ? (
                 <div className="form-grid">
                   <label className="field">
-                    <span>Предлагаемый новый текст</span>
+                    <span>Предлагаемый вариант текста</span>
                     <textarea
                       aria-label="Editorial proposed text"
                       rows={8}
@@ -334,7 +321,7 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
                     />
                   </label>
                   <label className="field">
-                    <span>Обоснование правки</span>
+                    <span>Почему эта правка поможет</span>
                     <textarea
                       aria-label="Editorial proposal rationale"
                       rows={4}
@@ -343,15 +330,15 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
                     />
                   </label>
                   <button disabled={busy || selected.stale} onClick={() => void createProposal()}>
-                    Создать предложение по точной версии
+                    Подготовить вариант правки
                   </button>
                 </div>
               ) : (
-                <p>Это диагностическое замечание не относится к текстовому фрагменту рукописи.</p>
+                <p>Это замечание относится к книге в целом и не требует замены конкретного фрагмента.</p>
               )}
 
               <label className="field">
-                <span>Причина решения</span>
+                <span>Почему вы приняли это решение?</span>
                 <textarea
                   aria-label="Editorial decision reason"
                   rows={3}
@@ -365,22 +352,22 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
                   disabled={busy || !proposal || proposal.status !== "OPEN" || proposal.stale}
                   onClick={() => void decide("accept")}
                 >
-                  Accept
+                  Принять правку
                 </button>
                 <button
                   disabled={busy || !proposal || proposal.status !== "OPEN"}
                   onClick={() => void decide("reject")}
                 >
-                  Reject
+                  Отклонить
                 </button>
                 <button
                   disabled={busy || !proposal || proposal.status !== "OPEN"}
                   onClick={() => void decide("request-revision")}
                 >
-                  Request revision
+                  Попросить доработать
                 </button>
                 <button disabled={busy || selected.finding.status !== "OPEN"} onClick={() => void decide("waive")}>
-                  Waive
+                  Оставить как есть
                 </button>
               </div>
             </>
@@ -393,11 +380,11 @@ export function EditorialPanel({ project, chapter, api = coreApi }: EditorialPan
       {lastDecision && (
         <div className="alert" aria-label="Editorial decision result">
           <strong>
-            {lastDecision.decision} · {lastDecision.finding.status}
+            Решение сохранено · {statusLabels[lastDecision.finding.status] ?? lastDecision.finding.status}
           </strong>
           {lastDecision.accepted_revision_id && (
             <p>
-              Текущая принятая версия <code>{lastDecision.accepted_revision_id}</code>
+              Правка принята в рукопись.
             </p>
           )}
         </div>

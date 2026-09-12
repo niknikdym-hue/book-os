@@ -40,28 +40,13 @@ body:has(.writer-studio) .studio-context-drawer[open] {
   border-color: #1e6233;
 }
 
-/* Once the Book Contract is approved, its approval action becomes a stable green state. */
-#book-contract:has(.badge.approved) .actions .primary,
-#book-contract:has(.badge.locked) .actions .primary {
-  position: relative;
-  pointer-events: none;
+/* A completed contract is a stable green confirmation, not a second action. */
+#book-contract .actions .primary.ready {
   cursor: default;
   background: #24713b;
   border-color: #24713b;
-  color: transparent;
-  box-shadow: 0 4px 14px rgba(36, 113, 59, 0.18);
-}
-
-#book-contract:has(.badge.approved) .actions .primary::after,
-#book-contract:has(.badge.locked) .actions .primary::after {
-  content: "Утверждено ✓";
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
   color: #fff;
-  font-size: 14px;
-  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(36, 113, 59, 0.18);
 }
 
 .auto-progress-clock {
@@ -80,3 +65,19 @@ body:has(.writer-studio) .studio-context-drawer[open] {
   font-size: 13px;
   letter-spacing: 0.02em;
 }
+
+.writer-work-state {
+  margin: 0 0 18px;
+  padding: 18px 20px;
+  border: 1px solid rgba(47, 85, 57, 0.22);
+  border-left: 5px solid #8a9a87;
+  border-radius: 14px;
+  background: #f7faf6;
+}
+
+.writer-work-state h4 { margin: 6px 0; }
+.writer-work-state p { margin: 6px 0 0; }
+.writer-work-state.working { border-left-color: #aa7a17; background: #fff9e8; }
+.writer-work-state.complete { border-left-color: #24713b; background: #edf8ef; }
+.writer-work-state.failed { border-left-color: #a33a35; background: #fff3f2; }
+.writer-state-result { font-weight: 700; }

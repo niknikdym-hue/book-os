@@ -126,7 +126,7 @@ it("creates an exact-base proposal and human ACCEPT resolves the finding", async
   fireEvent.change(screen.getByLabelText("Editorial proposal rationale"), {
     target: { value: proposal.rationale },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Создать предложение по точной версии" }));
+  fireEvent.click(screen.getByRole("button", { name: "Подготовить вариант правки" }));
 
   expect(await screen.findByLabelText("Editorial proposal diff")).toHaveTextContent("+++ proposed");
   expect(screen.getByLabelText("Editorial proposal diff")).toHaveTextContent(
@@ -136,11 +136,11 @@ it("creates an exact-base proposal and human ACCEPT resolves the finding", async
   fireEvent.change(screen.getByLabelText("Editorial decision reason"), {
     target: { value: "Owner approves this exact bounded edit" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+  fireEvent.click(screen.getByRole("button", { name: "Принять правку" }));
 
   const result = await screen.findByLabelText("Editorial decision result");
-  expect(result).toHaveTextContent("ACCEPT · RESOLVED");
-  expect(result).toHaveTextContent(accepted.accepted_revision_id ?? "");
+  expect(result).toHaveTextContent("Решение сохранено · Исправлено");
+  expect(result).toHaveTextContent("Правка принята в рукопись.");
   expect(await screen.findByText("По этому фильтру замечаний нет.")).toBeInTheDocument();
 
   expect(calls).toContainEqual({
