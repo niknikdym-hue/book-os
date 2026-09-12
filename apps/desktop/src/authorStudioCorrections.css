@@ -39,3 +39,44 @@ body:has(.writer-studio) .studio-context-drawer[open] {
   background: #1e6233;
   border-color: #1e6233;
 }
+
+/* Once the Book Contract is approved, its approval action becomes a stable green state. */
+#book-contract:has(.badge.approved) .actions .primary,
+#book-contract:has(.badge.locked) .actions .primary {
+  position: relative;
+  pointer-events: none;
+  cursor: default;
+  background: #24713b;
+  border-color: #24713b;
+  color: transparent;
+  box-shadow: 0 4px 14px rgba(36, 113, 59, 0.18);
+}
+
+#book-contract:has(.badge.approved) .actions .primary::after,
+#book-contract:has(.badge.locked) .actions .primary::after {
+  content: "Утверждено ✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.auto-progress-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #e7f1e7;
+  color: #315f3b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.auto-progress-clock strong {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
