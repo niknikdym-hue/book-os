@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { AutoBookClock } from "./AutoBookClock";
 import type { ChapterView, ProjectView } from "./types";
 
 type LaunchApi = <T>(
@@ -37,6 +38,8 @@ type AutoBookState = {
   last_action: string;
   output_path: string | null;
   error: string | null;
+  started_at?: string | null;
+  updated_at?: string | null;
 };
 
 type PlanningChoiceId = "AUTO" | "ASTRA_MEDIUM" | "ASTRA_HIGH" | "ASTRA_XHIGH" | "SOL";
@@ -498,6 +501,11 @@ export function LaunchPlanningPanel({
             {autoState?.current_chapter_ordinal && (
               <span>Сейчас: глава {autoState.current_chapter_ordinal}</span>
             )}
+            <AutoBookClock
+              startedAt={autoState?.started_at}
+              updatedAt={autoState?.updated_at}
+              running={autoState?.status === "RUNNING"}
+            />
           </div>
 
           {autoState?.error && (
@@ -534,6 +542,7 @@ export function LaunchPlanningPanel({
             <span style={{ width: "100%" }} />
           </div>
           <p>{autoState.last_action}</p>
+          <AutoBookClock startedAt={autoState.started_at} updatedAt={autoState.updated_at} running={false} />
           {autoState.output_path && <small>Файл: {autoState.output_path}</small>}
         </section>
       )}

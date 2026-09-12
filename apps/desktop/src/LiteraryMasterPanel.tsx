@@ -36,6 +36,16 @@ type ExportEvidence = {
   relative_path: string;
 };
 
+function blockerLabel(blocker: ReleaseBlocker): string {
+  const chapter = blocker.detail.match(/chapter\s+(\d+)/i)?.[1];
+  if (blocker.code.includes("MANUSCRIPT_UNIT_NOT_APPROVED")) return "Есть текст, который ещё не утверждён.";
+  if (blocker.code.includes("CHAPTER_MANUSCRIPT_EMPTY")) return chapter ? `Глава ${chapter} — текст ещё не создан.` : "В одной из глав ещё нет текста.";
+  if (blocker.code.includes("CHAPTER_CONTRACT_MISSING")) return chapter ? `Глава ${chapter} — контракт главы ещё не создан.` : "У одной из глав ещё нет контракта.";
+  if (blocker.code.includes("CHAPTER_CONTRACT") && blocker.code.includes("APPROV")) return chapter ? `Глава ${chapter} — контракт ещё не утверждён.` : "Есть контракт главы, который ещё не утверждён.";
+  if (blocker.code.includes("BOOKBENCH")) return "Финальная проверка BookBench ещё не выполнена.";
+  return "Есть шаг, который ещё нужно завершить перед выпуском книги.";
+}
+
 export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
   const [readiness, setReadiness] = useState<ReleaseReadiness | null>(null);
   const [masters, setMasters] = useState<LiteraryMaster[]>([]);
@@ -124,17 +134,15 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
     <section className="panel" aria-label="Literary Master">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">ФИНАЛЬНОЕ РЕШЕНИЕ ЧЕЛОВЕКА</p>
-          <h3>Literary Master</h3>
+          <p className="eyebrow">ФИНАЛЬНЫЙ ЭТАП</p>
+          <h3>Что осталось до готовой книги</h3>
         </div>
         <span className={`badge ${readiness?.ready ? "approved" : "draft"}`}>
-          {latestMaster ? "МАСТЕР ЗАФИКСИРОВАН" : readiness?.ready ? "ГОТОВО К ВЫПУСКУ" : "ЕЩЁ НЕ ГОТОВО"}
+          {latestMaster ? "КНИГА ГОТОВА ✓" : readiness?.ready ? "ГОТОВО К ВЫПУСКУ" : "ЕЩЁ ЕСТЬ ШАГИ"}
         </span>
       </div>
 
-      <p className="muted">
-        Литературный мастер фиксирует точные утверждённые версии. Экспорт никогда не меняет authority книги.
-      </p>
+      <p className="muted">BOOK OS показывает только реальные оставшиеся шаги и не меняет текст при выпуске.</p>
 
       {error && <div className="alert">{error}</div>}
 
@@ -142,22 +150,17 @@ export function LiteraryMasterPanel({ project }: { project: ProjectView }) {
 
       {readiness && !readiness.ready && (
         <div aria-label="Literary Master blockers">
-          <strong>Что блокирует выпуск</strong>
+          <strong>Что осталось до готовой книги</strong>
           <ul>
             {readiness.blockers.map((blocker) => (
               <li key={`${blocker.code}:${blocker.detail}`}>
-                <code>{blocker.code}</code> — {blocker.detail}
+                {blockerLabel(blocker)}
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {readiness?.snapshot_id && (
-        <p className="muted" aria-label="Literary Master BookBench evidence">
-          Снимок BookBench: {readiness.snapshot_id} · {readiness.snapshot_hash?.slice(0, 16)}…
-        </p>
-      )}
 
       {!latestMaster && readiness?.ready && (
         <div className="form-grid">

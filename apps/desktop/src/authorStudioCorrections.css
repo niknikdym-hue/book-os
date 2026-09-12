@@ -26,3 +26,58 @@ body:has(.writer-studio) .studio-context-drawer[open] {
   padding-top: 4px;
   border-top: 1px solid rgba(30, 33, 29, 0.09);
 }
+
+/* A paid Writer call is visibly ready only after the one-shot owner approval is checked. */
+.writer-approval:has(input:checked) + .writer-run:not(:disabled) {
+  background: #24713b;
+  border-color: #24713b;
+  color: #fff;
+  box-shadow: 0 5px 16px rgba(36, 113, 59, 0.22);
+}
+
+.writer-approval:has(input:checked) + .writer-run:not(:disabled):hover {
+  background: #1e6233;
+  border-color: #1e6233;
+}
+
+/* A completed contract is a stable green confirmation, not a second action. */
+#book-contract .actions .primary.ready {
+  cursor: default;
+  background: #24713b;
+  border-color: #24713b;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(36, 113, 59, 0.18);
+}
+
+.auto-progress-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #e7f1e7;
+  color: #315f3b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.auto-progress-clock strong {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.writer-work-state {
+  margin: 0 0 18px;
+  padding: 18px 20px;
+  border: 1px solid rgba(47, 85, 57, 0.22);
+  border-left: 5px solid #8a9a87;
+  border-radius: 14px;
+  background: #f7faf6;
+}
+
+.writer-work-state h4 { margin: 6px 0; }
+.writer-work-state p { margin: 6px 0 0; }
+.writer-work-state.working { border-left-color: #aa7a17; background: #fff9e8; }
+.writer-work-state.complete { border-left-color: #24713b; background: #edf8ef; }
+.writer-work-state.failed { border-left-color: #a33a35; background: #fff3f2; }
+.writer-state-result { font-weight: 700; }

@@ -25,7 +25,7 @@ const project: ProjectView = {
   chapters: [],
 };
 
-test("shows exact release blockers and cannot create early", async () => {
+test("shows human-readable release blockers and cannot create early", async () => {
   vi.mocked(coreApi).mockImplementation(async (method, path) => {
     if (method === "GET" && path.endsWith("/literary-master/readiness")) {
       return {
@@ -41,10 +41,8 @@ test("shows exact release blockers and cannot create early", async () => {
   });
 
   render(<LiteraryMasterPanel project={project} />);
-  expect(await screen.findByText("BOOKBENCH_BLOCKING")).toBeInTheDocument();
-  expect(screen.getByText(/AUTHOR_VOICE is BLOCKING/)).toBeInTheDocument();
+  expect(await screen.findByText("Финальная проверка BookBench ещё не выполнена.")).toBeInTheDocument();
   expect(screen.queryByText("Создать литературный мастер")).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Literary Master BookBench evidence")).toHaveTextContent("S");
 });
 
 test("requires human actor then creates master and exposes deterministic exports", async () => {

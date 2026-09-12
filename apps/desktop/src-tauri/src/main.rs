@@ -132,7 +132,7 @@ fn append_startup_log(path: &Path, message: &str) {
 }
 
 fn validate_core_api_request(method: &str, path: &str) -> Result<(), String> {
-    if !matches!(method, "GET" | "POST" | "PUT") {
+    if !matches!(method, "GET" | "POST" | "PUT" | "DELETE") {
         return Err("unsupported local-core API method".into());
     }
     if !path.starts_with("/api/")
@@ -221,7 +221,12 @@ fn install_desktop_app() -> Result<Option<PathBuf>, String> {
     if !installed_executable.is_file() {
         return Err("Desktop BOOK OS.app has no executable after installation".into());
     }
-    if !app_dir.join("Contents").join("Resources").join(BUNDLED_CORE_RESOURCE).is_file() {
+    if !app_dir
+        .join("Contents")
+        .join("Resources")
+        .join(BUNDLED_CORE_RESOURCE)
+        .is_file()
+    {
         return Err("Desktop BOOK OS.app is missing its bundled Local Core".into());
     }
 
@@ -257,7 +262,9 @@ fn dev_python_command(startup_log: &Path) -> Result<Command, String> {
     );
 
     let mut command = Command::new(&python);
-    command.args(["-m", "book_os_core"]).env("PYTHONPATH", source_path);
+    command
+        .args(["-m", "book_os_core"])
+        .env("PYTHONPATH", source_path);
     Ok(command)
 }
 
@@ -471,6 +478,12 @@ fn core_api(request: CoreApiRequest, state: tauri::State<'_, CoreState>) -> Resu
             .http_status_as_error(false)
             .build()
             .send(json_request_body(request.body)?),
+        "DELETE" => ureq::delete(&url)
+            .header("Authorization", &authorization)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .call(),
         _ => unreachable!("validated method"),
     }
     .map_err(|error| error.to_string())?;
@@ -620,7 +633,8 @@ mod tests {
         assert!(validate_core_api_request("GET", "/api/projects").is_ok());
         assert!(validate_core_api_request("POST", "/api/projects").is_ok());
         assert!(validate_core_api_request("PUT", "/api/projects/ABC/book-contract/draft").is_ok());
-        assert!(validate_core_api_request("DELETE", "/api/projects/ABC").is_err());
+        assert!(validate_core_api_request("DELETE", "/api/projects/ABC").is_ok());
+        assert!(validate_core_api_request("PATCH", "/api/projects/ABC").is_err());
         assert!(validate_core_api_request("GET", "/health").is_err());
         assert!(validate_core_api_request("GET", "http://example.com/api/projects").is_err());
         assert!(validate_core_api_request("GET", "/api/../health").is_err());

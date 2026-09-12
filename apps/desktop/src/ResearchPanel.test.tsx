@@ -168,7 +168,8 @@ it("runs Claim → Source → Evidence and makes verification state visible", as
   evidence = [];
   render(<ResearchPanel project={project} chapter={chapter} api={api} />);
 
-  expect(await screen.findByText("Точная версия рукописи")).toBeInTheDocument();
+  expect(await screen.findByText("Как пользоваться")).toBeInTheDocument();
+  expect(screen.getByText("Работаем с текущим текстом главы")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Проверяемое утверждение"), {
     target: { value: "Evidence quality changes verification confidence." },
   });

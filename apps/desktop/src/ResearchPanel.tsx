@@ -269,11 +269,24 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
     <section className="panel research-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">M4 · РЕЕСТР УТВЕРЖДЕНИЙ</p>
-          <h3>Исследование и доказательства</h3>
+          <p className="eyebrow">ПРОВЕРКА ФАКТОВ И ИСТОЧНИКОВ</p>
+          <h3>Проверить факты и источники</h3>
         </div>
         <span className="badge">Источник ≠ доказательство ≠ утверждение</span>
       </div>
+
+      <details className="research-help">
+        <summary>Как пользоваться</summary>
+        <ol>
+          <li>Найдите одно проверяемое утверждение: число, факт, цитату, атрибуцию, причинный, исторический или юридический тезис.</li>
+          <li>Внесите именно это утверждение и выберите тип — он помогает подобрать способ проверки.</li>
+          <li>Найдите источник. Сам источник ещё не является доказательством.</li>
+          <li>Изучите источник и укажите точное место: страницу, раздел, абзац или фрагмент URL.</li>
+          <li>Отметьте, подтверждает ли это место утверждение, подтверждает частично, противоречит ему или даёт только контекст.</li>
+          <li>Если рукопись изменилась, перепроверьте доказательство: оно могло относиться к старой версии текста.</li>
+        </ol>
+        <p><strong>Пример:</strong> «Рынок вырос на 12%» → отчёт Росстата → таблица 3 на странице 14 с числом 12%.</p>
+      </details>
 
       {!chapter && <p className="muted">Сначала выберите главу.</p>}
       {chapter && !currentDraft && (
@@ -283,9 +296,8 @@ export function ResearchPanel({ project, chapter, api = coreApi }: ResearchPanel
       {currentDraft && (
         <>
           <div className="research-boundary">
-            <strong>Точная версия рукописи</strong>
-            <code>{currentDraft.revision_id}</code>
-            <small>Доказательства привязаны к этой версии и её хэшу; после изменения текста привязка становится устаревшей.</small>
+            <strong>Работаем с текущим текстом главы</strong>
+            <small>После изменения текста привязанные доказательства нужно перепроверить.</small>
           </div>
 
           <div className="form-grid">
