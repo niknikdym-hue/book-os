@@ -12,6 +12,15 @@ vi.mock("./api", () => ({
           name: "Елена Дым",
           status: "APPROVED",
           content: {},
+          updated_at: "2026-09-01T10:00:00Z",
+        },
+        {
+          profile_id: "01JAUTHORNEW0000000000000",
+          kind: "AUTHOR",
+          name: "  Елена Дым ",
+          status: "APPROVED",
+          content: {},
+          updated_at: "2026-09-10T10:00:00Z",
         },
       ];
     }
@@ -67,6 +76,7 @@ it("offers three persisted series scenarios and keeps Auto as the default", asyn
   expect(screen.getByRole("button", { name: "Добавить внешнюю серию" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Продолжить в BOOK OS" })).toBeInTheDocument();
   expect(screen.getByLabelText("Модель")).toHaveValue("AUTO");
+  expect(screen.getAllByRole("option", { name: /Елена Дым/ })).toHaveLength(1);
 
   fireEvent.click(screen.getByRole("button", { name: "Добавить внешнюю серию" }));
   expect(screen.getByLabelText("Права на файл")).toBeInTheDocument();

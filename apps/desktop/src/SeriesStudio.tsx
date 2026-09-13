@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uniqueProfileNames } from "./profileOptions";
 
 type ProfileKind = "AUTHOR" | "SERIES" | "STYLE";
 type ProfileView = {
@@ -8,6 +9,7 @@ type ProfileView = {
   name: string;
   status: "DRAFT" | "APPROVED";
   content: Record<string, unknown>;
+  updated_at: string;
 };
 
 type SeriesModelChoice = "AUTO" | "ASTRA_MEDIUM" | "ASTRA_HIGH" | "ASTRA_XHIGH" | "SOL";
@@ -165,7 +167,10 @@ export function SeriesStudio() {
   }, [open, reloadProfiles]);
 
   const authors = useMemo(
-    () => profiles.filter((item) => item.kind === "AUTHOR" && item.status === "APPROVED"),
+    () =>
+      uniqueProfileNames(
+        profiles.filter((item) => item.kind === "AUTHOR" && item.status === "APPROVED"),
+      ),
     [profiles],
   );
   const series = useMemo(
