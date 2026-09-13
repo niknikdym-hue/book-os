@@ -30,6 +30,11 @@ type SeriesCostView = {
   total_estimated_cost_usd: number;
   total_reserved_cost_usd: number;
   total_unknown_cost_usd: number;
+  current_books_forecast_low_usd: number | null;
+  current_books_forecast_high_usd: number | null;
+  production_forecast_low_usd: number | null;
+  production_forecast_high_usd: number | null;
+  production_forecast_status: string;
   books: Array<{
     book_id: string;
     title: string;
@@ -37,6 +42,14 @@ type SeriesCostView = {
     estimated_cost_usd: number;
     reserved_cost_usd: number;
     unknown_cost_usd: number;
+    runtime_status: string | null;
+    forecast_total_low_usd: number | null;
+    forecast_total_high_usd: number | null;
+  }>;
+  future_books: Array<{
+    title: string;
+    forecast_total_low_usd: number | null;
+    forecast_total_high_usd: number | null;
   }>;
   operations: Array<{
     entry_id: string;
@@ -165,15 +178,25 @@ function SeriesCostSummary({ cost }: { cost: SeriesCostView | null }) {
     <details className="series-cost-summary">
       <summary>
         <span>Стоимость серии</span>
-        <strong>Потрачено {usd(cost.total_confirmed_cost_usd)}</strong>
-        {cost.total_estimated_cost_usd > 0 && (
-          <small>Оценка всей серии {usd(cost.total_estimated_cost_usd)}</small>
-        )}
+        <strong>Потрачено на серию {usd(cost.total_confirmed_cost_usd)}</strong>
+        <small>
+          {cost.production_forecast_low_usd != null && cost.production_forecast_high_usd != null
+            ? `Прогноз всей серии ${usd(cost.production_forecast_low_usd)}–${usd(cost.production_forecast_high_usd)}`
+            : "Прогноз всей серии: пока недостаточно данных"}
+        </small>
       </summary>
       <dl>
         <div><dt>Работа с серией</dt><dd>{usd(cost.series_confirmed_cost_usd)}</dd></div>
         <div><dt>Книги серии</dt><dd>{usd(cost.books_confirmed_cost_usd)}</dd></div>
-        <div><dt>Итого подтверждено</dt><dd>{usd(cost.total_confirmed_cost_usd)}</dd></div>
+        <div><dt>Фактически потрачено</dt><dd>{usd(cost.total_confirmed_cost_usd)}</dd></div>
+        {cost.current_books_forecast_low_usd != null && cost.current_books_forecast_high_usd != null ? (
+          <div><dt>Текущая оценка незавершённых книг</dt><dd>{usd(cost.current_books_forecast_low_usd)}–{usd(cost.current_books_forecast_high_usd)}</dd></div>
+        ) : (
+          <div><dt>Текущая оценка незавершённых книг</dt><dd>пока недостаточно данных</dd></div>
+        )}
+        {cost.total_estimated_cost_usd > 0 && (
+          <div><dt>Оценочные суммы текущих операций</dt><dd>{usd(cost.total_estimated_cost_usd)}</dd></div>
+        )}
         {cost.total_reserved_cost_usd > 0 && (
           <div><dt>Зарезервировано</dt><dd>{usd(cost.total_reserved_cost_usd)}</dd></div>
         )}
@@ -189,10 +212,25 @@ function SeriesCostSummary({ cost }: { cost: SeriesCostView | null }) {
           {cost.books.map((book) => (
             <li key={book.book_id}>
               <span>{book.title}</span>
-              <strong>{usd(book.confirmed_cost_usd)}</strong>
-              {book.estimated_cost_usd > book.confirmed_cost_usd && (
-                <small>~{usd(book.estimated_cost_usd)} итог</small>
+              <strong>{book.runtime_status ? usd(book.confirmed_cost_usd) : "ещё не начата"}</strong>
+              {book.forecast_total_low_usd != null && book.forecast_total_high_usd != null && (
+                <small>прогноз {usd(book.forecast_total_low_usd)}–{usd(book.forecast_total_high_usd)} итог</small>
               )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {(cost.future_books ?? []).length > 0 && (
+        <ol className="series-cost-books future">
+          {(cost.future_books ?? []).map((book) => (
+            <li key={book.title}>
+              <span>{book.title}</span>
+              <strong>ещё не начата</strong>
+              <small>
+                {book.forecast_total_low_usd != null && book.forecast_total_high_usd != null
+                  ? `прогноз ${usd(book.forecast_total_low_usd)}–${usd(book.forecast_total_high_usd)}`
+                  : "прогноз: пока недостаточно данных"}
+              </small>
             </li>
           ))}
         </ol>
@@ -227,7 +265,8 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
   const [brief, setBrief] = useState("");
   const [modelChoice, setModelChoice] = useState<SeriesModelChoice>("AUTO");
   const [maxCostUsd, setMaxCostUsd] = useState("1.50");
-  const [allowPaid, setAllowPaid] = useState(false);
+  const [costConfirmationOpen, setCostConfirmationOpen] = useState(false);
+  const [advancedAiOpen, setAdvancedAiOpen] = useState(false);
   const [createdSeries, setCreatedSeries] = useState<ProfileView | null>(null);
   const [createdConcepts, setCreatedConcepts] = useState<ProfileView[]>([]);
 
@@ -390,7 +429,7 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
 
   async function createSeries() {
     const cost = Number(maxCostUsd);
-    if (!authorId || brief.trim().length < 20 || !allowPaid || !Number.isFinite(cost) || cost <= 0) {
+    if (!authorId || brief.trim().length < 20 || !Number.isFinite(cost) || cost <= 0) {
       return;
     }
     setBusy(true);
@@ -406,10 +445,10 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
       });
       setCreatedSeries(result.profile);
       setCreatedConcepts(result.concepts);
-      setAllowPaid(false);
+      setCostConfirmationOpen(false);
       await reloadProfiles();
     } catch (reason) {
-      setAllowPaid(false);
+      setCostConfirmationOpen(false);
       setError(String(reason));
     } finally {
       setBusy(false);
@@ -690,7 +729,11 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                   />
                 </label>
 
-                <details className="advanced-settings series-ai-settings">
+                <details
+                  className="advanced-settings series-ai-settings"
+                  open={advancedAiOpen}
+                  onToggle={(event) => setAdvancedAiOpen(event.currentTarget.open)}
+                >
                   <summary>AI: {MODEL_OPTIONS.find((item) => item.value === modelChoice)?.label ?? "Автоматически"}{modelChoice === "AUTO" ? " — рекомендуется" : ""}</summary>
                   <p className="muted">Ручная модель и жёсткий лимит доступны только по вашему явному решению.</p>
                 <div className="series-studio-grid">
@@ -707,32 +750,48 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                     <input
                       inputMode="decimal"
                       value={maxCostUsd}
-                      onChange={(event) => {
-                        setMaxCostUsd(event.target.value);
-                        setAllowPaid(false);
-                      }}
+                      onChange={(event) => setMaxCostUsd(event.target.value)}
                     />
                   </label>
                 </div>
-
-                <label className="paid-approval">
-                  <input
-                    type="checkbox"
-                    checked={allowPaid}
-                    onChange={(event) => setAllowPaid(event.target.checked)}
-                  />
-                  <span>Разрешаю один платный вызов выбранной модели с указанным лимитом.</span>
-                </label>
                 </details>
 
                 <button
                   type="button"
                   className="primary"
-                  disabled={busy || !authorId || brief.trim().length < 20 || !allowPaid}
-                  onClick={() => void createSeries()}
+                  disabled={busy || !authorId || brief.trim().length < 20}
+                  onClick={() => setCostConfirmationOpen(true)}
                 >
-                  {busy ? "Модель работает…" : "Предложить архитектуру серии"}
+                  {busy ? "Модель работает…" : "Предложить серию"}
                 </button>
+
+                {costConfirmationOpen && (
+                  <div className="modal-backdrop" role="presentation">
+                    <section
+                      className="series-authorization-dialog"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="series-cost-confirmation-title"
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setCostConfirmationOpen(false);
+                      }}
+                    >
+                      <p className="eyebrow">ОДНО ДЕЙСТВИЕ</p>
+                      <h3 id="series-cost-confirmation-title">Разрешить создание концепции серии</h3>
+                      <p>Максимальный расход этого шага: до {usd(Number(maxCostUsd) || 0)}</p>
+                      <p className="muted">BOOK OS автоматически выберет подходящую модель. Разрешение действует только на этот запуск.</p>
+                      <div className="actions">
+                        <button autoFocus className="primary" type="button" onClick={() => void createSeries()} disabled={busy || Number(maxCostUsd) <= 0}>
+                          {busy ? "Создаю…" : "Продолжить"}
+                        </button>
+                        <button type="button" onClick={() => { setCostConfirmationOpen(false); setAdvancedAiOpen(true); }}>
+                          Изменить лимит
+                        </button>
+                        <button className="ghost" type="button" onClick={() => setCostConfirmationOpen(false)}>Отмена</button>
+                      </div>
+                    </section>
+                  </div>
+                )}
 
                 {createdSeries && (
                   <article className="series-studio-result">

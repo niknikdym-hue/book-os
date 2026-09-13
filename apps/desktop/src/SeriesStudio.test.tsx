@@ -71,6 +71,11 @@ vi.mock("./api", () => ({
         total_estimated_cost_usd: 6.17,
         total_reserved_cost_usd: 0.5,
         total_unknown_cost_usd: 0.25,
+        current_books_forecast_low_usd: null,
+        current_books_forecast_high_usd: null,
+        production_forecast_low_usd: null,
+        production_forecast_high_usd: null,
+        production_forecast_status: "INSUFFICIENT_DATA",
         books: [
           {
             book_id: "01JBOOK000000000000000000",
@@ -79,8 +84,12 @@ vi.mock("./api", () => ({
             estimated_cost_usd: 5.75,
             reserved_cost_usd: 0.5,
             unknown_cost_usd: 0.25,
+            runtime_status: "RUNNING",
+            forecast_total_low_usd: null,
+            forecast_total_high_usd: null,
           },
         ],
+        future_books: [],
         operations: [],
       };
     }
@@ -109,7 +118,8 @@ it("offers three persisted series scenarios and keeps Auto as the default", asyn
 
   fireEvent.click(screen.getByRole("button", { name: "Продолжить в BOOK OS" }));
   expect(await screen.findByText("Секреты сильной работы")).toBeInTheDocument();
-  expect(screen.getByText("Потрачено $2.82")).toBeInTheDocument();
+  expect(screen.getByText("Потрачено на серию $2.82")).toBeInTheDocument();
+  expect(screen.getByText("Прогноз всей серии: пока недостаточно данных")).toBeInTheDocument();
   const sections = screen.getByRole("navigation", { name: "Разделы серии «Секреты сильной работы»" });
   fireEvent.click(within(sections).getByRole("button", { name: "Правила серии" }));
   expect(screen.getByText(/Карта различий: не построена/)).toBeInTheDocument();
@@ -121,4 +131,23 @@ it("offers three persisted series scenarios and keeps Auto as the default", asyn
   expect(
     screen.getByRole("button", { name: "Удалить сохранённый оригинал" }),
   ).toBeInTheDocument();
+});
+
+it("asks for one bounded authorization without forcing the author into Advanced", async () => {
+  render(<SeriesStudio embedded />);
+  const author = await screen.findByLabelText("Автор / псевдоним");
+  const authorId = (author as HTMLSelectElement).options[1].value;
+  fireEvent.change(author, { target: { value: authorId } });
+  fireEvent.change(screen.getByLabelText("Что это за серия?"), {
+    target: { value: "Практическая серия о системном развитии профессиональных услуг." },
+  });
+
+  const create = screen.getByRole("button", { name: "Предложить серию" });
+  expect(create).toBeEnabled();
+  fireEvent.click(create);
+
+  expect(screen.getByRole("dialog", { name: "Разрешить создание концепции серии" })).toBeInTheDocument();
+  expect(screen.getByText("Максимальный расход этого шага: до $1.50")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Продолжить" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Изменить лимит" })).toBeInTheDocument();
 });

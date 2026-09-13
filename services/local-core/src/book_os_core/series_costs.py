@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from .authority import new_ulid
 from .authority_types import utc_now
-from .auto_book_runtime import AutoBookRuntimeError, DurableAutoBookRuntime
+from .auto_book_runtime import DurableAutoBookRuntime
 from .series_workspace import SeriesWorkspaceService
 
 
@@ -36,6 +36,15 @@ class SeriesBookCost(BaseModel):
     estimated_cost_usd: float = 0
     reserved_cost_usd: float = 0
     unknown_cost_usd: float = 0
+    runtime_status: str | None = None
+    forecast_total_low_usd: float | None = None
+    forecast_total_high_usd: float | None = None
+
+
+class SeriesFutureBookCost(BaseModel):
+    title: str
+    forecast_total_low_usd: float | None = None
+    forecast_total_high_usd: float | None = None
 
 
 class SeriesCostView(BaseModel):
@@ -46,7 +55,13 @@ class SeriesCostView(BaseModel):
     total_estimated_cost_usd: float
     total_reserved_cost_usd: float
     total_unknown_cost_usd: float
+    current_books_forecast_low_usd: float | None = None
+    current_books_forecast_high_usd: float | None = None
+    production_forecast_low_usd: float | None = None
+    production_forecast_high_usd: float | None = None
+    production_forecast_status: str = "INSUFFICIENT_DATA"
     books: list[SeriesBookCost]
+    future_books: list[SeriesFutureBookCost]
     operations: list[SeriesCostEntry]
 
 
@@ -158,30 +173,36 @@ class SeriesCostLedger:
 
     def _book_cost(self, book_id: str, title: str) -> SeriesBookCost:
         state_path = self.data_dir / "projects" / book_id / "auto-book-run.json"
-        if not state_path.exists():
-            return SeriesBookCost(book_id=book_id, title=title)
-        payload = json.loads(state_path.read_text(encoding="utf-8"))
-        try:
-            runtime = self.runtime.get(book_id, str(payload["run_id"]))
+        runtime = self.runtime.latest(book_id)
+        if runtime is not None:
             return SeriesBookCost(
                 book_id=book_id,
                 title=title,
                 confirmed_cost_usd=runtime.confirmed_cost_usd,
-                estimated_cost_usd=runtime.estimated_cost_usd,
+                estimated_cost_usd=sum(
+                    item.estimated_cost_usd
+                    for item in self.runtime.list_operations(book_id, runtime.run_id)
+                ),
                 reserved_cost_usd=runtime.reserved_cost_usd,
                 unknown_cost_usd=runtime.unknown_cost_usd,
+                runtime_status=runtime.status,
             )
-        except (AutoBookRuntimeError, KeyError):
-            # Runs created before the durable runtime ledger remain visible from their legacy
-            # state file without rewriting owner data.
-            pass
+        if not state_path.exists():
+            return SeriesBookCost(book_id=book_id, title=title)
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        # Runs created before the durable runtime ledger remain visible from their legacy state
+        # file without rewriting owner data.  Their ``estimated_cost_usd`` was a budget ceiling,
+        # not a forecast, and therefore must not leak into this read model.
         return SeriesBookCost(
             book_id=book_id,
             title=title,
             confirmed_cost_usd=float(payload.get("confirmed_cost_usd") or 0),
-            estimated_cost_usd=float(payload.get("estimated_cost_usd") or 0),
+            # Legacy state used this field as a budget ceiling.  It cannot be represented as a
+            # production forecast or operation estimate without misleading the Owner.
+            estimated_cost_usd=0,
             reserved_cost_usd=float(payload.get("reserved_cost_usd") or 0),
             unknown_cost_usd=float(payload.get("unknown_cost_usd") or 0),
+            runtime_status=str(payload.get("status")) if payload.get("status") else None,
         )
 
     def get(self, series_profile_id: str) -> SeriesCostView:
@@ -190,6 +211,69 @@ class SeriesCostLedger:
             for item in self.workspaces.books(series_profile_id)
         ]
         operations = [item for item in self._read() if series_profile_id in item.series_profile_ids]
+        profile = self.workspaces.profiles.get_profile(series_profile_id)
+        planned_titles = [
+            str(item).strip()
+            for item in profile.content.get("planned_books", [])
+            if str(item).strip()
+        ]
+        existing_titles = {item.title for item in books}
+        future_titles = [item for item in planned_titles if item not in existing_titles]
+        completed = [
+            item
+            for item in books
+            if item.runtime_status == "PACKAGE_READY" and item.confirmed_cost_usd > 0
+        ]
+        comparable_average = (
+            sum(item.confirmed_cost_usd for item in completed) / len(completed)
+            if completed
+            else None
+        )
+        future_books = [
+            SeriesFutureBookCost(
+                title=title,
+                forecast_total_low_usd=(
+                    round(comparable_average * 0.85, 2) if comparable_average is not None else None
+                ),
+                forecast_total_high_usd=(
+                    round(comparable_average * 1.15, 2) if comparable_average is not None else None
+                ),
+            )
+            for title in future_titles
+        ]
+        unfinished = [item for item in books if item.runtime_status != "PACKAGE_READY"]
+        current_low: float | None
+        current_high: float | None
+        production_low: float | None
+        production_high: float | None
+        if comparable_average is not None:
+            for item in unfinished:
+                item.forecast_total_low_usd = round(
+                    max(item.confirmed_cost_usd, comparable_average * 0.85), 2
+                )
+                item.forecast_total_high_usd = round(
+                    max(item.confirmed_cost_usd, comparable_average * 1.15), 2
+                )
+            current_low = round(sum(item.forecast_total_low_usd or 0 for item in unfinished), 2)
+            current_high = round(sum(item.forecast_total_high_usd or 0 for item in unfinished), 2)
+            series_confirmed_for_forecast = sum(item.confirmed_cost_usd for item in operations)
+            completed_confirmed = sum(item.confirmed_cost_usd for item in completed)
+            production_low = round(
+                series_confirmed_for_forecast
+                + completed_confirmed
+                + current_low
+                + sum(item.forecast_total_low_usd or 0 for item in future_books),
+                2,
+            )
+            production_high = round(
+                series_confirmed_for_forecast
+                + completed_confirmed
+                + current_high
+                + sum(item.forecast_total_high_usd or 0 for item in future_books),
+                2,
+            )
+        else:
+            current_low = current_high = production_low = production_high = None
         series_confirmed = round(sum(item.confirmed_cost_usd for item in operations), 6)
         books_confirmed = round(sum(item.confirmed_cost_usd for item in books), 6)
         return SeriesCostView(
@@ -208,6 +292,16 @@ class SeriesCostLedger:
                 + sum(item.unknown_cost_usd for item in books),
                 6,
             ),
+            current_books_forecast_low_usd=current_low,
+            current_books_forecast_high_usd=current_high,
+            production_forecast_low_usd=production_low,
+            production_forecast_high_usd=production_high,
+            production_forecast_status=(
+                "COMPARABLE_COMPLETED_BOOKS"
+                if comparable_average is not None
+                else "INSUFFICIENT_DATA"
+            ),
             books=books,
+            future_books=future_books,
             operations=operations,
         )

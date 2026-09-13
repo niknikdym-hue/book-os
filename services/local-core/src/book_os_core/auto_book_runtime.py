@@ -489,6 +489,27 @@ class DurableAutoBookRuntime:
             engine.dispose()
         return self._row_to_operation(row)
 
+    def list_operations(self, book_id: str, run_id: str) -> list[AutoBookOperationView]:
+        """Return the durable operation ledger in stable execution order."""
+
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        text(
+                            "SELECT * FROM auto_book_operations WHERE run_id=:run_id "
+                            "ORDER BY ordinal ASC,created_at ASC,operation_id ASC"
+                        ),
+                        {"run_id": run_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+        finally:
+            engine.dispose()
+        return [self._row_to_operation(row) for row in rows]
+
     @staticmethod
     def _row_to_operation(row: Any) -> AutoBookOperationView:
         raw_output = row["output_json"]

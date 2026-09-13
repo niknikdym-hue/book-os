@@ -615,17 +615,23 @@ summary:focus-visible {
   font-size: 13px;
 }
 
-.project-cost dl {
+.project-cost-popover {
   position: absolute;
   right: 0;
   z-index: 25;
-  width: 310px;
+  width: min(460px, 86vw);
+  max-height: 70vh;
+  overflow: auto;
   margin: 8px 0 0;
   padding: 14px;
   border: 1px solid var(--ax-line);
   border-radius: 13px;
   background: #fff;
   box-shadow: 0 18px 50px rgba(30, 48, 39, 0.16);
+}
+
+.project-cost dl {
+  margin: 0;
 }
 
 .project-cost dl div {
@@ -644,6 +650,44 @@ summary:focus-visible {
 
 .project-cost .cost-warning {
   color: var(--ax-warning);
+}
+
+.book-cost-breakdown,
+.book-cost-history {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ax-line);
+}
+
+.book-cost-breakdown h4 {
+  margin: 0 0 8px;
+}
+
+.book-cost-breakdown ul,
+.book-cost-history ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.book-cost-breakdown li,
+.book-cost-history li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 11px;
+}
+
+.book-cost-breakdown li strong,
+.book-cost-history li strong {
+  flex-basis: 100%;
+}
+
+.book-cost-history > summary {
+  cursor: pointer;
+  font-weight: 750;
 }
 
 .book-stage-nav {
@@ -1182,6 +1226,25 @@ summary:focus-visible {
   border-radius: 22px;
   background: var(--ax-surface);
   box-shadow: 0 30px 90px rgba(16, 38, 29, 0.25);
+}
+
+.series-authorization-dialog {
+  width: min(520px, 92vw);
+  padding: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 20px;
+  background: var(--ax-surface);
+  box-shadow: 0 30px 90px rgba(16, 38, 29, 0.25);
+}
+
+.series-authorization-dialog h3 {
+  margin: 5px 0 12px;
+  font-family: "New York", Georgia, serif;
+  font-size: 28px;
+}
+
+.series-authorization-dialog .actions {
+  margin-top: 24px;
 }
 
 .create-dialog > header {

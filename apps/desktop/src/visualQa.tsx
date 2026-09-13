@@ -64,7 +64,7 @@ function workflowStage(): string {
 
 function project(): ProjectView {
   const stage = workflowStage();
-  const hasContract = scenario !== "intent";
+  const hasContract = !["intent", "running"].includes(scenario);
   const hasArchitecture = ["WRITING", "WHOLE-BOOK EDIT", "FINAL REVIEW", "LITERARY MASTER"].includes(stage);
   return {
     book_id: bookId,
@@ -277,7 +277,13 @@ mockIPC((command, payload) => {
       total_estimated_cost_usd: 19.3,
       total_reserved_cost_usd: 0.9,
       total_unknown_cost_usd: 0.35,
-      books: [{ book_id: bookId, title: "Как продавать услуги", confirmed_cost_usd: 12.4, estimated_cost_usd: 17.8, reserved_cost_usd: 0.9, unknown_cost_usd: 0.35 }],
+      current_books_forecast_low_usd: 15,
+      current_books_forecast_high_usd: 17,
+      production_forecast_low_usd: 88,
+      production_forecast_high_usd: 104,
+      production_forecast_status: "COMPARABLE_COMPLETED_BOOKS",
+      books: [{ book_id: bookId, title: "Как продавать услуги", confirmed_cost_usd: 12.4, estimated_cost_usd: 5.4, reserved_cost_usd: 0.9, unknown_cost_usd: 0.35, runtime_status: "RUNNING", forecast_total_low_usd: 15, forecast_total_high_usd: 17 }],
+      future_books: [{ title: "Как продвигать услуги", forecast_total_low_usd: 13, forecast_total_high_usd: 16 }],
       operations: [],
     };
   }
@@ -289,6 +295,24 @@ mockIPC((command, payload) => {
       style_profile: null,
       target_characters: 180000,
       ready_for_planning: true,
+    };
+  }
+  if (path === `/api/projects/${bookId}/auto-book/costs`) {
+    return {
+      book_id: bookId,
+      run_id: autoBook?.run_id ?? "qa-run",
+      confirmed_cost_usd: autoBook?.confirmed_cost_usd ?? 0,
+      estimated_operations_cost_usd: 5.4,
+      reserved_cost_usd: autoBook?.reserved_cost_usd ?? 0,
+      unknown_cost_usd: autoBook?.unknown_cost_usd ?? 0,
+      max_budget_usd: autoBook?.max_total_cost_usd ?? 25,
+      forecast_remaining_low_usd: null,
+      forecast_remaining_high_usd: null,
+      forecast_total_low_usd: null,
+      forecast_total_high_usd: null,
+      forecast_status: "INSUFFICIENT_DATA",
+      categories: [],
+      operations: [],
     };
   }
   if (path === `/api/projects/${bookId}/auto-book`) return autoBook;
@@ -376,7 +400,6 @@ async function prepareScenario() {
     };
     const stage = stageLabels[contentScenario];
     if (stage) clickButton(stage);
-    if (scenario === "running") clickButton("Главная");
   }
   await wait(700);
   document.documentElement.dataset.visualQa = "ready";

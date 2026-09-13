@@ -119,9 +119,10 @@ type Fixture = {
   series?: Array<{ series_profile_id: string; name: string; profile_status: string; books: [] }>;
   opened?: ProjectView;
   autoBook?: object | null;
+  bookCost?: object | null;
 };
 
-function installFixture({ projects = [], library = [], series = [], opened, autoBook = null }: Fixture = {}) {
+function installFixture({ projects = [], library = [], series = [], opened, autoBook = null, bookCost = null }: Fixture = {}) {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command !== "core_api") throw new Error(`unexpected invoke: ${command}`);
@@ -130,6 +131,7 @@ function installFixture({ projects = [], library = [], series = [], opened, auto
     if (request.method === "GET" && request.path === "/api/library") return library;
     if (request.method === "GET" && request.path === "/api/series/workspaces") return series;
     if (request.method === "GET" && request.path.endsWith("/context")) return context;
+    if (request.method === "GET" && request.path.endsWith("/auto-book/costs")) return bookCost;
     if (request.method === "GET" && request.path.endsWith("/auto-book")) return autoBook;
     if (request.method === "GET" && request.path.startsWith("/api/projects/") && opened) return opened;
     if (request.method === "GET" && request.path === "/api/context/profiles") return [];
@@ -263,6 +265,45 @@ it("shows confirmed, estimated and unknown book cost without mixing them", async
       unknown_cost_usd: 0.75,
       max_total_cost_usd: 12,
     },
+    bookCost: {
+      book_id: opened.book_id,
+      run_id: "01JRUN00000000000000000000",
+      confirmed_cost_usd: 2.4,
+      estimated_operations_cost_usd: 3.1,
+      reserved_cost_usd: 0.5,
+      unknown_cost_usd: 0.75,
+      max_budget_usd: 12,
+      forecast_remaining_low_usd: null,
+      forecast_remaining_high_usd: null,
+      forecast_total_low_usd: null,
+      forecast_total_high_usd: null,
+      forecast_status: "INSUFFICIENT_DATA",
+      categories: [
+        {
+          category: "Написание",
+          confirmed_cost_usd: 2.4,
+          estimated_cost_usd: 3.1,
+          reserved_cost_usd: 0.5,
+          unknown_cost_usd: 0.75,
+        },
+      ],
+      operations: [
+        {
+          operation_id: "01JOP00000000000000000000",
+          operation: "chapter-1",
+          user_stage: "Написание",
+          status: "UNKNOWN",
+          confirmed_cost_usd: 2.4,
+          estimated_cost_usd: 3.1,
+          reserved_cost_usd: 0,
+          unknown_cost_usd: 0.75,
+          provider: "openai",
+          model: "gpt-6-astra",
+          reasoning_effort: "high",
+          created_at: "2026-09-13T10:00:00Z",
+        },
+      ],
+    },
   });
   render(<App />);
   await screen.findByText("Последние проекты");
@@ -271,8 +312,13 @@ it("shows confirmed, estimated and unknown book cost without mixing them", async
   const cost = await screen.findByText("Потрачено $2.40");
   fireEvent.click(cost.closest("summary")!);
   expect(screen.getByText("Оценка итоговой стоимости")).toBeInTheDocument();
-  expect(screen.getByText("Ожидает подтверждения провайдера")).toBeInTheDocument();
+  expect(screen.getByText("Не подтверждено провайдером")).toBeInTheDocument();
+  expect(screen.getByText("Максимальный бюджет")).toBeInTheDocument();
+  expect(screen.getAllByText("пока недостаточно данных").length).toBeGreaterThan(0);
   expect(screen.getByText("$0.75")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Стоимость по этапам" })).toHaveTextContent("Написание");
+  fireEvent.click(screen.getByText("Журнал операций"));
+  expect(screen.getByText(/Написание · chapter-1/)).toBeInTheDocument();
 });
 
 it("keeps project cost controls and diagnostics in Settings rather than the book surface", async () => {

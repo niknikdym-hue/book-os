@@ -18,6 +18,7 @@ from .auto_book import (
 )
 from .auto_book_finalizer import AutoBookFinalizer
 from .auto_book_runtime import AutoBookRuntimeError
+from .book_costs import BookCostService
 from .audio_script import (
     AudioScriptContent,
     AudioScriptError,
@@ -56,6 +57,7 @@ def build_auto_book_router(
     audio_scripts = AudioScriptService(data_dir)
     contexts = BookContextService(data_dir)
     series_workspaces = SeriesWorkspaceService(data_dir)
+    costs = BookCostService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
     workers_lock = threading.Lock()
     workers: dict[str, threading.Thread] = {}
@@ -247,6 +249,14 @@ def build_auto_book_router(
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
+
+    @router.get("/api/projects/{book_id}/auto-book/costs")
+    def get_auto_book_costs(book_id: str) -> dict[str, object] | None:
+        try:
+            result = costs.get(book_id)
+            return result.model_dump(mode="json") if result is not None else None
+        except AutoBookRuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @router.post("/api/projects/{book_id}/auto-book/start")
     def start_auto_book(book_id: str, payload: AutoBookStartRequest) -> dict[str, object]:

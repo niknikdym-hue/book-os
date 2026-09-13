@@ -119,13 +119,12 @@ const PLANNING_CHOICES: readonly PlanningChoice[] = [
 
 const PROGRESS_STAGES = [
   { label: "Замысел", threshold: 10 },
-  { label: "Исследование", threshold: 20 },
+  { label: "План", threshold: 20 },
   { label: "Архитектура", threshold: 32 },
-  { label: "Главы", threshold: 58 },
+  { label: "Написание", threshold: 58 },
   { label: "Редактура", threshold: 72 },
-  { label: "Факты", threshold: 82 },
-  { label: "Независимая критика", threshold: 92 },
-  { label: "Готово", threshold: 100 },
+  { label: "Проверка", threshold: 92 },
+  { label: "Выпуск", threshold: 100 },
 ] as const;
 
 const OUTPUT_CHOICES = [
@@ -1417,10 +1416,11 @@ export function LaunchPlanningPanel({
         <section className="auto-progress" role="status" aria-live="polite">
           <div className="auto-progress-heading">
             <div>
-              <p className="eyebrow">AUTO BOOK РАБОТАЕТ</p>
-              <h4>{progressMessage(autoState)}</h4>
+              <p className="eyebrow">AUTO BOOK</p>
+              <h4>BOOK OS создаёт книгу</h4>
+              <p>{progressMessage(autoState)}</p>
             </div>
-            <strong>{progress}%</strong>
+            <strong>{progress}% готово</strong>
           </div>
           <div
             className="auto-progress-track"
@@ -1444,32 +1444,37 @@ export function LaunchPlanningPanel({
               );
             })}
           </ol>
-          <div className="auto-progress-meta">
-            <span>
-              AI-запросов: {autoState?.requests_used ?? 0}/{autoState?.max_requests ?? maxRequests}
-            </span>
-            {autoState?.current_chapter_ordinal && (
-              <span>Сейчас: глава {autoState.current_chapter_ordinal}</span>
-            )}
-            <span>Подтверждено: ${(autoState?.confirmed_cost_usd ?? 0).toFixed(2)}</span>
-            <span>Зарезервировано: ${(autoState?.reserved_cost_usd ?? 0).toFixed(2)}</span>
-            {(autoState?.unknown_cost_usd ?? 0) > 0 && (
-              <span>Исход неизвестен: до ${(autoState?.unknown_cost_usd ?? 0).toFixed(2)}</span>
-            )}
-            <AutoBookClock
-              startedAt={autoState?.started_at}
-              updatedAt={autoState?.updated_at}
-              running={autoState?.status === "RUNNING"}
-            />
-          </div>
+          {autoState?.current_chapter_ordinal && (
+            <p className="auto-progress-now">Сейчас: создаю главу {autoState.current_chapter_ordinal}</p>
+          )}
 
           {autoState?.error && (
             <div className="auto-pause-message">
-              <strong>Связь прервалась, но прогресс сохранён.</strong>
-              <span>{autoState.error}</span>
+              <strong>Работа остановлена. Всё созданное сохранено.</strong>
             </div>
           )}
-          {error && <div className="auto-pause-message">{error}</div>}
+          {error && <div className="auto-pause-message"><strong>Работа остановлена. Всё созданное сохранено.</strong></div>}
+
+          <details className="auto-progress-details">
+            <summary>Подробнее</summary>
+            <div className="auto-progress-meta">
+              <span>AI-запросов: {autoState?.requests_used ?? 0}/{autoState?.max_requests ?? maxRequests}</span>
+              <span>Подтверждено: ${(autoState?.confirmed_cost_usd ?? 0).toFixed(2)}</span>
+              <span>Зарезервировано: ${(autoState?.reserved_cost_usd ?? 0).toFixed(2)}</span>
+              {(autoState?.unknown_cost_usd ?? 0) > 0 && (
+                <span>Исход неизвестен: до ${(autoState?.unknown_cost_usd ?? 0).toFixed(2)}</span>
+              )}
+              <span>Внутренний этап: {autoState?.current_stage ?? autoState?.phase ?? "подготовка"}</span>
+              <AutoBookClock
+                startedAt={autoState?.started_at}
+                updatedAt={autoState?.updated_at}
+                running={autoState?.status === "RUNNING"}
+              />
+            </div>
+            {(autoState?.error || error) && (
+              <p className="technical-error">{autoState?.error ?? error}</p>
+            )}
+          </details>
 
           {!autoBusy && autoState?.status === "RUNNING" && (
             <div className="actions planning-action">

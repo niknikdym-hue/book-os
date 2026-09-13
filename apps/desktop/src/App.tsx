@@ -80,6 +80,42 @@ type SeriesSummary = {
   books: Array<{ book_id: string; title: string; status: string }>;
 };
 
+type BookCostView = {
+  book_id: string;
+  run_id: string;
+  confirmed_cost_usd: number;
+  estimated_operations_cost_usd: number;
+  reserved_cost_usd: number;
+  unknown_cost_usd: number;
+  max_budget_usd: number;
+  forecast_remaining_low_usd: number | null;
+  forecast_remaining_high_usd: number | null;
+  forecast_total_low_usd: number | null;
+  forecast_total_high_usd: number | null;
+  forecast_status: string;
+  categories: Array<{
+    category: string;
+    confirmed_cost_usd: number;
+    estimated_cost_usd: number;
+    reserved_cost_usd: number;
+    unknown_cost_usd: number;
+  }>;
+  operations: Array<{
+    operation_id: string;
+    operation: string;
+    user_stage: string;
+    status: string;
+    confirmed_cost_usd: number;
+    estimated_cost_usd: number;
+    reserved_cost_usd: number;
+    unknown_cost_usd: number;
+    provider: string | null;
+    model: string | null;
+    reasoning_effort: string | null;
+    created_at: string;
+  }>;
+};
+
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Черновик",
   PROPOSED: "На проверке",
@@ -209,6 +245,7 @@ export function App() {
   const [project, setProject] = useState<ProjectView | null>(null);
   const [bookContext, setBookContext] = useState<BookContextSummary | null>(null);
   const [autoBook, setAutoBook] = useState<AutoBookSummary | null>(null);
+  const [bookCost, setBookCost] = useState<BookCostView | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createKind, setCreateKind] = useState<"book" | "series" | null>(null);
   const [newTitle, setNewTitle] = useState("");
@@ -293,8 +330,11 @@ export function App() {
   useEffect(() => {
     if (!project || autoBook?.status !== "RUNNING") return;
     const timer = window.setInterval(() => {
-      void coreApi<AutoBookSummary | null>("GET", `/api/projects/${project.book_id}/auto-book`)
-        .then(setAutoBook)
+      void Promise.all([
+        coreApi<AutoBookSummary | null>("GET", `/api/projects/${project.book_id}/auto-book`),
+        coreApi<BookCostView | null>("GET", `/api/projects/${project.book_id}/auto-book/costs`).catch(() => null),
+      ])
+        .then(([state, cost]) => { setAutoBook(state); setBookCost(cost); })
         .catch(() => undefined);
     }, 1500);
     return () => window.clearInterval(timer);
@@ -315,13 +355,15 @@ export function App() {
     setBusy(true);
     setError(null);
     try {
-      const [next, context, state] = await Promise.all([
+      const [next, context, state, cost] = await Promise.all([
         coreApi<ProjectView>("GET", `/api/projects/${bookId}`),
         coreApi<BookContextSummary>("GET", `/api/projects/${bookId}/context`),
         coreApi<AutoBookSummary | null>("GET", `/api/projects/${bookId}/auto-book`),
+        coreApi<BookCostView | null>("GET", `/api/projects/${bookId}/auto-book/costs`).catch(() => null),
       ]);
       setBookContext(context);
       setAutoBook(state);
+      setBookCost(cost);
       setPendingBookSetup((current) => current?.bookId === bookId ? current : null);
       hydrate(next);
       setBookStage(currentBookStage(next, state));
@@ -357,6 +399,7 @@ export function App() {
       });
       hydrate(created);
       setAutoBook(null);
+      setBookCost(null);
       setBookContext(null);
       setTopSection("books");
       setBookStage("intent");
@@ -390,6 +433,7 @@ export function App() {
       setProject(null);
       setBookContext(null);
       setAutoBook(null);
+      setBookCost(null);
       setTopSection("home");
     }
     await Promise.all([refreshProjects(), refreshLibraryProjects()]);
@@ -544,7 +588,7 @@ export function App() {
         )}
 
         {topSection === "settings" && (
-          <section className="section-view settings-view"><header className="section-title"><div><p className="eyebrow">НАСТРОЙКИ</p><h1>BOOK OS под вашим контролем</h1><p>Обычная работа с книгой не требует этих параметров.</p></div></header><div className="settings-layout"><nav aria-label="Разделы настроек">{([["ai", "AI"], ["costs", "Расходы"], ["text", "Правила текста"], ["release", "Выпуск"], ["diagnostics", "Система и диагностика"]] as const).map(([id, label]) => <button type="button" className={settingsTab === id ? "active" : ""} key={id} onClick={() => setSettingsTab(id)}>{label}</button>)}</nav><div className="settings-content">{settingsTab === "ai" && <><h2>AI для книг</h2><p className="lead-copy">Автоматический режим рекомендован. Ручные модели остаются доступны для точной настройки.</p><OpenAIWorkLevelPanel /></>}{settingsTab === "costs" && <ProjectCostSettings state={autoBook} project={project} />}{settingsTab === "text" && <><h2>Правила текста</h2><p className="lead-copy">Стиль, голос и нежелательные конструкции применяются автоматически.</p><AntiJunkPanel /></>}{settingsTab === "release" && <><h2>Настройки выпуска</h2><p className="lead-copy">Форматы конкретной книги выбираются на этапе «Выпуск». Аудиоверсия всегда сохраняет человеческое утверждение.</p></>}{settingsTab === "diagnostics" && <><h2>Система и диагностика</h2><p className="lead-copy">Технические сведения нужны только при проблеме или аудите.</p><dl className="diagnostics-list"><div><dt>Local Core</dt><dd>{health?.status ?? "недоступен"}</dd></div><div><dt>Версия</dt><dd>{health?.version ?? "—"}</dd></div></dl>{project ? <BookMemoryPanel project={project} chapter={selectedChapter} /> : <p className="muted">Откройте книгу, чтобы увидеть её техническую память.</p>}</>}</div></div></section>
+          <section className="section-view settings-view"><header className="section-title"><div><p className="eyebrow">НАСТРОЙКИ</p><h1>BOOK OS под вашим контролем</h1><p>Обычная работа с книгой не требует этих параметров.</p></div></header><div className="settings-layout"><nav aria-label="Разделы настроек">{([["ai", "AI"], ["costs", "Расходы"], ["text", "Правила текста"], ["release", "Выпуск"], ["diagnostics", "Система и диагностика"]] as const).map(([id, label]) => <button type="button" className={settingsTab === id ? "active" : ""} key={id} onClick={() => setSettingsTab(id)}>{label}</button>)}</nav><div className="settings-content">{settingsTab === "ai" && <><h2>AI для книг</h2><p className="lead-copy">Автоматический режим рекомендован. Ручные модели остаются доступны для точной настройки.</p><OpenAIWorkLevelPanel /></>}{settingsTab === "costs" && <ProjectCostSettings state={autoBook} cost={bookCost} project={project} />}{settingsTab === "text" && <><h2>Правила текста</h2><p className="lead-copy">Стиль, голос и нежелательные конструкции применяются автоматически.</p><AntiJunkPanel /></>}{settingsTab === "release" && <><h2>Настройки выпуска</h2><p className="lead-copy">Форматы конкретной книги выбираются на этапе «Выпуск». Аудиоверсия всегда сохраняет человеческое утверждение.</p></>}{settingsTab === "diagnostics" && <><h2>Система и диагностика</h2><p className="lead-copy">Технические сведения нужны только при проблеме или аудите.</p><dl className="diagnostics-list"><div><dt>Local Core</dt><dd>{health?.status ?? "недоступен"}</dd></div><div><dt>Версия</dt><dd>{health?.version ?? "—"}</dd></div></dl>{project ? <BookMemoryPanel project={project} chapter={selectedChapter} /> : <p className="muted">Откройте книгу, чтобы увидеть её техническую память.</p>}</>}</div></div></section>
         )}
 
         {topSection === "books" && !project && (
@@ -564,7 +608,7 @@ export function App() {
                   {" · "}{currentStageLabel} {progress}%
                 </p>
               </div>
-              <ProjectCost state={autoBook} />
+            <ProjectCost state={autoBook} cost={bookCost} />
               <button className="primary-action" type="button" onClick={() => setBookStage(systemStage)}>
                 Продолжить
               </button>
@@ -759,37 +803,77 @@ export function App() {
   );
 }
 
-function ProjectCost({ state }: { state: AutoBookSummary | null }) {
-  if (!state) {
+function ProjectCost({ state, cost }: { state: AutoBookSummary | null; cost: BookCostView | null }) {
+  if (!state && !cost) {
     return <div className="project-cost empty"><span>Стоимость книги</span><strong>Пока без расходов</strong></div>;
   }
-  const estimate = state.estimated_cost_usd ?? 0;
+  const confirmed = cost?.confirmed_cost_usd ?? state?.confirmed_cost_usd ?? 0;
+  const reserved = cost?.reserved_cost_usd ?? state?.reserved_cost_usd ?? 0;
+  const unknown = cost?.unknown_cost_usd ?? state?.unknown_cost_usd ?? 0;
+  const budget = cost?.max_budget_usd ?? state?.max_total_cost_usd;
+  const hasForecast = cost?.forecast_total_low_usd != null && cost?.forecast_total_high_usd != null;
   return (
     <details className="project-cost">
       <summary>
         <span>Стоимость книги</span>
-        <strong>Потрачено {money(state.confirmed_cost_usd)}</strong>
-        {estimate > 0 && <small>Оценка итоговой {money(estimate)}</small>}
+        <strong>Потрачено {money(confirmed)}</strong>
+        <small>{hasForecast
+          ? `Прогноз итоговой ${money(cost?.forecast_total_low_usd)}–${money(cost?.forecast_total_high_usd)}`
+          : "Прогноз итоговой стоимости: пока недостаточно данных"}</small>
       </summary>
+      <div className="project-cost-popover">
       <dl>
-        <div><dt>Фактически потрачено</dt><dd>{money(state.confirmed_cost_usd)}</dd></div>
-        {estimate > 0 && <div><dt>Оценка итоговой стоимости</dt><dd>{money(estimate)}</dd></div>}
-        {(state.reserved_cost_usd ?? 0) > 0 && <div><dt>Зарезервировано</dt><dd>{money(state.reserved_cost_usd)}</dd></div>}
-        {(state.unknown_cost_usd ?? 0) > 0 && (
-          <div className="cost-warning"><dt>Ожидает подтверждения провайдера</dt><dd>{money(state.unknown_cost_usd)}</dd></div>
+        <div><dt>Фактически потрачено</dt><dd>{money(confirmed)}</dd></div>
+        {reserved > 0 && <div><dt>Зарезервировано</dt><dd>{money(reserved)}</dd></div>}
+        {unknown > 0 && (
+          <div className="cost-warning"><dt>Не подтверждено провайдером</dt><dd>{money(unknown)}</dd></div>
         )}
-        {state.max_total_cost_usd !== undefined && <div><dt>Бюджет проекта</dt><dd>{money(state.max_total_cost_usd)}</dd></div>}
+        {budget !== undefined && <div><dt>Максимальный бюджет</dt><dd>{money(budget)}</dd></div>}
+        <div><dt>Оценка оставшейся стоимости</dt><dd>{hasForecast ? `${money(cost?.forecast_remaining_low_usd)}–${money(cost?.forecast_remaining_high_usd)}` : "пока недостаточно данных"}</dd></div>
+        <div><dt>Оценка итоговой стоимости</dt><dd>{hasForecast ? `${money(cost?.forecast_total_low_usd)}–${money(cost?.forecast_total_high_usd)}` : "пока недостаточно данных"}</dd></div>
       </dl>
+      {cost && cost.categories.length > 0 && (
+        <section className="book-cost-breakdown" aria-label="Стоимость по этапам">
+          <h4>По этапам</h4>
+          <ul>
+            {cost.categories.map((item) => (
+              <li key={item.category}>
+                <strong>{item.category}</strong>
+                {item.confirmed_cost_usd > 0 && <span>потрачено {money(item.confirmed_cost_usd)}</span>}
+                {item.estimated_cost_usd > 0 && <span>оценка операций {money(item.estimated_cost_usd)}</span>}
+                {item.reserved_cost_usd > 0 && <span>зарезервировано {money(item.reserved_cost_usd)}</span>}
+                {item.unknown_cost_usd > 0 && <span>не подтверждено {money(item.unknown_cost_usd)}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {cost && cost.operations.length > 0 && (
+        <details className="book-cost-history">
+          <summary>Журнал операций</summary>
+          <ul>
+            {cost.operations.map((item) => (
+              <li key={item.operation_id}>
+                <span>{new Date(item.created_at).toLocaleString("ru-RU")}</span>
+                <strong>{item.user_stage} · {item.operation}</strong>
+                <span>{item.status}{item.confirmed_cost_usd > 0 ? ` · ${money(item.confirmed_cost_usd)}` : ""}</span>
+                {(item.provider || item.model) && <small>{item.provider}{item.model ? ` · ${item.model}` : ""}{item.reasoning_effort ? ` · ${item.reasoning_effort}` : ""}</small>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      </div>
     </details>
   );
 }
 
-function ProjectCostSettings({ state, project }: { state: AutoBookSummary | null; project: ProjectView | null }) {
+function ProjectCostSettings({ state, cost, project }: { state: AutoBookSummary | null; cost: BookCostView | null; project: ProjectView | null }) {
   return (
     <>
       <h2>Расходы</h2>
       <p className="lead-copy">Подтверждённые, оценочные и ожидающие суммы показаны отдельно и восстанавливаются из Local Core.</p>
-      {project ? <ProjectCost state={state} /> : <p className="muted">Откройте книгу, чтобы увидеть её durable cost accounting.</p>}
+      {project ? <ProjectCost state={state} cost={cost} /> : <p className="muted">Откройте книгу, чтобы увидеть её durable cost accounting.</p>}
       <details className="advanced-settings">
         <summary>Технические лимиты и safety controls</summary>
         <p className="settings-note">Общий бюджет, лимит одного запроса и число запросов задаются перед Auto Book запуском. BOOK OS не выполняет запрос вне этих границ.</p>

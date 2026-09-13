@@ -87,6 +87,13 @@ def test_provider_disconnect_pauses_auto_book_without_losing_progress(tmp_path: 
     assert started.status_code == 200
     assert started.json()["phase"] == "BOOK_CONTRACT"
 
+    assert client.get(f"/api/projects/{book_id}/auto-book/costs").status_code == 401
+    costs = client.get(f"/api/projects/{book_id}/auto-book/costs", headers=headers)
+    assert costs.status_code == 200
+    assert costs.json()["max_budget_usd"] == 10.0
+    assert costs.json()["forecast_status"] == "INSUFFICIENT_DATA"
+    assert costs.json()["forecast_total_low_usd"] is None
+
     interrupted = client.post(
         f"/api/projects/{book_id}/auto-book/advance",
         headers=headers,

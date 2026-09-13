@@ -355,9 +355,20 @@ it("shows visual progress and a resumable pause instead of a spinner after a pro
     />,
   );
 
-  expect(await screen.findByText("Создаю главу 2")).toBeInTheDocument();
+  expect(await screen.findByText("BOOK OS создаёт книгу")).toBeInTheDocument();
+  expect(screen.getByText("Сейчас: создаю главу 2")).toBeInTheDocument();
   expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow");
-  expect(screen.getByText("Связь прервалась, но прогресс сохранён.")).toBeInTheDocument();
+  expect(screen.getByText("Работа остановлена. Всё созданное сохранено.")).toBeInTheDocument();
+  expect(screen.getByText(/AI-запросов/)).not.toBeVisible();
+  expect(screen.getByText("Server disconnected without sending a response.")).not.toBeVisible();
+  expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(
+    expect.arrayContaining([expect.stringContaining("План"), expect.stringContaining("Выпуск")]),
+  );
+  expect(screen.queryByText("Исследование")).not.toBeInTheDocument();
+  expect(screen.queryByText("Факты")).not.toBeInTheDocument();
+  expect(screen.queryByText("Независимая критика")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("Подробнее"));
+  expect(screen.getByText(/AI-запросов: 5\/40/)).toBeInTheDocument();
   expect(screen.getByText("Server disconnected without sending a response.")).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Продолжить с сохранённого места" }),
