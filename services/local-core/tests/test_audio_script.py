@@ -147,6 +147,8 @@ def test_new_imported_source_marks_prior_audio_script_stale_without_deleting_it(
     assert service.get(book_id, first.audio_script_id).stale_against_source is True
     assert service.get(book_id, second.audio_script_id).stale_against_source is False
     assert len(service.list_scripts(book_id)) == 2
+    with pytest.raises(AudioScriptGateError, match="stale AudioScript"):
+        service.approve(book_id, first.audio_script_id, human_actor="Owner")
 
 
 def test_blocking_page_language_or_visual_dependency_cannot_be_approved(tmp_path: Path) -> None:

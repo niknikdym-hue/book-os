@@ -971,6 +971,8 @@ class AudioScriptService:
         current = self.get(book_id, audio_script_id)
         if current.status != "PROPOSED":
             raise AudioScriptGateError("only a proposed AudioScript can be human-approved")
+        if current.stale_against_source:
+            raise AudioScriptGateError("a stale AudioScript cannot be approved")
         blocking = [item for item in current.quality_checks if item.state == "BLOCKING"]
         if blocking:
             raise AudioScriptGateError(
