@@ -2,8 +2,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
+  type KeyboardEvent,
   type SetStateAction,
 } from "react";
 import { coreApi, coreHealth } from "./api";
@@ -222,6 +224,8 @@ export function App() {
   const [architecture, setArchitecture] = useState<BookArchitecturePayload>(clone(emptyArchitecture));
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [chapterContract, setChapterContract] = useState<ChapterContractPayload>(clone(emptyChapterContract));
+  const createReturnFocus = useRef<HTMLElement | null>(null);
+  const createWasOpen = useRef(false);
 
   const selectedChapter = useMemo(
     () => project?.chapters.find((chapter) => chapter.chapter_id === selectedChapterId) ?? null,
@@ -301,6 +305,11 @@ export function App() {
     const states = bookStageStates(project, autoBook);
     if (states[bookStage] === "locked") setBookStage(currentBookStage(project, autoBook));
   }, [autoBook, bookStage, project]);
+
+  useEffect(() => {
+    if (createWasOpen.current && !createOpen) createReturnFocus.current?.focus();
+    createWasOpen.current = createOpen;
+  }, [createOpen]);
 
   async function openProject(bookId: string) {
     setBusy(true);
@@ -420,8 +429,40 @@ export function App() {
   );
 
   function openCreate(kind: "book" | "series" | null = null) {
+    createReturnFocus.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setCreateKind(kind);
     setCreateOpen(true);
+  }
+
+  function closeCreate() {
+    setCreateOpen(false);
+    setCreateKind(null);
+  }
+
+  function keepDialogFocus(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCreate();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((item) => !item.closest("[hidden]"));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function nextStage() {
@@ -438,14 +479,14 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">B</span>
           <span><strong>BOOK OS</strong><small>Author Studio</small></span>
         </button>
-        <button className="create-button" type="button" onClick={() => openCreate()}>
-          <span aria-hidden="true">＋</span> Создать
+        <button className="create-button" type="button" onClick={() => openCreate()} aria-label="Создать">
+          <span aria-hidden="true">＋</span><span className="nav-label">Создать</span>
         </button>
         <nav className="product-navigation" aria-label="Главная навигация">
-          <button className={topSection === "home" ? "active" : ""} onClick={() => setTopSection("home")} type="button"><NavIcon>⌂</NavIcon> Главная</button>
-          <button className={topSection === "series" ? "active" : ""} onClick={() => setTopSection("series")} type="button"><NavIcon>▦</NavIcon> Серии</button>
-          <button className={topSection === "books" ? "active" : ""} onClick={() => setTopSection("books")} type="button"><NavIcon>▤</NavIcon> Книги</button>
-          <button className={topSection === "library" ? "active" : ""} onClick={() => setTopSection("library")} type="button"><NavIcon>◇</NavIcon> Библиотека</button>
+          <button aria-label="Главная" className={topSection === "home" ? "active" : ""} onClick={() => setTopSection("home")} type="button"><NavIcon>⌂</NavIcon><span className="nav-label">Главная</span></button>
+          <button aria-label="Серии" className={topSection === "series" ? "active" : ""} onClick={() => setTopSection("series")} type="button"><NavIcon>▦</NavIcon><span className="nav-label">Серии</span></button>
+          <button aria-label="Книги" className={topSection === "books" ? "active" : ""} onClick={() => setTopSection("books")} type="button"><NavIcon>▤</NavIcon><span className="nav-label">Книги</span></button>
+          <button aria-label="Библиотека" className={topSection === "library" ? "active" : ""} onClick={() => setTopSection("library")} type="button"><NavIcon>◇</NavIcon><span className="nav-label">Библиотека</span></button>
         </nav>
         <div className="sidebar-projects">
           <BookSidebar
@@ -460,7 +501,7 @@ export function App() {
             showLibrary={false}
           />
         </div>
-        <button className={`settings-link ${topSection === "settings" ? "active" : ""}`} type="button" onClick={() => setTopSection("settings")}><NavIcon>⚙</NavIcon> Настройки</button>
+        <button aria-label="Настройки" className={`settings-link ${topSection === "settings" ? "active" : ""}`} type="button" onClick={() => setTopSection("settings")}><NavIcon>⚙</NavIcon><span className="nav-label">Настройки</span></button>
       </aside>
 
       <section className="author-main">
@@ -654,21 +695,22 @@ export function App() {
       </section>
 
       {createOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setCreateOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={closeCreate}>
           <section
             className="create-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-title"
             onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={keepDialogFocus}
           >
             <header>
               <div><p className="eyebrow">НОВЫЙ ПРОЕКТ</p><h2 id="create-title">Что создаём?</h2></div>
-              <button className="icon-button" aria-label="Закрыть" type="button" onClick={() => setCreateOpen(false)}>×</button>
+              <button className="icon-button" aria-label="Закрыть" type="button" onClick={closeCreate}>×</button>
             </header>
             {!createKind && (
               <div className="create-kind-grid">
-                <button type="button" onClick={() => setCreateKind("book")}>
+                <button type="button" autoFocus onClick={() => setCreateKind("book")}>
                   <span aria-hidden="true">▤</span><strong>Книгу</strong><small>Отдельную или внутри существующей серии</small>
                 </button>
                 <button type="button" onClick={() => setCreateKind("series")}>

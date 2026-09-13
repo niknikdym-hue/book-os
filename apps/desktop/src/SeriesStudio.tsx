@@ -22,6 +22,34 @@ type SeriesCreateResult = {
   reasoning_effort: string | null;
 };
 
+type SeriesCostView = {
+  series_profile_id: string;
+  series_confirmed_cost_usd: number;
+  books_confirmed_cost_usd: number;
+  total_confirmed_cost_usd: number;
+  total_estimated_cost_usd: number;
+  total_reserved_cost_usd: number;
+  total_unknown_cost_usd: number;
+  books: Array<{
+    book_id: string;
+    title: string;
+    confirmed_cost_usd: number;
+    estimated_cost_usd: number;
+    reserved_cost_usd: number;
+    unknown_cost_usd: number;
+  }>;
+  operations: Array<{
+    entry_id: string;
+    operation: string;
+    model: string;
+    reasoning_effort: string | null;
+    confirmed_cost_usd: number;
+    estimated_cost_usd: number;
+    unknown_cost_usd: number;
+    created_at: string;
+  }>;
+};
+
 type SeriesReference = {
   reference_id: string;
   series_profile_id: string;
@@ -120,6 +148,74 @@ type Props = {
   initialMode?: "NEW" | "IMPORT" | "BOOK_OS";
 };
 
+function usd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function SeriesCostSummary({ cost }: { cost: SeriesCostView | null }) {
+  if (!cost) {
+    return (
+      <div className="series-cost-summary empty">
+        <span>Стоимость серии</span>
+        <strong>Пока без подтверждённых расходов</strong>
+      </div>
+    );
+  }
+  return (
+    <details className="series-cost-summary">
+      <summary>
+        <span>Стоимость серии</span>
+        <strong>Потрачено {usd(cost.total_confirmed_cost_usd)}</strong>
+        {cost.total_estimated_cost_usd > 0 && (
+          <small>Оценка всей серии {usd(cost.total_estimated_cost_usd)}</small>
+        )}
+      </summary>
+      <dl>
+        <div><dt>Работа с серией</dt><dd>{usd(cost.series_confirmed_cost_usd)}</dd></div>
+        <div><dt>Книги серии</dt><dd>{usd(cost.books_confirmed_cost_usd)}</dd></div>
+        <div><dt>Итого подтверждено</dt><dd>{usd(cost.total_confirmed_cost_usd)}</dd></div>
+        {cost.total_reserved_cost_usd > 0 && (
+          <div><dt>Зарезервировано</dt><dd>{usd(cost.total_reserved_cost_usd)}</dd></div>
+        )}
+        {cost.total_unknown_cost_usd > 0 && (
+          <div className="cost-warning">
+            <dt>Есть расходы, итог которых ещё подтверждается провайдером</dt>
+            <dd>{usd(cost.total_unknown_cost_usd)}</dd>
+          </div>
+        )}
+      </dl>
+      {cost.books.length > 0 && (
+        <ol className="series-cost-books">
+          {cost.books.map((book) => (
+            <li key={book.book_id}>
+              <span>{book.title}</span>
+              <strong>{usd(book.confirmed_cost_usd)}</strong>
+              {book.estimated_cost_usd > book.confirmed_cost_usd && (
+                <small>~{usd(book.estimated_cost_usd)} итог</small>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {cost.operations.length > 0 && (
+        <details className="series-cost-history">
+          <summary>История работы с серией</summary>
+          <ul>
+            {cost.operations.map((operation) => (
+              <li key={operation.entry_id}>
+                <span>{new Date(operation.created_at).toLocaleString("ru-RU")}</span>
+                <span>{operation.operation === "SERIES_CONCEPT" ? "Концепция серии" : operation.operation}</span>
+                <strong>{usd(operation.confirmed_cost_usd)}</strong>
+                <small>{operation.model}{operation.reasoning_effort ? ` · ${operation.reasoning_effort}` : ""}</small>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </details>
+  );
+}
+
 export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = {}) {
   const [open, setOpen] = useState(embedded);
   const [mode, setMode] = useState<"NEW" | "IMPORT" | "BOOK_OS">(initialMode);
@@ -141,6 +237,10 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
   const [currentReference, setCurrentReference] = useState<SeriesReference | null>(null);
   const [workspaces, setWorkspaces] = useState<SeriesWorkspace[]>([]);
+  const [seriesCosts, setSeriesCosts] = useState<Record<string, SeriesCostView>>({});
+  const [workspaceSection, setWorkspaceSection] = useState<
+    "CONCEPT" | "BOOKS" | "RULES" | "MATERIALS"
+  >("CONCEPT");
   const [externalSeriesName, setExternalSeriesName] = useState("");
   const [externalAudience, setExternalAudience] = useState("");
   const [externalPromise, setExternalPromise] = useState("");
@@ -164,6 +264,20 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
     ]);
     setProfiles(availableProfiles);
     setWorkspaces(availableWorkspaces);
+    const costPairs = await Promise.all(
+      availableWorkspaces.map(async (workspace) => {
+        try {
+          const cost = await coreApi<SeriesCostView>(
+            "GET",
+            `/api/series/${workspace.series_profile_id}/costs`,
+          );
+          return [workspace.series_profile_id, cost] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    setSeriesCosts(Object.fromEntries(costPairs.filter((item) => item !== null)));
   }, []);
 
   useEffect(() => {
@@ -576,6 +690,9 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                   />
                 </label>
 
+                <details className="advanced-settings series-ai-settings">
+                  <summary>AI: {MODEL_OPTIONS.find((item) => item.value === modelChoice)?.label ?? "Автоматически"}{modelChoice === "AUTO" ? " — рекомендуется" : ""}</summary>
+                  <p className="muted">Ручная модель и жёсткий лимит доступны только по вашему явному решению.</p>
                 <div className="series-studio-grid">
                   <label className="field">
                     <span>Модель</span>
@@ -606,6 +723,7 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                   />
                   <span>Разрешаю один платный вызов выбранной модели с указанным лимитом.</span>
                 </label>
+                </details>
 
                 <button
                   type="button"
@@ -823,12 +941,42 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                       <div><p className="eyebrow">SERIES BIBLE v{workspace.profile_revision}</p><h3>{workspace.name}</h3></div>
                       <span className={`badge ${workspace.profile_status === "APPROVED" ? "approved" : "draft"}`}>{workspace.profile_status === "APPROVED" ? "УТВЕРЖДЁН" : "ЧЕРНОВИК"}</span>
                     </div>
-                    {workspace.territory && <p>{workspace.territory}</p>}
-                    {workspace.profile_status !== "APPROVED" && (
-                      <button type="button" className="primary" disabled={busy} onClick={() => void approveWorkspaceSeries(workspace.series_profile_id)}>
-                        Утвердить паспорт серии
-                      </button>
+                    <SeriesCostSummary cost={seriesCosts[workspace.series_profile_id] ?? null} />
+                    <nav className="series-workspace-nav" aria-label={`Разделы серии «${workspace.name}»`}>
+                      {([
+                        ["CONCEPT", "Концепция"],
+                        ["BOOKS", "Книги"],
+                        ["RULES", "Правила серии"],
+                        ["MATERIALS", "Материалы"],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          className={workspaceSection === id ? "active" : ""}
+                          aria-pressed={workspaceSection === id}
+                          onClick={() => setWorkspaceSection(id)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </nav>
+                    {workspaceSection === "CONCEPT" && (
+                      <section className="series-workspace-pane">
+                        <p className="eyebrow">КОНЦЕПЦИЯ</p>
+                        <h4>Обещание и территория серии</h4>
+                        {workspace.territory
+                          ? <p>{workspace.territory}</p>
+                          : <p className="muted">Территория уточняется в Series Bible.</p>}
+                        {workspace.profile_status !== "APPROVED" && (
+                          <button type="button" className="primary" disabled={busy} onClick={() => void approveWorkspaceSeries(workspace.series_profile_id)}>
+                            Утвердить паспорт серии
+                          </button>
+                        )}
+                      </section>
                     )}
+                    {workspaceSection === "BOOKS" && (
+                    <section className="series-workspace-pane">
+                    <p className="eyebrow">КАРТА СЕРИИ</p>
                     <ol>
                       {workspace.books.map((book) => (
                         <li key={book.book_id}>
@@ -875,6 +1023,11 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                         </li>
                       ))}
                     </ol>
+                    </section>
+                    )}
+                    {workspaceSection === "RULES" && (
+                    <section className="series-workspace-pane">
+                    <p className="eyebrow">ПРАВИЛА СЕРИИ</p>
                     <p className="muted">
                       Карта различий: {workspace.map === null ? "не построена" : !workspace.map.current ? "устарела" : `${workspace.map.status}${workspace.map.approved ? " · утверждена" : " · ждёт решения автора"}`}
                     </p>
@@ -891,6 +1044,11 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                     {workspace.map?.status === "BLOCKING" && (
                       <p className="alert inline-alert">Есть существенные дубли или неразобранные источники. Утверждение и написание заблокированы до исправления.</p>
                     )}
+                    </section>
+                    )}
+                    {workspaceSection === "MATERIALS" && (
+                    <section className="series-workspace-pane">
+                    <p className="eyebrow">МАТЕРИАЛЫ И ВЫПУСК</p>
                     <details>
                       <summary>Что выгрузить по серии</summary>
                       {([
@@ -913,6 +1071,8 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                         Подготовить выбранные материалы серии
                       </button>
                     </details>
+                    </section>
+                    )}
                   </article>
                 ))}
                 {seriesExportPath && <p className="series-studio-success">Материалы готовы: {seriesExportPath}</p>}

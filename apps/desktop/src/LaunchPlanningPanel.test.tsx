@@ -100,6 +100,38 @@ it("separates the new-book delivery profile from the existing-book audio workflo
   expect(screen.queryByRole("button", { name: "Аудио — основной формат" })).not.toBeInTheDocument();
 });
 
+it("keeps existing-book audio out of the new-book surface and exposes it at Release", async () => {
+  const { unmount } = render(
+    <LaunchPlanningPanel
+      project={project}
+      chapter={null}
+      onProject={() => undefined}
+      api={fakeApi()}
+      surface="new-book"
+    />,
+  );
+
+  await screen.findByText("СИСТЕМА ГОТОВА");
+  expect(
+    screen.queryByRole("button", { name: "Подготовить текст для аудиозаписи готовой книги" }),
+  ).not.toBeInTheDocument();
+
+  unmount();
+  render(
+    <LaunchPlanningPanel
+      project={project}
+      chapter={null}
+      onProject={() => undefined}
+      api={fakeApi()}
+      surface="release"
+    />,
+  );
+
+  expect(await screen.findByRole("button", { name: "Аудиоверсия готовой книги" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Аудиоверсия готовой книги" }));
+  expect(screen.getByRole("heading", { name: "Подготовить AudioScript из готовой книги" })).toBeInTheDocument();
+});
+
 it("shows the exact proposed AudioScript checks and requires explicit human approval", async () => {
   const awaiting: RunningState = {
     run_id: "01JRUN00000000000000000000",

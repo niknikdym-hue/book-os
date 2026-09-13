@@ -13,6 +13,7 @@ from .series_reference import (
     SeriesReferenceUploadRequest,
 )
 from .series_studio import SeriesCreateWithAIRequest, SeriesStudioError, SeriesStudioService
+from .series_costs import SeriesCostLedger
 from .series_workspace import (
     SeriesBookCreateRequest,
     SeriesCreateRequest,
@@ -33,12 +34,22 @@ def build_series_studio_router(
     studio = SeriesStudioService(data_dir, gateway)
     references = SeriesReferenceService(data_dir)
     workspaces = SeriesWorkspaceService(data_dir)
+    costs = SeriesCostLedger(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
 
     @router.post("/api/series/create-with-ai")
     def create_series_with_ai(payload: SeriesCreateWithAIRequest) -> dict[str, object]:
         try:
-            return studio.create_with_ai(payload).model_dump(mode="json")
+            result = studio.create_with_ai(payload)
+            costs.record_series_creation(
+                series_profile_ids=[item.profile_id for item in result.concepts],
+                provider=result.provider,
+                model=result.model,
+                reasoning_effort=result.reasoning_effort,
+                provider_run_id=result.provider_run_id,
+                usage=result.usage,
+            )
+            return result.model_dump(mode="json")
         except ProfileNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except (BookContextGateError, ModelBudgetError) as exc:
@@ -79,6 +90,13 @@ def build_series_studio_router(
     @router.get("/api/series/workspaces")
     def list_series_workspaces() -> list[dict[str, object]]:
         return [item.model_dump(mode="json") for item in workspaces.workspaces()]
+
+    @router.get("/api/series/{series_profile_id}/costs")
+    def get_series_costs(series_profile_id: str) -> dict[str, object]:
+        try:
+            return costs.get(series_profile_id).model_dump(mode="json")
+        except ProfileNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.post("/api/series/workspaces")
     def create_series_workspace(payload: SeriesCreateRequest) -> dict[str, object]:

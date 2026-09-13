@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SeriesStudio } from "./SeriesStudio";
 
@@ -62,6 +62,28 @@ vi.mock("./api", () => ({
         },
       ];
     }
+    if (method === "GET" && path === "/api/series/01JSERIES0000000000000000/costs") {
+      return {
+        series_profile_id: "01JSERIES0000000000000000",
+        series_confirmed_cost_usd: 0.42,
+        books_confirmed_cost_usd: 2.4,
+        total_confirmed_cost_usd: 2.82,
+        total_estimated_cost_usd: 6.17,
+        total_reserved_cost_usd: 0.5,
+        total_unknown_cost_usd: 0.25,
+        books: [
+          {
+            book_id: "01JBOOK000000000000000000",
+            title: "Первая книга",
+            confirmed_cost_usd: 2.4,
+            estimated_cost_usd: 5.75,
+            reserved_cost_usd: 0.5,
+            unknown_cost_usd: 0.25,
+          },
+        ],
+        operations: [],
+      };
+    }
     return null;
   }),
 }));
@@ -87,10 +109,14 @@ it("offers three persisted series scenarios and keeps Auto as the default", asyn
 
   fireEvent.click(screen.getByRole("button", { name: "Продолжить в BOOK OS" }));
   expect(await screen.findByText("Секреты сильной работы")).toBeInTheDocument();
+  expect(screen.getByText("Потрачено $2.82")).toBeInTheDocument();
+  const sections = screen.getByRole("navigation", { name: "Разделы серии «Секреты сильной работы»" });
+  fireEvent.click(within(sections).getByRole("button", { name: "Правила серии" }));
   expect(screen.getByText(/Карта различий: не построена/)).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Загрузить «Секреты продвижения услуг»" }),
   ).toBeInTheDocument();
+  fireEvent.click(within(sections).getByRole("button", { name: "Книги" }));
   expect(screen.getByRole("button", { name: "Архивировать книгу" })).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Удалить сохранённый оригинал" }),

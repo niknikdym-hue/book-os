@@ -165,12 +165,21 @@ it("opens one accessible Create flow for a Book or a Series", async () => {
   render(<App />);
   await screen.findByText("Последние проекты");
 
-  fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+  const createButton = screen.getByRole("button", { name: "Создать" });
+  createButton.focus();
+  fireEvent.click(createButton);
   const dialog = screen.getByRole("dialog", { name: "Что создаём?" });
-  expect(within(dialog).getByRole("button", { name: /Книгу/ })).toBeInTheDocument();
+  const bookChoice = within(dialog).getByRole("button", { name: /Книгу/ });
+  expect(bookChoice).toBeInTheDocument();
+  expect(bookChoice).toHaveFocus();
   expect(within(dialog).getByRole("button", { name: /Серию книг/ })).toBeInTheDocument();
 
-  fireEvent.click(within(dialog).getByRole("button", { name: /Книгу/ }));
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Что создаём?" })).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Создать" })).toHaveFocus());
+  fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Что создаём?" })).getByRole("button", { name: /Книгу/ }));
   expect(screen.getByRole("heading", { name: "Создайте проект книги" })).toBeInTheDocument();
   expect(screen.getByLabelText(/Рабочее название/)).toBeInTheDocument();
   expect(screen.getByLabelText(/Идея книги/)).toBeInTheDocument();
