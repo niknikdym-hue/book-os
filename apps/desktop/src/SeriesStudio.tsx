@@ -99,6 +99,11 @@ type SeriesWorkspace = {
     unique_idea: string;
     status: string;
     source_kind: string;
+    origin_kind: "NEW" | "LEGACY_TITLE_ONLY" | "CURRENT_REWRITTEN" | "IMPORTED";
+    lifecycle: "PLANNED" | "DEFINITION" | "ARCHITECTURE" | "WRITING" | "EDITING" | "COMPLETED" | "ARCHIVED";
+    legacy_content_allowed: boolean;
+    current_corpus_eligible: boolean;
+    definition_ready: boolean;
     passport_hash: string;
     passport_approved: boolean;
     imported_sources?: Array<{
@@ -159,10 +164,44 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 type Props = {
   embedded?: boolean;
   initialMode?: "NEW" | "IMPORT" | "BOOK_OS";
+  onOpenBook?: (bookId: string) => void;
 };
 
 function usd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+function bookStateLabel(book: SeriesWorkspace["books"][number]): string {
+  if (book.origin_kind === "CURRENT_REWRITTEN" && book.lifecycle === "COMPLETED") {
+    return "Готовая новая версия";
+  }
+  if (book.origin_kind === "LEGACY_TITLE_ONLY" && book.lifecycle === "PLANNED") {
+    return "Старое название · Переписать с нуля";
+  }
+  if (book.origin_kind === "NEW" && book.lifecycle === "PLANNED") {
+    return "Новая книга · Запланирована";
+  }
+  const lifecycle: Record<string, string> = {
+    DEFINITION: "Разрабатывается замысел",
+    ARCHITECTURE: "Создаётся архитектура",
+    WRITING: "Идёт написание",
+    EDITING: "Идёт редактура",
+    COMPLETED: "Готова",
+    ARCHIVED: "В архиве",
+  };
+  return lifecycle[book.lifecycle] ?? "В работе";
+}
+
+function mainBookAction(book: SeriesWorkspace["books"][number]): string {
+  if (book.lifecycle !== "PLANNED") return "Открыть книгу";
+  return book.origin_kind === "LEGACY_TITLE_ONLY" ? "Начать новую версию" : "Начать книгу";
+}
+
+function countPhrase(count: number, one: string, few: string, many: string): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const form = mod100 >= 11 && mod100 <= 14 ? many : mod10 === 1 ? one : mod10 >= 2 && mod10 <= 4 ? few : many;
+  return `${count} ${form}`;
 }
 
 function SeriesCostSummary({ cost }: { cost: SeriesCostView | null }) {
@@ -254,7 +293,7 @@ function SeriesCostSummary({ cost }: { cost: SeriesCostView | null }) {
   );
 }
 
-export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = {}) {
+export function SeriesStudio({ embedded = false, initialMode = "NEW", onOpenBook }: Props = {}) {
   const [open, setOpen] = useState(embedded);
   const [mode, setMode] = useState<"NEW" | "IMPORT" | "BOOK_OS">(initialMode);
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
@@ -353,6 +392,7 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
   const currentReferenceStyle = currentReference
     ? styles.find((item) => item.profile_id === currentReference.style_profile_id) ?? null
     : null;
+  const servicesWorkspace = workspaces.find((item) => item.name === "Секреты продвижения услуг");
 
   useEffect(() => {
     setCurrentReference(null);
@@ -529,7 +569,7 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
         `/api/series/${seriesProfileId}/books/${bookId}/passport/approve`,
         {
           passport_hash: passportHash,
-          reason: "Автор утвердил текущую уникальную идею, границы и механизм книги",
+          reason: "Автор утвердил паспорт новой версии после Book Definition",
         },
       );
       await reloadProfiles();
@@ -541,11 +581,29 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
   }
 
   async function archiveSeriesBook(seriesProfileId: string, bookId: string) {
+    if (!window.confirm("Архивировать эту книгу? Её можно будет восстановить из библиотеки.")) return;
     setBusy(true);
     setError(null);
     try {
       await coreApi("POST", `/api/series/${seriesProfileId}/books/${bookId}/archive`);
       await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startFreshSeriesBook(seriesProfileId: string, bookId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const fresh = await coreApi<{ book_id: string }>(
+        "POST",
+        `/api/series/${seriesProfileId}/books/${bookId}/start-fresh`,
+      );
+      await reloadProfiles();
+      onOpenBook?.(fresh.book_id);
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -978,8 +1036,9 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                 <div className="series-studio-result">
                   <strong>Согласованный каркас автора</strong>
                   <p className="muted">
-                    Создаёт черновик «Секреты продвижения услуг» с четырьмя закреплёнными и
-                    четырьмя планируемыми книгами. Тексты не генерируются и файлы не меняются.
+                    {servicesWorkspace
+                      ? "Серия уже подготовлена в BOOK OS. Продолжайте работу с её картой и следующей книгой."
+                      : "Подготовить карту «Секретов продвижения услуг» без генерации книг и без чтения старых файлов."}
                   </p>
                   <label className="field">
                     <span>Автор / псевдоним</span>
@@ -988,8 +1047,16 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                       {authors.map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name}</option>)}
                     </select>
                   </label>
-                  <button type="button" className="primary" disabled={busy || !authorId} onClick={() => void loadServicesPromotionPreset()}>
-                    Загрузить «Секреты продвижения услуг»
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy || (!servicesWorkspace && !authorId)}
+                    onClick={() => {
+                      if (servicesWorkspace) setWorkspaceSection("BOOKS");
+                      else void loadServicesPromotionPreset();
+                    }}
+                  >
+                    {servicesWorkspace ? "Продолжить серию" : "Подготовить «Секреты продвижения услуг»"}
                   </button>
                 </div>
                 {workspaces.length === 0 ? (
@@ -1000,6 +1067,26 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                       <div><p className="eyebrow">SERIES BIBLE v{workspace.profile_revision}</p><h3>{workspace.name}</h3></div>
                       <span className={`badge ${workspace.profile_status === "APPROVED" ? "approved" : "draft"}`}>{workspace.profile_status === "APPROVED" ? "УТВЕРЖДЁН" : "ЧЕРНОВИК"}</span>
                     </div>
+                    <section className="series-ready-summary" aria-label={`Состояние серии «${workspace.name}»`}>
+                      <div>
+                        <p className="eyebrow">СЕРИЯ ПОДГОТОВЛЕНА К РАБОТЕ</p>
+                        <h4>{workspace.books.length} книг</h4>
+                        <ul>
+                          <li>{countPhrase(workspace.books.filter((book) => book.current_corpus_eligible).length, "новая версия готова", "новые версии готовы", "новых версий готово")}</li>
+                          <li>{countPhrase(workspace.books.filter((book) => book.origin_kind === "LEGACY_TITLE_ONLY" && book.lifecycle === "PLANNED").length, "книгу предстоит переписать с нуля", "книги предстоит переписать с нуля", "книг предстоит переписать с нуля")}</li>
+                          <li>{countPhrase(workspace.books.filter((book) => book.origin_kind === "NEW" && book.lifecycle === "PLANNED").length, "новая книга запланирована", "новые книги запланированы", "новых книг запланировано")}</li>
+                        </ul>
+                      </div>
+                      {workspace.books.find((book) => book.lifecycle === "PLANNED") && (() => {
+                        const next = workspace.books.find((book) => book.lifecycle === "PLANNED")!;
+                        return <div className="series-next-step">
+                          <p className="eyebrow">СЛЕДУЮЩИЙ ШАГ</p>
+                          <strong>{next.title}</strong>
+                          {next.origin_kind === "LEGACY_TITLE_ONLY" && <small>Старая версия не используется. Сохраняется только название.</small>}
+                          <button type="button" className="primary" disabled={busy} onClick={() => void startFreshSeriesBook(workspace.series_profile_id, next.book_id)}>{mainBookAction(next)}</button>
+                        </div>;
+                      })()}
+                    </section>
                     <SeriesCostSummary cost={seriesCosts[workspace.series_profile_id] ?? null} />
                     <nav className="series-workspace-nav" aria-label={`Разделы серии «${workspace.name}»`}>
                       {([
@@ -1036,15 +1123,46 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                     {workspaceSection === "BOOKS" && (
                     <section className="series-workspace-pane">
                     <p className="eyebrow">КАРТА СЕРИИ</p>
-                    <ol>
+                    <ol className="series-book-map">
                       {workspace.books.map((book) => (
-                        <li key={book.book_id}>
-                          <strong>{book.title}</strong> — {book.unique_idea} · {book.status} · {book.source_kind}
-                          {!book.passport_approved && (
-                            <button type="button" className="ghost" disabled={busy} onClick={() => void approveBookPassport(workspace.series_profile_id, book.book_id, book.passport_hash)}>
-                              Утвердить паспорт этой книги
-                            </button>
-                          )}
+                        <li key={book.book_id} className="series-book-card">
+                          <span className="series-book-number">{book.ordinal}</span>
+                          <div className="series-book-copy">
+                            <strong>{book.title}</strong>
+                            <span className="series-book-state">{bookStateLabel(book)}</span>
+                            <p>{book.unique_idea}</p>
+                            <div className="series-book-actions">
+                              <button
+                                type="button"
+                                className="primary"
+                                disabled={busy}
+                                onClick={() => book.lifecycle === "PLANNED"
+                                  ? void startFreshSeriesBook(workspace.series_profile_id, book.book_id)
+                                  : onOpenBook?.(book.book_id)}
+                              >
+                                {mainBookAction(book)}
+                              </button>
+                              {book.lifecycle !== "PLANNED" && book.definition_ready && !book.passport_approved && (
+                                <button
+                                  type="button"
+                                  className="ghost"
+                                  disabled={busy}
+                                  onClick={() => void approveBookPassport(
+                                    workspace.series_profile_id,
+                                    book.book_id,
+                                    book.passport_hash,
+                                  )}
+                                >
+                                  Утвердить паспорт книги
+                                </button>
+                              )}
+                              {book.lifecycle !== "PLANNED" && (book.passport_approved || book.lifecycle === "COMPLETED") && (
+                                <button type="button" className="ghost" disabled={busy} onClick={() => onOpenBook?.(book.book_id)}>
+                                  Паспорт книги
+                                </button>
+                              )}
+                            </div>
+                          </div>
                           {book.imported_sources?.map((source) => (
                             <span key={source.source_id} className="series-import-source">
                               <small className="muted">
@@ -1066,19 +1184,10 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = 
                               </button>
                             </span>
                           ))}
-                          {book.status !== "ARCHIVED" && (
-                            <button
-                              type="button"
-                              className="ghost"
-                              disabled={busy}
-                              onClick={() => void archiveSeriesBook(
-                                workspace.series_profile_id,
-                                book.book_id,
-                              )}
-                            >
-                              Архивировать книгу
-                            </button>
-                          )}
+                          {book.lifecycle !== "ARCHIVED" && <details className="series-book-more">
+                            <summary aria-label={`Другие действия для «${book.title}»`}>•••</summary>
+                            <button type="button" className="ghost danger" disabled={busy} onClick={() => void archiveSeriesBook(workspace.series_profile_id, book.book_id)}>Архивировать</button>
+                          </details>}
                         </li>
                       ))}
                     </ol>

@@ -1,11 +1,14 @@
 import base64
 from io import BytesIO
+import json
 from pathlib import Path
 
 from docx import Document
 import pytest
+from sqlalchemy import text
 
 from book_os_core.book_context import ProfileCreateRequest, ProfileRegistry
+from book_os_core.db import create_database
 from book_os_core.series_workspace import (
     SeriesBookCreateRequest,
     SeriesCreateRequest,
@@ -119,7 +122,9 @@ def test_semantic_overlap_blocks_owner_map_approval(tmp_path: Path) -> None:
 
 def test_unapproved_book_passport_blocks_writing_gate(tmp_path: Path) -> None:
     service, series_id = new_series(tmp_path)
-    service.add_book(series_id, book("Черновой паспорт", 1, "Новая отдельная задача"))
+    request = book("Черновой паспорт", 1, "Новая отдельная задача")
+    request.lifecycle = "DEFINITION"
+    service.add_book(series_id, request)
     result = service.analyze(series_id)
     service.approve_map(series_id, result.map_hash, "Различия проверены")
     with pytest.raises(SeriesWorkspaceGateError, match="Book Passports"):
@@ -165,6 +170,140 @@ def test_services_promotion_preset_is_idempotent_and_keeps_owner_order(tmp_path:
     ]
     assert len(second.books) == 8
     assert second.profile_status == "DRAFT"
+    assert [item.origin_kind for item in second.books] == [
+        "CURRENT_REWRITTEN",
+        "LEGACY_TITLE_ONLY",
+        "LEGACY_TITLE_ONLY",
+        "LEGACY_TITLE_ONLY",
+        "NEW",
+        "NEW",
+        "NEW",
+        "NEW",
+    ]
+    assert second.books[0].lifecycle == "COMPLETED"
+    assert second.books[0].current_corpus_eligible
+    assert [item.title for item in second.books[4:]] == [
+        "Как продавать услуги компаниям: от первого контакта до договора",
+        "Как продвигать местные услуги: клиенты в вашем городе и районе",
+        "Как продавать дорогие услуги: доверие, доказательства и выбор исполнителя",
+        "Как возвращать клиентов: повторные продажи и рекомендации в услугах",
+    ]
+
+
+def test_legacy_title_only_starts_fresh_and_inherits_only_exact_title(tmp_path: Path) -> None:
+    service = SeriesWorkspaceService(tmp_path)
+    workspace = service.create_services_promotion_preset(
+        SeriesPresetRequest(author_profile_id=approved_author(tmp_path))
+    )
+    legacy = workspace.books[1]
+    old_project_dir = tmp_path / "projects" / legacy.book_id
+    legacy_file = old_project_dir / "series-imports" / "old.txt"
+    legacy_file.parent.mkdir(parents=True)
+    legacy_file.write_text("СТАРЫЙ ТЕКСТ НЕ ДОЛЖЕН ПОПАСТЬ В НОВУЮ КНИГУ", encoding="utf-8")
+    engine = create_database(old_project_dir / "project.sqlite")
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO series_imported_sources(source_id,series_profile_id,book_id,"
+                    "filename,format,relative_path,content_hash,rights_status,analysis_status,"
+                    "analysis_json,created_at) VALUES (:source,:series,:book,'old.txt','TXT',"
+                    "'series-imports/old.txt',:hash,'AUTHOR_MANUSCRIPT','PARSED',:analysis,:created)"
+                ),
+                {
+                    "source": "01JLEGACY0000000000000000",
+                    "series": workspace.series_profile_id,
+                    "book": legacy.book_id,
+                    "hash": "a" * 64,
+                    "analysis": json.dumps(
+                        {"sample": "СТАРЫЙ ТЕКСТ", "headings": ["Старое оглавление"]}
+                    ),
+                    "created": "2026-09-13T00:00:00Z",
+                },
+            )
+    finally:
+        engine.dispose()
+
+    fresh = service.start_fresh_book(workspace.series_profile_id, legacy.book_id)
+    assert fresh.book_id != legacy.book_id
+    assert fresh.title == "Секреты продвижения услуг психолога в Яндекс Директ"
+    assert fresh.origin_kind == "LEGACY_TITLE_ONLY"
+    assert fresh.lifecycle == "DEFINITION"
+    assert fresh.imported_sources == []
+    reloaded = next(
+        item
+        for item in service.workspaces()
+        if item.series_profile_id == workspace.series_profile_id
+    )
+    assert reloaded.books[1].book_id == fresh.book_id
+    assert reloaded.books[1].lifecycle == "DEFINITION"
+    preserved_legacy_file = tmp_path / "library" / legacy.book_id / "series-imports" / "old.txt"
+    assert preserved_legacy_file.exists(), "owner file is preserved in the library, not deleted"
+    assert not (tmp_path / "projects" / fresh.book_id / "series-imports").exists()
+
+    context = service.generation_context(fresh.book_id)
+    assert context is not None
+    assert context["allowed_legacy_fields"] == ["title"]
+    assert context["legacy_payload_allowed"] is False
+    for forbidden in (
+        "legacy_manuscript",
+        "legacy_outline",
+        "legacy_chapters",
+        "legacy_examples",
+        "legacy_sources",
+    ):
+        assert context[forbidden] is None
+    assert "СТАРЫЙ ТЕКСТ" not in json.dumps(context, ensure_ascii=False)
+
+
+def test_rewritten_book_is_anti_duplication_corpus_not_a_generation_template(
+    tmp_path: Path,
+) -> None:
+    service = SeriesWorkspaceService(tmp_path)
+    workspace = service.create_services_promotion_preset(
+        SeriesPresetRequest(author_profile_id=approved_author(tmp_path))
+    )
+    fresh = service.start_fresh_book(workspace.series_profile_id, workspace.books[1].book_id)
+    context = service.generation_context(fresh.book_id)
+    assert context is not None
+    assert context["current_corpus_usage"] == "ANTI_DUPLICATION_NOT_GENERATION_TEMPLATE"
+    assert [item["title"] for item in context["current_corpus"]] == ["Как продавать услуги"]
+    assert all("manuscript" not in item for item in context["current_corpus"])
+
+
+def test_new_planned_book_has_no_legacy_payload_and_preserves_full_title(tmp_path: Path) -> None:
+    service = SeriesWorkspaceService(tmp_path)
+    workspace = service.create_services_promotion_preset(
+        SeriesPresetRequest(author_profile_id=approved_author(tmp_path))
+    )
+    planned = workspace.books[4]
+    assert planned.title == "Как продавать услуги компаниям: от первого контакта до договора"
+    assert planned.origin_kind == "NEW"
+    assert not planned.legacy_content_allowed
+    fresh = service.start_fresh_book(workspace.series_profile_id, planned.book_id)
+    assert fresh.title == planned.title
+    assert fresh.lifecycle == "DEFINITION"
+    assert fresh.imported_sources == []
+
+
+def test_legacy_title_only_rejects_import_instead_of_guessing_owner_intent(
+    tmp_path: Path,
+) -> None:
+    service = SeriesWorkspaceService(tmp_path)
+    workspace = service.create_services_promotion_preset(
+        SeriesPresetRequest(author_profile_id=approved_author(tmp_path))
+    )
+    legacy = workspace.books[2]
+    with pytest.raises(SeriesWorkspaceGateError, match="title only"):
+        service.import_source(
+            workspace.series_profile_id,
+            legacy.book_id,
+            SeriesImportRequest(
+                filename="old.txt",
+                content_base64=base64.b64encode(b"old manuscript").decode(),
+                rights_status="AUTHOR_MANUSCRIPT",
+            ),
+        )
 
 
 def test_import_can_be_explicitly_deleted_and_book_archived(tmp_path: Path) -> None:

@@ -146,6 +146,15 @@ def build_series_studio_router(
         except SeriesWorkspaceError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @router.post("/api/series/{series_profile_id}/books/{book_id}/start-fresh")
+    def start_fresh_series_book(series_profile_id: str, book_id: str) -> dict[str, object]:
+        try:
+            return workspaces.start_fresh_book(series_profile_id, book_id).model_dump(mode="json")
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @router.post("/api/series/{series_profile_id}/books/{book_id}/imports")
     def import_series_book(
         series_profile_id: str,

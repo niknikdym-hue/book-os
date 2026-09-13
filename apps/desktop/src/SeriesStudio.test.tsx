@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SeriesStudio } from "./SeriesStudio";
 
@@ -28,7 +28,7 @@ vi.mock("./api", () => ({
       return [
         {
           series_profile_id: "01JSERIES0000000000000000",
-          name: "Секреты сильной работы",
+          name: "Секреты продвижения услуг",
           profile_status: "APPROVED",
           profile_revision: 2,
           territory: "Самостоятельные практические книги",
@@ -40,6 +40,11 @@ vi.mock("./api", () => ({
               unique_idea: "Отдельный результат читателю",
               status: "DEFINITION",
               source_kind: "BOOK_OS",
+              origin_kind: "CURRENT_REWRITTEN",
+              lifecycle: "COMPLETED",
+              legacy_content_allowed: false,
+              current_corpus_eligible: true,
+              definition_ready: true,
               passport_hash: "passport-hash",
               passport_approved: true,
               imported_sources: [
@@ -56,6 +61,38 @@ vi.mock("./api", () => ({
                   },
                 },
               ],
+            },
+            {
+              book_id: "01JBOOKLEGACY000000000000",
+              ordinal: 2,
+              title: "Секреты продвижения услуг психолога в Яндекс Директ",
+              unique_idea: "Новая самостоятельная книга о продвижении практики психолога",
+              status: "IDEA",
+              source_kind: "PLANNED",
+              origin_kind: "LEGACY_TITLE_ONLY",
+              lifecycle: "PLANNED",
+              legacy_content_allowed: false,
+              current_corpus_eligible: false,
+              definition_ready: false,
+              passport_hash: "legacy-passport",
+              passport_approved: false,
+              imported_sources: [],
+            },
+            {
+              book_id: "01JBOOKNEW000000000000000",
+              ordinal: 5,
+              title: "Как продавать услуги компаниям: от первого контакта до договора",
+              unique_idea: "Решение о покупке внутри компании",
+              status: "IDEA",
+              source_kind: "PLANNED",
+              origin_kind: "NEW",
+              lifecycle: "PLANNED",
+              legacy_content_allowed: false,
+              current_corpus_eligible: false,
+              definition_ready: false,
+              passport_hash: "new-passport",
+              passport_approved: false,
+              imported_sources: [],
             },
           ],
           map: null,
@@ -93,6 +130,9 @@ vi.mock("./api", () => ({
         operations: [],
       };
     }
+    if (method === "POST" && path.endsWith("/start-fresh")) {
+      return { book_id: "01JFRESHBOOK0000000000000" };
+    }
     return null;
   }),
 }));
@@ -117,20 +157,46 @@ it("offers three persisted series scenarios and keeps Auto as the default", asyn
   expect(screen.getByRole("button", { name: "Убрать книгу из импорта" })).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Продолжить в BOOK OS" }));
-  expect(await screen.findByText("Секреты сильной работы")).toBeInTheDocument();
+  expect(await screen.findByText("Секреты продвижения услуг")).toBeInTheDocument();
   expect(screen.getByText("Потрачено на серию $2.82")).toBeInTheDocument();
   expect(screen.getByText("Прогноз всей серии: пока недостаточно данных")).toBeInTheDocument();
-  const sections = screen.getByRole("navigation", { name: "Разделы серии «Секреты сильной работы»" });
+  const sections = screen.getByRole("navigation", { name: "Разделы серии «Секреты продвижения услуг»" });
   fireEvent.click(within(sections).getByRole("button", { name: "Правила серии" }));
   expect(screen.getByText(/Карта различий: не построена/)).toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "Загрузить «Секреты продвижения услуг»" }),
+    screen.getByRole("button", { name: "Продолжить серию" }),
   ).toBeInTheDocument();
   fireEvent.click(within(sections).getByRole("button", { name: "Книги" }));
-  expect(screen.getByRole("button", { name: "Архивировать книгу" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Начать новую версию" })).toHaveLength(2);
+  expect(screen.getByRole("button", { name: "Начать книгу" })).toBeInTheDocument();
+  const archiveActions = screen.getAllByRole("button", { name: "Архивировать", hidden: true });
+  expect(archiveActions).toHaveLength(3);
+  expect(archiveActions.every((item) => item.closest("details.series-book-more"))).toBe(true);
   expect(
     screen.getByRole("button", { name: "Удалить сохранённый оригинал" }),
   ).toBeInTheDocument();
+});
+
+it("starts a legacy-title-only entry as a fresh project without premature approval", async () => {
+  const onOpenBook = vi.fn();
+  render(<SeriesStudio onOpenBook={onOpenBook} />);
+  fireEvent.click(screen.getByRole("button", { name: "Серии" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Продолжить в BOOK OS" }));
+  const sections = screen.getByRole("navigation", {
+    name: "Разделы серии «Секреты продвижения услуг»",
+  });
+  fireEvent.click(within(sections).getByRole("button", { name: "Книги" }));
+
+  const title = screen
+    .getAllByText("Секреты продвижения услуг психолога в Яндекс Директ")
+    .find((item) => item.closest("li"));
+  expect(title).toBeDefined();
+  const card = title!.closest("li");
+  expect(card).not.toBeNull();
+  expect(within(card!).queryByRole("button", { name: "Утвердить паспорт книги" })).toBeNull();
+  fireEvent.click(within(card!).getByRole("button", { name: "Начать новую версию" }));
+
+  await waitFor(() => expect(onOpenBook).toHaveBeenCalledWith("01JFRESHBOOK0000000000000"));
 });
 
 it("asks for one bounded authorization without forcing the author into Advanced", async () => {

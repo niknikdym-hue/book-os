@@ -1461,6 +1461,123 @@ summary:focus-visible {
   font-size: 23px;
 }
 
+.series-ready-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  margin: 18px 0;
+  padding: 20px;
+  border: 1px solid #bfd4c8;
+  border-radius: 16px;
+  background: #f0f6f1;
+}
+
+.series-ready-summary h4 {
+  margin: 4px 0 8px;
+  font-family: "New York", Georgia, serif;
+  font-size: 27px;
+}
+
+.series-ready-summary ul {
+  margin: 0;
+  padding-left: 19px;
+}
+
+.series-next-step {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.series-next-step small {
+  color: var(--ax-muted);
+  line-height: 1.45;
+}
+
+.series-book-map {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0 !important;
+  list-style: none;
+}
+
+.series-book-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid var(--ax-line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.series-book-number {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ax-jade);
+  color: var(--ax-pine);
+  font-weight: 800;
+}
+
+.series-book-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.series-book-copy > strong {
+  font-size: 17px;
+}
+
+.series-book-copy p {
+  margin: 2px 0 8px;
+  color: var(--ax-muted);
+}
+
+.series-book-state {
+  color: var(--ax-pine-2);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.series-book-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.series-book-more {
+  position: relative;
+}
+
+.series-book-more summary {
+  padding: 4px 8px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ax-muted);
+  font-weight: 800;
+}
+
+.series-book-more[open] > button {
+  position: absolute;
+  z-index: 2;
+  top: 30px;
+  right: 0;
+  min-width: 150px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(29, 50, 39, 0.14);
+}
+
 .series-cost-summary {
   min-width: min(100%, 300px);
   margin: 18px 0;
@@ -1545,6 +1662,20 @@ summary:focus-visible {
   .recent-projects,
   .library-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .series-ready-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .series-book-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .series-book-more {
+    grid-column: 2;
   }
 }
 

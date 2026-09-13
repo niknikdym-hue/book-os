@@ -26,6 +26,7 @@ from .book_context import (
 )
 from .db import create_database
 from .projects import NewBookRequest, ProjectService
+from .project_lifecycle import ProjectLifecycleService
 
 
 SeriesBookStatus = Literal[
@@ -36,6 +37,16 @@ SeriesBookStatus = Literal[
     "EDITING",
     "FINAL_REVIEW",
     "READY",
+    "ARCHIVED",
+]
+SeriesBookOrigin = Literal["NEW", "LEGACY_TITLE_ONLY", "CURRENT_REWRITTEN", "IMPORTED"]
+SeriesBookLifecycle = Literal[
+    "PLANNED",
+    "DEFINITION",
+    "ARCHITECTURE",
+    "WRITING",
+    "EDITING",
+    "COMPLETED",
     "ARCHIVED",
 ]
 RightsStatus = Literal[
@@ -72,6 +83,8 @@ class SeriesBookCreateRequest(BaseModel):
     unique_mechanism: str = Field(min_length=1, max_length=12000)
     excluded_topics: list[str] = Field(default_factory=list)
     source_kind: Literal["BOOK_OS", "IMPORTED", "PLANNED"] = "PLANNED"
+    origin_kind: SeriesBookOrigin | None = None
+    lifecycle: SeriesBookLifecycle = "PLANNED"
 
 
 class SeriesImportRequest(BaseModel):
@@ -128,6 +141,11 @@ class SeriesBookView(BaseModel):
     excluded_topics: list[str]
     source_kind: str
     status: SeriesBookStatus
+    origin_kind: SeriesBookOrigin
+    lifecycle: SeriesBookLifecycle
+    legacy_content_allowed: bool
+    current_corpus_eligible: bool
+    definition_ready: bool
     passport_hash: str
     passport_approved: bool
     imported_sources: list[dict[str, Any]] = Field(default_factory=list)
@@ -201,24 +219,52 @@ class SeriesWorkspaceService:
         "удалённая карьера",
     ]
     SERVICES_PROMOTION_BOOKS = [
-        ("Как продавать услуги", "Системно превращать спрос и доверие в оплату услуги", "IMPORTED"),
+        (
+            "Как продавать услуги",
+            "Задача клиента, предложение, границы услуги, цена, доказательства и путь до оплаты",
+            "CURRENT_REWRITTEN",
+            "COMPLETED",
+        ),
         (
             "Секреты продвижения услуг психолога в Яндекс Директ",
-            "Привлечение клиентов психолога через Яндекс Директ",
-            "IMPORTED",
+            "Направления практики, поисковый спрос, деликатные обещания и путь до первой встречи",
+            "LEGACY_TITLE_ONLY",
+            "PLANNED",
         ),
         (
             "Как продвигать юридические услуги в Яндекс Директ: Практическое руководство",
-            "Привлечение клиентов юридических услуг через Яндекс Директ",
-            "IMPORTED",
+            "Юридические направления, срочность, география, квалификация заявки и путь до договора",
+            "LEGACY_TITLE_ONLY",
+            "PLANNED",
         ),
-        ("Как продать онлайн-курсы", "Продажа образовательного продукта как услуги", "IMPORTED"),
-        ("Продажи услуг компаниям", "Продажи профессиональных услуг B2B", "PLANNED"),
-        ("Местные услуги", "Продажи услуг в локальном спросе", "PLANNED"),
-        ("Дорогие услуги", "Продажи услуг с высокой ценой и длинным решением", "PLANNED"),
         (
-            "Повторные продажи и рекомендации",
-            "Рост услуг через повторные обращения и рекомендации",
+            "Как продать онлайн-курсы",
+            "Проверка спроса, достижимый результат, формат, программа, сопровождение и набор",
+            "LEGACY_TITLE_ONLY",
+            "PLANNED",
+        ),
+        (
+            "Как продавать услуги компаниям: от первого контакта до договора",
+            "Решение о покупке внутри компании: участники, пилот, согласование и закупка",
+            "NEW",
+            "PLANNED",
+        ),
+        (
+            "Как продвигать местные услуги: клиенты в вашем городе и районе",
+            "Территориальная доступность: локальный поиск, отзывы, партнёрства, выезд и запись",
+            "NEW",
+            "PLANNED",
+        ),
+        (
+            "Как продавать дорогие услуги: доверие, доказательства и выбор исполнителя",
+            "Высокий риск, долгий выбор, портфолио, диагностика, этапность и обсуждение цены",
+            "NEW",
+            "PLANNED",
+        ),
+        (
+            "Как возвращать клиентов: повторные продажи и рекомендации в услугах",
+            "Отношения после первой продажи: следующий заказ, сопровождение, возврат и рекомендации",
+            "NEW",
             "PLANNED",
         ),
     ]
@@ -227,6 +273,7 @@ class SeriesWorkspaceService:
         self.data_dir = data_dir
         self.projects = ProjectService(data_dir)
         self.profiles = ProfileRegistry(data_dir)
+        self.project_lifecycle = ProjectLifecycleService(data_dir)
 
     def _engine(self, book_id: str) -> Engine:
         self.projects.get_project(book_id)
@@ -299,11 +346,18 @@ class SeriesWorkspaceService:
             )
         else:
             profile = existing
-        present = {item.ordinal for item in self.books(profile.profile_id)}
-        for ordinal, (title, idea, source_kind) in enumerate(
+        present = {item.ordinal: item for item in self.books(profile.profile_id)}
+        for ordinal, (title, idea, origin_kind, lifecycle) in enumerate(
             self.SERVICES_PROMOTION_BOOKS, start=1
         ):
             if ordinal in present:
+                self._reconcile_services_promotion_book(
+                    present[ordinal],
+                    title,
+                    idea,
+                    cast(SeriesBookOrigin, origin_kind),
+                    cast(SeriesBookLifecycle, lifecycle),
+                )
                 continue
             self.add_book(
                 profile.profile_id,
@@ -315,12 +369,82 @@ class SeriesWorkspaceService:
                     reader_result=f"Практический результат: {idea}",
                     unique_mechanism=f"Границы и механизм уточняются в паспорте книги № {ordinal}",
                     excluded_topics=self.SERVICES_PROMOTION_EXCLUSIONS,
-                    source_kind=cast(Any, source_kind),
+                    source_kind=("BOOK_OS" if origin_kind == "CURRENT_REWRITTEN" else "PLANNED"),
+                    origin_kind=cast(SeriesBookOrigin, origin_kind),
+                    lifecycle=cast(SeriesBookLifecycle, lifecycle),
                 ),
             )
         return next(
             item for item in self.workspaces() if item.series_profile_id == profile.profile_id
         )
+
+    def _reconcile_services_promotion_book(
+        self,
+        book: SeriesBookView,
+        title: str,
+        idea: str,
+        origin_kind: SeriesBookOrigin,
+        lifecycle: SeriesBookLifecycle,
+    ) -> None:
+        """Repair the known preset metadata without deleting any owner files."""
+        del idea  # Existing owner-edited passport content is never overwritten by preset repair.
+        if (
+            book.ordinal > 1
+            and book.origin_kind in {"LEGACY_TITLE_ONLY", "NEW"}
+            and book.lifecycle != "PLANNED"
+        ):
+            # A started project is real work; preset repair must never rewind it to planned.
+            return
+        expected_source = "BOOK_OS" if origin_kind == "CURRENT_REWRITTEN" else "PLANNED"
+        expected_status = "READY" if lifecycle == "COMPLETED" else "IDEA"
+        if (
+            book.title == title
+            and book.origin_kind == origin_kind
+            and book.lifecycle == lifecycle
+            and not book.legacy_content_allowed
+            and book.source_kind == expected_source
+            and book.status == expected_status
+        ):
+            return
+        engine = self._engine(book.book_id)
+        now = utc_now()
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE book_projects SET working_title=:title,updated_at=:updated "
+                        "WHERE book_id=:book"
+                    ),
+                    {"title": title, "updated": now, "book": book.book_id},
+                )
+                connection.execute(
+                    text(
+                        "UPDATE series_books SET origin_kind=:origin,"
+                        "lifecycle=:lifecycle,legacy_content_allowed=0,source_kind=:source,"
+                        "status=:status,updated_at=:updated WHERE series_book_id=:membership"
+                    ),
+                    {
+                        "origin": origin_kind,
+                        "lifecycle": lifecycle,
+                        "source": "BOOK_OS" if origin_kind == "CURRENT_REWRITTEN" else "PLANNED",
+                        "status": "READY" if lifecycle == "COMPLETED" else "IDEA",
+                        "updated": now,
+                        "membership": book.series_book_id,
+                    },
+                )
+        finally:
+            engine.dispose()
+        manifest_path = self.projects.projects_dir / book.book_id / "project-manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["working_title"] = title
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except (OSError, json.JSONDecodeError):
+            # The database remains authoritative; do not destroy a malformed owner manifest.
+            pass
 
     def add_book(
         self,
@@ -333,6 +457,14 @@ class SeriesWorkspaceService:
         project = self.projects.create_project(
             NewBookRequest(working_title=request.title.strip(), primary_subtype="Strategy")
         )
+        origin_kind = (
+            request.origin_kind
+            or {
+                "BOOK_OS": "CURRENT_REWRITTEN",
+                "IMPORTED": "IMPORTED",
+                "PLANNED": "NEW",
+            }[request.source_kind]
+        )
         now = utc_now()
         engine = self._engine(project.book_id)
         try:
@@ -341,8 +473,10 @@ class SeriesWorkspaceService:
                     text(
                         "INSERT INTO series_books(series_book_id,series_profile_id,book_id,ordinal,"
                         "unique_idea,reader_problem,reader_result,unique_mechanism,excluded_topics_json,"
-                        "source_kind,status,created_at,updated_at) VALUES (:id,:series,:book,:ordinal,"
-                        ":idea,:problem,:result,:mechanism,:excluded,:source,'IDEA',:created,:updated)"
+                        "source_kind,status,origin_kind,lifecycle,legacy_content_allowed,"
+                        "created_at,updated_at) VALUES (:id,:series,:book,:ordinal,"
+                        ":idea,:problem,:result,:mechanism,:excluded,:source,:status,:origin,"
+                        ":lifecycle,:legacy_allowed,:created,:updated)"
                     ),
                     {
                         "id": new_ulid(),
@@ -355,6 +489,12 @@ class SeriesWorkspaceService:
                         "mechanism": request.unique_mechanism.strip(),
                         "excluded": json.dumps(request.excluded_topics, ensure_ascii=False),
                         "source": request.source_kind,
+                        "status": "READY" if request.lifecycle == "COMPLETED" else "IDEA",
+                        "origin": origin_kind,
+                        "lifecycle": request.lifecycle,
+                        "legacy_allowed": (
+                            request.source_kind == "IMPORTED" and origin_kind == "IMPORTED"
+                        ),
                         "created": now,
                         "updated": now,
                     },
@@ -367,7 +507,8 @@ class SeriesWorkspaceService:
 
     def books(self, series_profile_id: str) -> list[SeriesBookView]:
         result: list[SeriesBookView] = []
-        for project in self.projects.list_projects():
+        for summary in self.projects.list_projects():
+            project = self.projects.get_project(summary.book_id)
             engine = self._engine(project.book_id)
             try:
                 with engine.connect() as connection:
@@ -382,16 +523,32 @@ class SeriesWorkspaceService:
                         .mappings()
                         .first()
                     )
-                    if row is None:
+                    if row is None or row["superseded_by_book_id"] is not None:
                         continue
+                    contract_view = project.book_contract
+                    definition_ready = (
+                        contract_view is not None and contract_view.authority_status == "APPROVED"
+                    )
+                    contract = contract_view.content if definition_ready and contract_view else {}
+                    unique_idea = str(contract.get("unique_angle", row["unique_idea"]))
+                    reader_problem = str(contract.get("reader_problem", row["reader_problem"]))
+                    reader_result = str(contract.get("central_promise", row["reader_result"]))
+                    unique_mechanism = str(contract.get("central_thesis", row["unique_mechanism"]))
+                    excluded_topics = cast(
+                        list[str],
+                        contract.get(
+                            "explicit_exclusions",
+                            json.loads(str(row["excluded_topics_json"])),
+                        ),
+                    )
                     passport_material = {
                         "title": project.working_title,
                         "ordinal": int(row["ordinal"]),
-                        "unique_idea": str(row["unique_idea"]),
-                        "reader_problem": str(row["reader_problem"]),
-                        "reader_result": str(row["reader_result"]),
-                        "unique_mechanism": str(row["unique_mechanism"]),
-                        "excluded_topics": json.loads(str(row["excluded_topics_json"])),
+                        "unique_idea": unique_idea,
+                        "reader_problem": reader_problem,
+                        "reader_result": reader_result,
+                        "unique_mechanism": unique_mechanism,
+                        "excluded_topics": excluded_topics,
                     }
                     passport_hash = hashlib.sha256(
                         canonical_json(cast(dict[str, JSONValue], passport_material)).encode()
@@ -435,18 +592,26 @@ class SeriesWorkspaceService:
                         book_id=str(row["book_id"]),
                         title=project.working_title,
                         ordinal=int(row["ordinal"]),
-                        unique_idea=str(row["unique_idea"]),
-                        reader_problem=str(row["reader_problem"]),
-                        reader_result=str(row["reader_result"]),
-                        unique_mechanism=str(row["unique_mechanism"]),
-                        excluded_topics=cast(
-                            list[str], json.loads(str(row["excluded_topics_json"]))
-                        ),
+                        unique_idea=unique_idea,
+                        reader_problem=reader_problem,
+                        reader_result=reader_result,
+                        unique_mechanism=unique_mechanism,
+                        excluded_topics=excluded_topics,
                         source_kind=str(row["source_kind"]),
                         status=cast(SeriesBookStatus, str(row["status"])),
+                        origin_kind=cast(SeriesBookOrigin, str(row["origin_kind"])),
+                        lifecycle=cast(SeriesBookLifecycle, str(row["lifecycle"])),
+                        legacy_content_allowed=bool(row["legacy_content_allowed"]),
+                        current_corpus_eligible=(
+                            str(row["origin_kind"]) == "CURRENT_REWRITTEN"
+                            and str(row["lifecycle"]) == "COMPLETED"
+                        ),
+                        definition_ready=definition_ready,
                         passport_hash=passport_hash,
                         passport_approved=passport_approved,
-                        imported_sources=[
+                        imported_sources=[]
+                        if str(row["origin_kind"]) == "LEGACY_TITLE_ONLY"
+                        else [
                             {
                                 "source_id": source["source_id"],
                                 "filename": source["filename"],
@@ -462,6 +627,103 @@ class SeriesWorkspaceService:
                     )
                 )
         return sorted(result, key=lambda item: (item.ordinal, item.book_id))
+
+    def start_fresh_book(self, series_profile_id: str, book_id: str) -> SeriesBookView:
+        """Create a clean project for a planned/rewrite entry without copying legacy payload."""
+        book = next(
+            (item for item in self.books(series_profile_id) if item.book_id == book_id), None
+        )
+        if book is None:
+            raise SeriesWorkspaceError("book does not belong to this series")
+        if book.lifecycle != "PLANNED" or book.origin_kind not in {"LEGACY_TITLE_ONLY", "NEW"}:
+            raise SeriesWorkspaceGateError("only a planned new or title-only book can be started")
+        if book.origin_kind == "LEGACY_TITLE_ONLY":
+            idea = "BOOK OS предложит новую концепцию с нуля по границам Series Bible"
+            reader_problem = "Определяется заново на этапе Book Definition"
+            reader_result = "Определяется заново на этапе Book Definition"
+            mechanism = "Определяется заново; старая структура и методики запрещены"
+            excluded = []
+        else:
+            idea = book.unique_idea
+            reader_problem = book.reader_problem
+            reader_result = book.reader_result
+            mechanism = book.unique_mechanism
+            excluded = book.excluded_topics
+        fresh = self.add_book(
+            series_profile_id,
+            SeriesBookCreateRequest(
+                title=book.title,
+                ordinal=book.ordinal,
+                unique_idea=idea,
+                reader_problem=reader_problem,
+                reader_result=reader_result,
+                unique_mechanism=mechanism,
+                excluded_topics=excluded,
+                source_kind="PLANNED",
+                origin_kind=book.origin_kind,
+                lifecycle="DEFINITION",
+            ),
+        )
+        engine = self._engine(book.book_id)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE series_books SET superseded_by_book_id=:fresh,lifecycle='ARCHIVED',"
+                        "status='ARCHIVED',updated_at=:updated WHERE series_book_id=:membership"
+                    ),
+                    {
+                        "fresh": fresh.book_id,
+                        "updated": utc_now(),
+                        "membership": book.series_book_id,
+                    },
+                )
+        finally:
+            engine.dispose()
+        self.project_lifecycle.archive(book.book_id)
+        return fresh
+
+    def generation_context(self, book_id: str) -> dict[str, Any] | None:
+        """Return bounded series context; manuscript text is never a planning input here."""
+        target: SeriesBookView | None = None
+        profile_id: str | None = None
+        for profile in self.profiles.list_profiles("SERIES"):
+            candidate = next(
+                (item for item in self.books(profile.profile_id) if item.book_id == book_id), None
+            )
+            if candidate is not None:
+                if target is not None:
+                    raise SeriesWorkspaceGateError("book belongs to more than one explicit series")
+                target = candidate
+                profile_id = profile.profile_id
+        if target is None or profile_id is None:
+            return None
+        current_corpus = [
+            {
+                "book_id": item.book_id,
+                "title": item.title,
+                "territory": item.unique_idea,
+                "passport_hash": item.passport_hash,
+                "usage_policy": "NEGATIVE_REFERENCE_FOR_ANTI_DUPLICATION_ONLY",
+            }
+            for item in self.books(profile_id)
+            if item.book_id != book_id and item.current_corpus_eligible
+        ]
+        return {
+            "series_profile_id": profile_id,
+            "origin_kind": target.origin_kind,
+            "lifecycle": target.lifecycle,
+            "legacy_title": target.title if target.origin_kind == "LEGACY_TITLE_ONLY" else None,
+            "allowed_legacy_fields": ["title"] if target.origin_kind == "LEGACY_TITLE_ONLY" else [],
+            "legacy_payload_allowed": target.legacy_content_allowed,
+            "legacy_manuscript": None,
+            "legacy_outline": None,
+            "legacy_chapters": None,
+            "legacy_examples": None,
+            "legacy_sources": None,
+            "current_corpus": current_corpus,
+            "current_corpus_usage": "ANTI_DUPLICATION_NOT_GENERATION_TEMPLATE",
+        }
 
     def approve_book_passport(
         self, series_profile_id: str, book_id: str, passport_hash: str, reason: str
@@ -599,6 +861,10 @@ class SeriesWorkspaceService:
         )
         if membership is None:
             raise SeriesWorkspaceError("book does not belong to this series")
+        if membership.origin_kind == "LEGACY_TITLE_ONLY":
+            raise SeriesWorkspaceGateError(
+                "legacy-title-only books accept the title only; start a new version instead"
+            )
         try:
             payload = base64.b64decode(request.content_base64, validate=True)
         except (ValueError, binascii.Error) as exc:
@@ -673,7 +939,14 @@ class SeriesWorkspaceService:
             "profile_hash": profile.content_hash,
             "books": [book.model_dump(mode="json") for book in books],
             "sources": {
-                book.book_id: sorted(row["content_hash"] for row in self._source_rows(book.book_id))
+                book.book_id: sorted(
+                    row["content_hash"]
+                    for row in (
+                        []
+                        if book.origin_kind == "LEGACY_TITLE_ONLY"
+                        else self._source_rows(book.book_id)
+                    )
+                )
                 for book in books
             },
         }
@@ -688,7 +961,9 @@ class SeriesWorkspaceService:
         map_hash = self._map_hash(series_profile_id, books)
         findings: list[dict[str, Any]] = []
         for book in books:
-            for source in self._source_rows(book.book_id):
+            for source in (
+                [] if book.origin_kind == "LEGACY_TITLE_ONLY" else self._source_rows(book.book_id)
+            ):
                 if source["analysis_status"] != "PARSED":
                     findings.append(
                         {
@@ -735,8 +1010,16 @@ class SeriesWorkspaceService:
                             },
                         }
                     )
-                left_sources = self._source_rows(left.book_id)
-                right_sources = self._source_rows(right.book_id)
+                left_sources = (
+                    []
+                    if left.origin_kind == "LEGACY_TITLE_ONLY"
+                    else self._source_rows(left.book_id)
+                )
+                right_sources = (
+                    []
+                    if right.origin_kind == "LEGACY_TITLE_ONLY"
+                    else self._source_rows(right.book_id)
+                )
                 left_headings = [
                     heading.casefold()
                     for row in left_sources
@@ -1005,7 +1288,8 @@ class SeriesWorkspaceService:
             with engine.begin() as connection:
                 connection.execute(
                     text(
-                        "UPDATE series_books SET status='ARCHIVED',updated_at=:updated "
+                        "UPDATE series_books SET status='ARCHIVED',lifecycle='ARCHIVED',"
+                        "updated_at=:updated "
                         "WHERE series_profile_id=:series AND book_id=:book"
                     ),
                     {
@@ -1095,7 +1379,9 @@ class SeriesWorkspaceService:
             write_json(
                 "Источники-и-качество-разбора.json",
                 {
-                    book.book_id: [
+                    book.book_id: []
+                    if book.origin_kind == "LEGACY_TITLE_ONLY"
+                    else [
                         {
                             "source_id": row["source_id"],
                             "filename": row["filename"],
@@ -1176,7 +1462,8 @@ class SeriesWorkspaceService:
         unapproved = [
             book.title
             for book in self.books(series_profile_id)
-            if book.status != "ARCHIVED" and not book.passport_approved
+            if book.lifecycle in {"DEFINITION", "ARCHITECTURE", "WRITING", "EDITING"}
+            and not book.passport_approved
         ]
         if unapproved:
             raise SeriesWorkspaceGateError(
@@ -1191,6 +1478,19 @@ class SeriesWorkspaceService:
     def workspaces(self) -> list[SeriesWorkspaceView]:
         result: list[SeriesWorkspaceView] = []
         for profile in self.profiles.list_profiles("SERIES"):
+            if profile.name == self.SERVICES_PROMOTION_NAME:
+                by_ordinal = {item.ordinal: item for item in self.books(profile.profile_id)}
+                for ordinal, (title, idea, origin_kind, lifecycle) in enumerate(
+                    self.SERVICES_PROMOTION_BOOKS, start=1
+                ):
+                    if ordinal in by_ordinal:
+                        self._reconcile_services_promotion_book(
+                            by_ordinal[ordinal],
+                            title,
+                            idea,
+                            cast(SeriesBookOrigin, origin_kind),
+                            cast(SeriesBookLifecycle, lifecycle),
+                        )
             content = SeriesProfileContent.model_validate(profile.content)
             purpose = content.purpose_positioning
             result.append(

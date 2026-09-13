@@ -233,6 +233,17 @@ const audioScript = {
   ],
 };
 
+const promotionSeriesBooks = [
+  ["Как продавать услуги", "Задача клиента, предложение, цена, доказательства и путь до оплаты", "CURRENT_REWRITTEN", "COMPLETED"],
+  ["Секреты продвижения услуг психолога в Яндекс Директ", "Поисковый спрос, деликатные обещания и путь до первой встречи", "LEGACY_TITLE_ONLY", "PLANNED"],
+  ["Как продвигать юридические услуги в Яндекс Директ: Практическое руководство", "Квалификация юридического обращения и путь до договора", "LEGACY_TITLE_ONLY", "PLANNED"],
+  ["Как продать онлайн-курсы", "Проверка спроса, программа, сопровождение и набор", "LEGACY_TITLE_ONLY", "PLANNED"],
+  ["Как продавать услуги компаниям: от первого контакта до договора", "Решение о покупке внутри компании", "NEW", "PLANNED"],
+  ["Как продвигать местные услуги: клиенты в вашем городе и районе", "Территориальная доступность исполнителя", "NEW", "PLANNED"],
+  ["Как продавать дорогие услуги: доверие, доказательства и выбор исполнителя", "Обоснование серьёзного решения о покупке", "NEW", "PLANNED"],
+  ["Как возвращать клиентов: повторные продажи и рекомендации в услугах", "Отношения после первой продажи", "NEW", "PLANNED"],
+] as const;
+
 mockIPC((command, payload) => {
   if (command === "core_health") return { status: "healthy", version: "0.1.0" };
   if (command !== "core_api") return null;
@@ -251,19 +262,22 @@ mockIPC((command, payload) => {
             profile_status: "APPROVED",
             profile_revision: 3,
             territory: "Самостоятельные книги о разных задачах продвижения и продажи услуг",
-            books: [
-              {
-                book_id: bookId,
-                ordinal: 1,
-                title: "Как продавать услуги",
-                unique_idea: "Система доверия до покупки",
-                status: "WRITING",
-                source_kind: "BOOK_OS",
-                passport_hash: "qa-passport",
-                passport_approved: true,
-                imported_sources: [],
-              },
-            ],
+            books: promotionSeriesBooks.map(([title, uniqueIdea, originKind, lifecycle], index) => ({
+              book_id: index === 0 ? bookId : `01JQASERIESBOOK${String(index + 1).padStart(10, "0")}`,
+              ordinal: index + 1,
+              title,
+              unique_idea: uniqueIdea,
+              status: lifecycle === "COMPLETED" ? "READY" : "IDEA",
+              source_kind: originKind === "CURRENT_REWRITTEN" ? "BOOK_OS" : "PLANNED",
+              origin_kind: originKind,
+              lifecycle,
+              legacy_content_allowed: false,
+              current_corpus_eligible: originKind === "CURRENT_REWRITTEN" && lifecycle === "COMPLETED",
+              definition_ready: lifecycle === "COMPLETED",
+              passport_hash: `qa-passport-${index + 1}`,
+              passport_approved: lifecycle === "COMPLETED",
+              imported_sources: [],
+            })),
             map: { map_hash: "qa-map", status: "PASS", approved: true, current: true, findings: [] },
           },
         ];

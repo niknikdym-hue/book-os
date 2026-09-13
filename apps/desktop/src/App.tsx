@@ -580,7 +580,7 @@ export function App() {
         )}
 
         {topSection === "series" && (
-          <section className="section-view"><header className="section-title"><div><p className="eyebrow">СЕРИИ</p><h1>Книги, которые развивают одну большую идею</h1></div><button className="primary-action" type="button" onClick={() => openCreate("series")}>＋ Новая серия</button></header><SeriesStudio embedded initialMode={createKind === "series" ? "NEW" : "BOOK_OS"} /></section>
+          <section className="section-view"><header className="section-title"><div><p className="eyebrow">СЕРИИ</p><h1>Книги, которые развивают одну большую идею</h1></div><button className="primary-action" type="button" onClick={() => openCreate("series")}>＋ Новая серия</button></header><SeriesStudio embedded initialMode={createKind === "series" ? "NEW" : "BOOK_OS"} onOpenBook={(bookId) => void openProject(bookId)} /></section>
         )}
 
         {topSection === "library" && (
