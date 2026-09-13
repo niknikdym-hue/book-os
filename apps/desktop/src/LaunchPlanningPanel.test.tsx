@@ -72,6 +72,13 @@ it("keeps launch disabled until the required idea and authorization are present,
   );
 
   await screen.findByText("СИСТЕМА ГОТОВА");
+  expect(screen.getByRole("button", { name: "Автоматически" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByRole("checkbox", { name: "Полная рукопись DOCX" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Электронная книга EPUB" })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Визуальные материалы — по необходимости" })).toBeChecked();
   const launch = screen.getByRole("button", {
     name: "Запуск станет доступен после заполнения обязательных полей",
   });

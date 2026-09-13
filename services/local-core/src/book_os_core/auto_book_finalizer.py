@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from html import escape as html_escape
+import json
 from pathlib import Path
 from typing import Any, cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from .authority import AuthorityService, new_ulid
 from .authority_types import JSONValue
 from .auto_book import AutoBookGateError, AutoBookRunView
+from .auto_book_exports import AutoBookExporter, MasterChapter, StructuredBookMaster
+from .auto_book_runtime import AutoBookRuntimeError, DurableAutoBookRuntime
 from .book_context import BookContextService
 from .bookbench import BookBenchReport, BookBenchService
 from .db import create_database
@@ -57,6 +60,7 @@ class AutoBookFinalizationView(BaseModel):
     output_path: str | None
     requests_used: int
     authorized_cost_usd: float
+    output_files: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AutoBookFinalizer:
@@ -73,6 +77,8 @@ class AutoBookFinalizer:
         self.bookbench = BookBenchService(data_dir)
         self.literary = LiteraryMasterService(data_dir)
         self.series = SeriesProductionService(data_dir)
+        self.runtime = DurableAutoBookRuntime(data_dir)
+        self.exporter = AutoBookExporter(data_dir, self.runtime)
 
     def _engine(self, book_id: str) -> Engine:
         self.projects.get_project(book_id)
@@ -504,6 +510,85 @@ class AutoBookFinalizer:
         )
         return str(output)
 
+    def _structured_master(
+        self,
+        book_id: str,
+        master_id: str,
+        book_context: dict[str, Any],
+    ) -> StructuredBookMaster:
+        master = self.literary.get_master(book_id, master_id)
+        engine = self._engine(book_id)
+        chapters: list[MasterChapter] = []
+        bibliography: list[str] = []
+        try:
+            with engine.connect() as connection:
+                for chapter in cast(list[dict[str, Any]], master.manifest["chapters"]):
+                    paragraphs: list[str] = []
+                    for unit in cast(list[dict[str, Any]], chapter["units"]):
+                        content_json = connection.execute(
+                            text(
+                                "SELECT content_json FROM revisions WHERE revision_id=:revision_id "
+                                "AND content_hash=:revision_hash"
+                            ),
+                            {
+                                "revision_id": unit["revision_id"],
+                                "revision_hash": unit["revision_hash"],
+                            },
+                        ).scalar_one()
+                        content = cast(dict[str, Any], json.loads(str(content_json)))
+                        unit_text = content.get("text")
+                        if isinstance(unit_text, str):
+                            paragraphs.extend(
+                                part.strip()
+                                for part in unit_text.replace("\r\n", "\n").split("\n\n")
+                                if part.strip()
+                            )
+                    chapters.append(
+                        MasterChapter(
+                            chapter_id=str(chapter["chapter_id"]),
+                            title=str(chapter["title"]),
+                            paragraphs=paragraphs,
+                        )
+                    )
+                source_rows = list(
+                    connection.execute(
+                        text(
+                            "SELECT DISTINCT s.title,s.canonical_url,s.doi FROM sources s "
+                            "JOIN evidence e ON e.source_id=s.source_id "
+                            "JOIN claims c ON c.claim_id=e.claim_id "
+                            "WHERE c.book_id=:book_id AND e.status='ACTIVE' "
+                            "ORDER BY s.title,s.canonical_url"
+                        ),
+                        {"book_id": book_id},
+                    ).mappings()
+                )
+                bibliography = [
+                    ". ".join(
+                        value
+                        for value in (
+                            str(row["title"]),
+                            f"DOI: {row['doi']}" if row["doi"] else "",
+                            str(row["canonical_url"]) if row["canonical_url"] else "",
+                        )
+                        if value
+                    )
+                    for row in source_rows
+                ]
+        finally:
+            engine.dispose()
+        author_profile = book_context.get("author_profile")
+        author = (
+            str(author_profile.get("name"))
+            if isinstance(author_profile, dict) and author_profile.get("name")
+            else "Автор"
+        )
+        return StructuredBookMaster(
+            title=master.book_title,
+            author=author,
+            chapters=chapters,
+            bibliography=bibliography if book_context.get("include_bibliography") else [],
+        )
+
     def finalize(
         self,
         book_id: str,
@@ -529,6 +614,24 @@ class AutoBookFinalizer:
         output_path = (
             self._export_litres_docx(book_id, master.master_id) if prepare_litres_docx else None
         )
+        output_files: list[dict[str, Any]] = []
+        try:
+            runtime = self.runtime.get(book_id, state.run_id)
+            structured = self._structured_master(
+                book_id,
+                master.master_id,
+                book_context,
+            )
+            bundle = self.exporter.export_selected(
+                book_id,
+                state.run_id,
+                structured,
+                runtime.intent.outputs,
+            )
+            output_files = [item.model_dump(mode="json") for item in bundle.artifacts]
+        except AutoBookRuntimeError:
+            # A run created before migration 0021 keeps its original export behaviour.
+            pass
         return AutoBookFinalizationView(
             master_id=master.master_id,
             master_manifest_hash=master.manifest_hash,
@@ -536,4 +639,5 @@ class AutoBookFinalizer:
             output_path=output_path,
             requests_used=state.requests_used,
             authorized_cost_usd=state.authorized_cost_usd,
+            output_files=output_files,
         )

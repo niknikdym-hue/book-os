@@ -33,11 +33,21 @@ type AutoBookState = {
   requests_used: number;
   max_requests: number;
   authorized_cost_usd: number;
+  estimated_cost_usd?: number;
+  reserved_cost_usd?: number;
+  confirmed_cost_usd?: number;
+  unknown_cost_usd?: number;
   max_total_cost_usd: number;
   current_chapter_ordinal: number | null;
   last_action: string;
   output_path: string | null;
   error: string | null;
+  selected_outputs?: string[];
+  output_files?: Array<{
+    output_kind: string;
+    relative_path: string;
+    status: "READY" | "FAILED" | "STALE";
+  }>;
   started_at?: string | null;
   updated_at?: string | null;
 };
@@ -64,6 +74,35 @@ const PROGRESS_STAGES = [
   { label: "Финальная проверка", threshold: 96 },
   { label: "Готово", threshold: 100 },
 ] as const;
+
+const OUTPUT_CHOICES = [
+  ["full_manuscript_docx", "Полная рукопись DOCX"],
+  ["litres_ebook_docx", "Электронная версия для ЛитРес DOCX"],
+  ["reading_pdf", "Версия для чтения PDF"],
+  ["epub", "Электронная книга EPUB"],
+  ["audio_reading_docx", "Аудиоредакция для чтения DOCX"],
+  ["audio_litres_docx", "Аудиоредакция для ЛитРес DOCX"],
+  ["voice_text_txt", "Текст для озвучки TXT"],
+  ["pronunciation_dictionary", "Словарь произношения для авточтеца"],
+  ["reader_extras", "Дополнительные материалы читателю"],
+  ["publisher_pack", "Издательский пакет"],
+] as const;
+
+type OutputChoiceId = (typeof OUTPUT_CHOICES)[number][0];
+type OutputSelection = Record<OutputChoiceId, boolean>;
+
+const DEFAULT_OUTPUTS: OutputSelection = {
+  full_manuscript_docx: true,
+  litres_ebook_docx: false,
+  reading_pdf: false,
+  epub: false,
+  audio_reading_docx: false,
+  audio_litres_docx: false,
+  voice_text_txt: false,
+  pronunciation_dictionary: false,
+  reader_extras: false,
+  publisher_pack: false,
+};
 
 type Props = {
   project: ProjectView;
@@ -120,19 +159,25 @@ export function LaunchPlanningPanel({
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
   const [bookContext, setBookContext] = useState<BookContextView | null>(null);
   const [profiles, setProfiles] = useState<ContextProfile[]>([]);
-  const [choiceId, setChoiceId] = useState<PlanningChoiceId>("ASTRA_HIGH");
+  const [choiceId, setChoiceId] = useState<PlanningChoiceId>("AUTO");
   const [idea, setIdea] = useState("");
   const [readerHint, setReaderHint] = useState("");
   const [authorName, setAuthorName] = useState("");
+  const [seriesName, setSeriesName] = useState("");
   const [targetCharacters, setTargetCharacters] = useState("180000");
   const [autoTotalBudget, setAutoTotalBudget] = useState("25.00");
   const [autoPerRequestBudget, setAutoPerRequestBudget] = useState("1.00");
   const [autoMaxRequests, setAutoMaxRequests] = useState("40");
-  const [prepareLitres, setPrepareLitres] = useState(true);
+  const [outputs, setOutputs] = useState<OutputSelection>(DEFAULT_OUTPUTS);
+  const [visualsAsNeeded, setVisualsAsNeeded] = useState(true);
+  const [allowGenerativeVisuals, setAllowGenerativeVisuals] = useState(false);
+  const [includeOptionalVisuals, setIncludeOptionalVisuals] = useState(true);
   const [authorizeAuto, setAuthorizeAuto] = useState(false);
   const [autoState, setAutoState] = useState<AutoBookState | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [changeRequest, setChangeRequest] = useState("");
+  const [changeSaved, setChangeSaved] = useState<string | null>(null);
 
   const credentialAvailable = readiness?.openai_credential_state === "AVAILABLE";
   const contractApproved =
@@ -178,15 +223,20 @@ export function LaunchPlanningPanel({
     setError(null);
     let current = initial;
     try {
-      for (let step = 0; step < 250 && current.status === "RUNNING"; step += 1) {
+      current = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/resume`,
+      );
+      for (let poll = 0; poll < 7200 && current.status === "RUNNING"; poll += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
         current = await api<AutoBookState>(
-          "POST",
-          `/api/projects/${project.book_id}/auto-book/advance`,
+          "GET",
+          `/api/projects/${project.book_id}/auto-book`,
         );
         setAutoState(current);
       }
       if (current.status === "RUNNING") {
-        throw new Error("Auto Book превысил внутренний безопасный лимит шагов");
+        throw new Error("Local Core продолжает работу; обновите состояние позже");
       }
       await refreshProject();
     } catch (reason) {
@@ -242,7 +292,14 @@ export function LaunchPlanningPanel({
           max_cost_usd_per_request: perRequestBudget,
           max_total_cost_usd: totalBudget,
           max_requests: maxRequests,
-          prepare_litres_docx: prepareLitres,
+          series_name: seriesName.trim() || null,
+          prepare_litres_docx: outputs.litres_ebook_docx,
+          outputs,
+          visuals: {
+            as_needed: visualsAsNeeded,
+            allow_generative_illustrations: allowGenerativeVisuals,
+            include_optional_illustrations: includeOptionalVisuals,
+          },
           owner_authorizes_auto_progress: true,
         },
       );
@@ -261,6 +318,22 @@ export function LaunchPlanningPanel({
       setAutoState(
         await api<AutoBookState>("POST", `/api/projects/${project.book_id}/auto-book/stop`),
       );
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function saveChangeRequest() {
+    if (!autoState || !changeRequest.trim()) return;
+    setChangeSaved(null);
+    try {
+      const result = await api<{ message: string }>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/changes`,
+        { request_text: changeRequest.trim() },
+      );
+      setChangeSaved(result.message);
+      setChangeRequest("");
     } catch (reason) {
       setError(String(reason));
     }
@@ -363,6 +436,66 @@ export function LaunchPlanningPanel({
                   Минимум 4 000, максимум 2 000 000 знаков.
                 </small>
               </label>
+              <label className="field">
+                <span>Серия — необязательно</span>
+                <input
+                  value={seriesName}
+                  onChange={(event) => setSeriesName(event.target.value)}
+                  placeholder="Например: Секреты продвижения услуг"
+                />
+                <small>Оставьте пустым для отдельной книги.</small>
+              </label>
+            </div>
+          </section>
+
+          <section className="planning-step primary-planning-step" aria-label="Что подготовить">
+            <h4>3. Что подготовить</h4>
+            <p className="muted">
+              Полная рукопись выбрана по умолчанию. Другие форматы создаются из того же проверенного master.
+            </p>
+            <div className="output-choice-grid">
+              {OUTPUT_CHOICES.map(([id, label]) => (
+                <label className="paid-approval compact-option" key={id}>
+                  <input
+                    type="checkbox"
+                    checked={outputs[id]}
+                    onChange={(event) =>
+                      setOutputs((current) => ({ ...current, [id]: event.target.checked }))
+                    }
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="visual-choice-box">
+              <label className="paid-approval compact-option">
+                <input
+                  type="checkbox"
+                  checked={visualsAsNeeded}
+                  onChange={(event) => setVisualsAsNeeded(event.target.checked)}
+                />
+                <span>Визуальные материалы — по необходимости</span>
+              </label>
+              {visualsAsNeeded && (
+                <>
+                  <label className="paid-approval compact-option">
+                    <input
+                      type="checkbox"
+                      checked={includeOptionalVisuals}
+                      onChange={(event) => setIncludeOptionalVisuals(event.target.checked)}
+                    />
+                    <span>Добавлять необязательные поясняющие иллюстрации</span>
+                  </label>
+                  <label className="paid-approval compact-option">
+                    <input
+                      type="checkbox"
+                      checked={allowGenerativeVisuals}
+                      onChange={(event) => setAllowGenerativeVisuals(event.target.checked)}
+                    />
+                    <span>Разрешить генеративные иллюстрации, если они действительно нужны</span>
+                  </label>
+                </>
+              )}
             </div>
           </section>
 
@@ -399,18 +532,10 @@ export function LaunchPlanningPanel({
                 Проверьте лимиты: общий бюджет должен быть не меньше лимита одного запроса.
               </p>
             )}
-            <label className="paid-approval compact-option">
-              <input
-                type="checkbox"
-                checked={prepareLitres}
-                onChange={(event) => setPrepareLitres(event.target.checked)}
-              />
-              <span>Подготовить DOCX для ЛитРес после финальной проверки.</span>
-            </label>
           </details>
 
           <section className="launch-readiness" aria-label="Готовность к запуску">
-            <h4>3. Готовность к запуску</h4>
+            <h4>4. Проверка перед запуском</h4>
             <div className="readiness-grid">
               <span className={coreReady ? "ready" : "missing"}>
                 {coreReady ? "✓" : "○"} Local Core {coreReady ? "готов" : "запускается"}
@@ -431,6 +556,12 @@ export function LaunchPlanningPanel({
                 {budgetReady ? "✓" : "○"} Лимиты Auto Book
               </span>
             </div>
+            <p className="launch-summary">
+              Выбрано результатов: {Object.values(outputs).filter(Boolean).length}. Ориентир до ${" "}
+              {Math.min(totalBudget, perRequestBudget * maxRequests).toFixed(2)}; твёрдый максимум ${" "}
+              {Number.isFinite(totalBudget) ? totalBudget.toFixed(2) : "—"}. Часть бюджета резервируется на
+              редактуру и выпуск.
+            </p>
           </section>
 
           {!credentialAvailable && coreReady && (
@@ -501,6 +632,11 @@ export function LaunchPlanningPanel({
             {autoState?.current_chapter_ordinal && (
               <span>Сейчас: глава {autoState.current_chapter_ordinal}</span>
             )}
+            <span>Подтверждено: ${(autoState?.confirmed_cost_usd ?? 0).toFixed(2)}</span>
+            <span>Зарезервировано: ${(autoState?.reserved_cost_usd ?? 0).toFixed(2)}</span>
+            {(autoState?.unknown_cost_usd ?? 0) > 0 && (
+              <span>Исход неизвестен: до ${(autoState?.unknown_cost_usd ?? 0).toFixed(2)}</span>
+            )}
             <AutoBookClock
               startedAt={autoState?.started_at}
               updatedAt={autoState?.updated_at}
@@ -543,7 +679,22 @@ export function LaunchPlanningPanel({
           </div>
           <p>{autoState.last_action}</p>
           <AutoBookClock startedAt={autoState.started_at} updatedAt={autoState.updated_at} running={false} />
-          {autoState.output_path && <small>Файл: {autoState.output_path}</small>}
+          {autoState.output_files && autoState.output_files.length > 0 ? (
+            <div className="ready-output-list" aria-label="Готовые файлы">
+              <strong>Готовые файлы</strong>
+              <ul>
+                {autoState.output_files
+                  .filter((item) => item.status === "READY")
+                  .map((item) => (
+                    <li key={`${item.output_kind}:${item.relative_path}`}>
+                      {item.output_kind}: {item.relative_path}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : (
+            autoState.output_path && <small>Файл: {autoState.output_path}</small>
+          )}
         </section>
       )}
 
@@ -552,6 +703,31 @@ export function LaunchPlanningPanel({
           Предыдущий запуск остановился: {autoState.error ?? autoState.last_action}. Исправьте причину
           и запустите Auto Book снова — уже созданные этапы книги будут использованы.
         </div>
+      )}
+
+      {autoState && (
+        <section className="planning-step change-request-box" aria-label="Изменение книги">
+          <h4>Что изменить в книге?</h4>
+          <p className="muted">
+            Напишите обычными словами. BOOK OS сохранит запрос, найдёт затронутые части и повторит
+            только зависимые проверки.
+          </p>
+          <textarea
+            rows={3}
+            value={changeRequest}
+            onChange={(event) => setChangeRequest(event.target.value)}
+            placeholder="Например: сделай объяснение понятнее и добавь практический разбор"
+          />
+          <button
+            type="button"
+            className="ghost"
+            disabled={!changeRequest.trim()}
+            onClick={() => void saveChangeRequest()}
+          >
+            Сохранить запрос на изменение
+          </button>
+          {changeSaved && <p className="series-studio-success">{changeSaved}</p>}
+        </section>
       )}
 
       {error && autoState?.status !== "RUNNING" && !autoBusy && (

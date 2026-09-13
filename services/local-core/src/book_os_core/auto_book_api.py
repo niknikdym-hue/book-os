@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
+from pydantic import BaseModel, Field
 
 from .auto_book import (
     AutoBookError,
@@ -15,9 +17,14 @@ from .auto_book import (
     AutoBookStartRequest,
 )
 from .auto_book_finalizer import AutoBookFinalizer
+from .auto_book_runtime import AutoBookRuntimeError
 from .book_context import BookContextService
 from .model_gateway import ModelGateway
 from .series_production import SeriesProductionGateError, SeriesProductionService
+
+
+class AutoBookChangeRequest(BaseModel):
+    request_text: str = Field(min_length=1, max_length=12000)
 
 
 def build_auto_book_router(
@@ -30,6 +37,8 @@ def build_auto_book_router(
     contexts = BookContextService(data_dir)
     series_production = SeriesProductionService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
+    workers_lock = threading.Lock()
+    workers: dict[str, threading.Thread] = {}
 
     def raise_http(exc: AutoBookError) -> None:
         if isinstance(exc, AutoBookNotFound):
@@ -67,6 +76,62 @@ def build_auto_book_router(
                 "сохранённого места»."
             ),
         ) from exc
+
+    def stop_after_uncertain_provider_disconnect(book_id: str, exc: Exception) -> None:
+        state = service.get(book_id)
+        if state is None:
+            return
+        try:
+            uncertain_cap = service._remaining_call_cap(state)
+        except AutoBookError:
+            uncertain_cap = 0.0
+        if uncertain_cap > 0:
+            service._consume_call(state, uncertain_cap)
+            state.unknown_cost_usd = round(state.unknown_cost_usd + uncertain_cap, 6)
+        state.status = "STOPPED"
+        state.error = str(exc)
+        state.last_action = (
+            "Исход запроса неизвестен; автоматический повтор заблокирован до проверки"
+        )
+        service._write(state)
+
+    def drive_in_local_core(book_id: str) -> None:
+        try:
+            for _ in range(500):
+                current = service.get(book_id)
+                if current is None or current.status != "RUNNING":
+                    return
+                if finalization_complete(current):
+                    return
+                require_series_writing_gate(book_id, current)
+                advanced = service.advance(book_id)
+                finalize_if_needed(book_id, advanced)
+        except httpx.TransportError as exc:
+            stop_after_uncertain_provider_disconnect(book_id, exc)
+        except Exception as exc:
+            current = service.get(book_id)
+            if current is not None:
+                current.status = "FAILED"
+                current.error = str(exc)
+                current.last_action = "Local Core остановил Auto Book на проверяемой ошибке"
+                service._write(current)
+        finally:
+            with workers_lock:
+                workers.pop(book_id, None)
+
+    def schedule_local_core(book_id: str) -> None:
+        with workers_lock:
+            existing = workers.get(book_id)
+            if existing is not None and existing.is_alive():
+                return
+            worker = threading.Thread(
+                target=drive_in_local_core,
+                args=(book_id,),
+                name=f"book-os-auto-{book_id[-6:]}",
+                daemon=True,
+            )
+            workers[book_id] = worker
+            worker.start()
 
     def require_series_writing_gate(book_id: str, state: AutoBookRunView) -> None:
         if state.phase != "CHAPTER_DRAFT" or state.current_chapter_id is None:
@@ -134,6 +199,7 @@ def build_auto_book_router(
         state.status = "DONE"
         state.phase = "DONE"
         state.output_path = result.output_path
+        state.output_files = result.output_files
         state.error = None
         state.last_action = (
             "Literary Master locked; LitRes-ready DOCX created"
@@ -147,6 +213,8 @@ def build_auto_book_router(
         try:
             state = service.get(book_id)
             return state.model_dump(mode="json") if state is not None else None
+        except AutoBookRuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
@@ -176,10 +244,60 @@ def build_auto_book_router(
             raise_http(exc)
         raise AssertionError("unreachable")
 
+    @router.post("/api/projects/{book_id}/auto-book/resume")
+    def resume_auto_book(book_id: str) -> dict[str, object]:
+        try:
+            current = service.get(book_id)
+            if current is None:
+                raise AutoBookNotFound("Auto Book has not been started for this book")
+            if current.unknown_cost_usd > 0:
+                raise AutoBookGateError(
+                    "Нельзя слепо повторить запрос с неизвестным платным исходом; "
+                    "сначала проверьте provider run в диагностике"
+                )
+            if current.status == "STOPPED":
+                current.status = "RUNNING"
+                current.error = None
+                current.last_action = "Local Core продолжает с сохранённого checkpoint"
+                service._write(current)
+            if current.status == "RUNNING":
+                schedule_local_core(book_id)
+            return current.model_dump(mode="json")
+        except AutoBookError as exc:
+            raise_http(exc)
+        raise AssertionError("unreachable")
+
     @router.post("/api/projects/{book_id}/auto-book/stop")
     def stop_auto_book(book_id: str) -> dict[str, object]:
         try:
             return service.stop(book_id).model_dump(mode="json")
+        except AutoBookError as exc:
+            raise_http(exc)
+        raise AssertionError("unreachable")
+
+    @router.post("/api/projects/{book_id}/auto-book/changes")
+    def request_auto_book_change(
+        book_id: str,
+        payload: AutoBookChangeRequest,
+    ) -> dict[str, object]:
+        try:
+            current = service.get(book_id)
+            if current is None:
+                raise AutoBookNotFound("Auto Book has not been started for this book")
+            change_id = service.runtime.request_change(
+                book_id,
+                current.run_id,
+                payload.request_text,
+            )
+            return {
+                "change_id": change_id,
+                "status": "SAVED",
+                "message": (
+                    "Запрос сохранён. BOOK OS обновит только затронутые части и зависимые проверки."
+                ),
+            }
+        except AutoBookRuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")

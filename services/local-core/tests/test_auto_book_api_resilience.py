@@ -106,3 +106,57 @@ def test_provider_disconnect_pauses_auto_book_without_losing_progress(tmp_path: 
         payload["last_action"]
         == "Temporary model connection interruption; progress and budget saved"
     )
+
+
+def test_local_core_worker_marks_unknown_outcome_and_refuses_blind_retry(tmp_path: Path) -> None:
+    import time
+
+    token = "test-token"
+    gateway = ModelGateway({"openai": DisconnectingAdapter()})
+    app = FastAPI()
+
+    def require_token(authorization: str | None = Header(default=None)) -> None:
+        if authorization != f"Bearer {token}":
+            raise HTTPException(status_code=401, detail="unauthorized")
+
+    app.include_router(build_auto_book_router(tmp_path, require_token, gateway))
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+    book_id = ready_book(tmp_path)
+    started = client.post(
+        f"/api/projects/{book_id}/auto-book/start",
+        headers=headers,
+        json={
+            "idea": "Проверить Local Core worker и запрет слепого повтора.",
+            "model_choice": "AUTO",
+            "max_cost_usd_per_request": 1.0,
+            "max_total_cost_usd": 10.0,
+            "max_requests": 20,
+            "outputs": {"full_manuscript_docx": True},
+            "owner_authorizes_auto_progress": True,
+        },
+    )
+    assert started.status_code == 200
+    resumed = client.post(
+        f"/api/projects/{book_id}/auto-book/resume",
+        headers=headers,
+    )
+    assert resumed.status_code == 200
+
+    payload = resumed.json()
+    for _ in range(100):
+        state = client.get(f"/api/projects/{book_id}/auto-book", headers=headers)
+        payload = state.json()
+        if payload["status"] != "RUNNING":
+            break
+        time.sleep(0.01)
+
+    assert payload["status"] == "STOPPED"
+    assert payload["unknown_cost_usd"] == 1.0
+    assert "автоматический повтор заблокирован" in payload["last_action"]
+    retry = client.post(
+        f"/api/projects/{book_id}/auto-book/resume",
+        headers=headers,
+    )
+    assert retry.status_code == 409
+    assert "Нельзя слепо повторить" in retry.json()["detail"]

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
+import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -697,6 +698,11 @@ class AutoBookService:
                 state.status = "DONE"
 
             return self._write(state)
+        except httpx.TransportError:
+            # The caller owns unknown-outcome handling.  A transport break may happen after the
+            # provider accepted a paid request, so this layer must not turn it into a generic
+            # retryable failure or advance the checkpoint.
+            raise
         except Exception as exc:
             state.status = "FAILED"
             state.error = str(exc)
