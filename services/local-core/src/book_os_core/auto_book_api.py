@@ -21,7 +21,6 @@ from .auto_book_runtime import AutoBookRuntimeError
 from .book_context import BookContextService
 from .model_gateway import ModelGateway
 from .research_adapters import ResearchGateway
-from .series_production import SeriesProductionGateError, SeriesProductionService
 from .series_workspace import SeriesWorkspaceGateError, SeriesWorkspaceService
 
 
@@ -38,7 +37,6 @@ def build_auto_book_router(
     service = AutoBookService(data_dir, gateway, research_gateway)
     finalizer = AutoBookFinalizer(data_dir, gateway)
     contexts = BookContextService(data_dir)
-    series_production = SeriesProductionService(data_dir)
     series_workspaces = SeriesWorkspaceService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
     workers_lock = threading.Lock()
@@ -146,8 +144,7 @@ def build_auto_book_router(
         try:
             if series_workspaces.books(context.series_profile.profile_id):
                 series_workspaces.require_current_map(context.series_profile.profile_id)
-            series_production.require_writing_allowed(book_id, state.current_chapter_id)
-        except (SeriesProductionGateError, SeriesWorkspaceGateError) as exc:
+        except SeriesWorkspaceGateError as exc:
             raise AutoBookGateError(
                 "Series Auto Book cannot bypass the approved cross-book uniqueness lane: "
                 + str(exc)
