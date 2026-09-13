@@ -72,7 +72,7 @@ def test_auto_manual_operation_and_whole_book_pin(tmp_path: Path) -> None:
     assert book.selection_scope == "BOOK"
     assert routing.get_book_pin(project.book_id) is not None
 
-    pinned = routing.resolve(
+    resumed_auto = routing.resolve(
         project.book_id,
         "ARCHITECTURE_PROPOSAL",
         provider="openai",
@@ -80,22 +80,56 @@ def test_auto_manual_operation_and_whole_book_pin(tmp_path: Path) -> None:
         selection_scope=None,
         model=None,
     )
-    assert pinned.provider == "yandex"
-    assert pinned.model == "aliceai-llm"
-    assert pinned.selection_mode == "MANUAL"
-    assert pinned.selection_scope == "BOOK"
+    assert resumed_auto.provider == "openai"
+    assert resumed_auto.model == "gpt-6-astra"
+    assert resumed_auto.selection_mode == "AUTO"
+    assert resumed_auto.selection_scope is None
+    assert "explicitly cleared prior BOOK pin" in resumed_auto.rationale
+    assert routing.get_book_pin(project.book_id) is None
 
-    routing.clear_book_pin(project.book_id)
-    restored = routing.resolve(
+
+def test_auto_uses_xhigh_only_for_an_explicit_recorded_escalation(tmp_path: Path) -> None:
+    project = ProjectService(tmp_path).create_project(
+        NewBookRequest(working_title="Bounded escalation", primary_subtype="Strategy")
+    )
+    routing = ModelRoutingService(tmp_path)
+
+    audio = routing.resolve(
         project.book_id,
-        "ARCHITECTURE_PROPOSAL",
+        "AUDIO_ADAPTATION",
         provider="openai",
         selection_mode="AUTO",
         selection_scope=None,
         model=None,
+        complexity="STANDARD",
+        quality_risk="HIGH",
     )
-    assert restored.model == "gpt-6-astra"
-    assert restored.selection_mode == "AUTO"
+    complex_book = routing.resolve(
+        project.book_id,
+        "WHOLE_BOOK_EDIT",
+        provider="openai",
+        selection_mode="AUTO",
+        selection_scope=None,
+        model=None,
+        complexity="COMPLEX",
+        quality_risk="HIGH",
+    )
+    escalated = routing.resolve(
+        project.book_id,
+        "ARGUMENT_REBUILD",
+        provider="openai",
+        selection_mode="AUTO",
+        selection_scope=None,
+        model=None,
+        complexity="FRONTIER",
+        quality_risk="HIGH",
+        escalation_reason="critic finding F-17 remains blocking after one bounded revision",
+    )
+
+    assert audio.reasoning_effort == "medium"
+    assert complex_book.reasoning_effort == "high"
+    assert escalated.reasoning_effort == "xhigh"
+    assert "F-17" in escalated.rationale
 
 
 def test_routing_provenance_is_recorded_on_planning_run(tmp_path: Path) -> None:

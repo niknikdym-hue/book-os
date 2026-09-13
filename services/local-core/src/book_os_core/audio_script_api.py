@@ -177,11 +177,12 @@ def build_audio_script_router(
         if value == "AUTO":
             choice = routing.resolve(
                 book_id,
-                "SECTION_DRAFT",
+                "AUDIO_ADAPTATION",
                 provider="openai",
                 selection_mode="AUTO",
                 selection_scope=None,
                 model=None,
+                complexity="STANDARD",
                 quality_risk="HIGH",
             )
             return choice.model, choice.reasoning_effort, choice.rationale

@@ -316,6 +316,7 @@ class ModelRoutingService:
         model: str | None,
         complexity: TaskComplexity | None = None,
         quality_risk: Literal["LOW", "MEDIUM", "HIGH"] = "MEDIUM",
+        escalation_reason: str | None = None,
     ) -> RoutingChoice:
         if selection_mode == "MANUAL":
             if selection_scope not in {"OPERATION", "BOOK"}:
@@ -344,15 +345,11 @@ class ModelRoutingService:
         if selection_scope is not None:
             raise ModelRoutingError("AUTO selection cannot declare a manual scope")
         existing = self.get_book_pin(book_id)
+        pin_resolution = ""
         if existing is not None:
-            return RoutingChoice(
-                provider=existing.provider,
-                provider_label=existing.provider_label,
-                model=existing.model,
-                selection_mode="MANUAL",
-                selection_scope="BOOK",
-                operation=operation,
-                rationale="Existing human whole-book model pin overrides Auto routing",
+            self.clear_book_pin(book_id)
+            pin_resolution = (
+                f"; Auto explicitly cleared prior BOOK pin {existing.provider}/{existing.model}"
             )
         spec = self._provider(provider)
         policy = self._AUTO_POLICY.get(operation)
@@ -369,11 +366,12 @@ class ModelRoutingService:
         else:
             auto_model, effort, baseline_complexity, escalation = policy
         effective_complexity = complexity or baseline_complexity
-        if effective_complexity == "FRONTIER" or (
-            effective_complexity == "COMPLEX" and quality_risk == "HIGH"
-        ):
+        qualifying_escalation = bool(escalation_reason and escalation_reason.strip())
+        if qualifying_escalation:
             auto_model = "gpt-6-astra"
             effort = "xhigh"
+        elif effort == "xhigh":
+            effort = "high"
         elif effective_complexity == "ROUTINE" and operation in {
             "MATERIAL_CLASSIFICATION",
             "METADATA_EXTRACTION",
@@ -391,6 +389,12 @@ class ModelRoutingService:
             rationale=(
                 f"Auto routing {self.POLICY_VERSION}: {effective_complexity}/{quality_risk}; "
                 f"least-cost route eligible for the {operation} quality floor"
+                f"{pin_resolution}"
+                + (
+                    f"; explicit escalation: {escalation_reason.strip()}"
+                    if qualifying_escalation and escalation_reason is not None
+                    else ""
+                )
             ),
             reasoning_effort=effort,
             policy_version=self.POLICY_VERSION,
