@@ -6,12 +6,14 @@ from pathlib import Path
 from typing import Any, cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
+import httpx
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from .authority import AuthorityService, new_ulid
 from .authority_types import JSONValue
+from .audio_script import AudioScriptService, AudioScriptView
 from .auto_book import AutoBookGateError, AutoBookRunView
 from .auto_book_exports import AutoBookExporter, MasterChapter, StructuredBookMaster
 from .auto_book_quality import AutoBookQualityEngine, AutoQualityFinding, AutoQualityReport
@@ -26,7 +28,9 @@ from .model_gateway import (
     AuthorityInputRef,
     BookBenchJudgeOutput,
     ModelGateway,
+    ModelBudgetError,
     ModelOutputError,
+    ModelProviderError,
     ModelTaskRequest,
     ReasoningEffort,
     SectionDraftOutput,
@@ -71,6 +75,21 @@ AUTO_BOOK_INDEPENDENT_CRITIQUE_V1 = PromptTemplate(
     ),
 )
 
+AUDIO_SCRIPT_EDITOR_V1 = PromptTemplate(
+    prompt_id="audio_script_editor_v1",
+    version="1.0.0",
+    developer_text=(
+        "You are the BOOK OS audio editor. Rewrite the supplied exact chapter for a listener who "
+        "cannot see the page and normally hears each sentence once. Preserve the author's voice, "
+        "meaning, claims, evidence, qualifications and conclusions. Break overloaded syntax and "
+        "long lists, verbalize numbers unambiguously, replace page-dependent references, clarify "
+        "attribution and create natural transitions without presenter boilerplate. Do not add "
+        "facts or remove material content. Visual explanations are inserted separately at their "
+        "recorded positions; make the surrounding prose lead into them naturally without repeating "
+        "their data. Return only the complete edited chapter as schema-valid text output."
+    ),
+)
+
 
 class AutoBookFinalizationView(BaseModel):
     master_id: str
@@ -80,6 +99,8 @@ class AutoBookFinalizationView(BaseModel):
     requests_used: int
     authorized_cost_usd: float
     output_files: list[dict[str, Any]] = Field(default_factory=list)
+    audio_script_id: str | None = None
+    awaiting_audio_approval: bool = False
 
 
 class AutoBookFinalizer:
@@ -99,7 +120,209 @@ class AutoBookFinalizer:
         self.series_workspaces = SeriesWorkspaceService(data_dir)
         self.runtime = DurableAutoBookRuntime(data_dir)
         self.exporter = AutoBookExporter(data_dir, self.runtime)
+        self.audio_scripts = AudioScriptService(data_dir)
         self.quality = AutoBookQualityEngine()
+
+    def _ensure_audio_script(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        *,
+        master_id: str,
+        master_hash: str,
+        structured: StructuredBookMaster,
+    ) -> AudioScriptView:
+        existing = [
+            item
+            for item in self.audio_scripts.list_scripts(book_id, current_source_hash=master_hash)
+            if item.source_identity == master_id and item.source_hash == master_hash
+        ]
+        if existing:
+            return existing[0]
+        runtime = self.runtime.get(book_id, state.run_id)
+        delivery = runtime.intent.delivery_profile
+        provenance: dict[str, Any] = {
+            "operation": "AUTO_BOOK_AUDIO_EDITORIAL",
+            "auto_book_run_id": state.run_id,
+            "source_master_id": master_id,
+            "source_master_hash": master_hash,
+            "delivery_profile": delivery,
+            "model_runs": [],
+        }
+        if delivery in {"AUDIO_FIRST", "DUAL_TEXT_AUDIO"}:
+            content, transformations = self.audio_scripts.content_from_master(
+                structured,
+                adaptation_mode="AUDIO_NATIVE",
+            )
+            mode = "AUDIO_NATIVE"
+            provenance["redundant_rewrite_skipped"] = True
+        else:
+            adapted: dict[str, str] = {}
+            for index, chapter in enumerate(structured.chapters, start=1):
+                cap = self._remaining_cap(state)
+                model, effort, selection_mode, selection_scope, rationale = self._resolve_model(
+                    book_id, state
+                )
+                operation_input = {
+                    "source_master_id": master_id,
+                    "source_master_hash": master_hash,
+                    "source_chapter_id": chapter.chapter_id,
+                    "source_paragraphs": chapter.paragraphs,
+                    "visual_audio_decisions": [
+                        {
+                            "object_id": item.object_id,
+                            "title": item.title,
+                            "audio_equivalent": item.audio_equivalent,
+                            "placement_after_paragraph": item.placement_after_paragraph,
+                        }
+                        for item in chapter.tables
+                    ]
+                    + [
+                        {
+                            "object_id": item.object_id,
+                            "title": item.title,
+                            "audio_equivalent": item.audio_equivalent,
+                            "placement_after_paragraph": item.placement_after_paragraph,
+                        }
+                        for item in chapter.visuals
+                    ],
+                }
+                operation = self.runtime.ensure_operation(
+                    book_id,
+                    state.run_id,
+                    ordinal=1000 + index,
+                    stage=AutoBookStage.AUDIO_EDITORIAL,
+                    operation=f"audio-edit:{chapter.chapter_id}",
+                    input_payload=operation_input,
+                    provider="openai",
+                    model=model,
+                    reasoning_effort=effort,
+                    estimated_cost_usd=cap,
+                )
+                if operation.state == "UNKNOWN":
+                    raise AutoBookGateError(
+                        "audio-editorial provider outcome is unknown and cannot be retried blindly"
+                    )
+                if operation.state in {"RESERVED", "RUNNING"}:
+                    self.runtime.mark_unknown(
+                        book_id,
+                        state.run_id,
+                        operation.operation_id,
+                        provider_run_id=operation.provider_run_id,
+                    )
+                    raise AutoBookGateError(
+                        "interrupted audio-editorial operation has an unknown outcome and "
+                        "cannot be retried blindly"
+                    )
+                if operation.state == "SUCCEEDED" and operation.output is not None:
+                    self._consume(state, cap)
+                    output = SectionDraftOutput.model_validate(operation.output)
+                    adapted[chapter.chapter_id] = output.text
+                    cast(list[dict[str, Any]], provenance["model_runs"]).append(
+                        {
+                            "provider": operation.provider,
+                            "model": operation.model,
+                            "reasoning_effort": operation.reasoning_effort,
+                            "provider_run_id": operation.provider_run_id,
+                            "usage": operation.output.get("usage", {}),
+                            "source_chapter_id": chapter.chapter_id,
+                            "prompt_hash": AUDIO_SCRIPT_EDITOR_V1.prompt_hash,
+                            "recovered_idempotently": True,
+                        }
+                    )
+                    continue
+                self.runtime.reserve(
+                    book_id,
+                    state.run_id,
+                    operation.operation_id,
+                    cap,
+                )
+                try:
+                    result = self.gateway.generate(
+                        ModelTaskRequest(
+                            task_id=operation.operation_id,
+                            task_type="SECTION_DRAFT",
+                            role="WRITER",
+                            provider="openai",
+                            model=model,
+                            prompt_id=AUDIO_SCRIPT_EDITOR_V1.prompt_id,
+                            prompt_version=AUDIO_SCRIPT_EDITOR_V1.version,
+                            prompt_hash=AUDIO_SCRIPT_EDITOR_V1.prompt_hash,
+                            section_objective=(
+                                f"Prepare chapter {chapter.title!r} as a professional SOURCE_FAITHFUL "
+                                "AudioScript while preserving the exact source meaning."
+                            ),
+                            authoritative_context=operation_input,
+                            task_payload={
+                                "auto_book_run_id": state.run_id,
+                                "operation": "AUDIO_EDIT",
+                                "adaptation_mode": "SOURCE_FAITHFUL",
+                                "selection_mode": selection_mode,
+                                "selection_scope": selection_scope,
+                                "routing_rationale": rationale,
+                            },
+                            reasoning_effort=effort,
+                            max_output_tokens=12_000,
+                            max_cost_usd=cap,
+                        ),
+                        AUDIO_SCRIPT_EDITOR_V1,
+                    )
+                    output = SectionDraftOutput.model_validate(result.output)
+                except (
+                    httpx.TransportError,
+                    ModelBudgetError,
+                    ModelOutputError,
+                    ModelProviderError,
+                    ValidationError,
+                ):
+                    self.runtime.mark_unknown(
+                        book_id,
+                        state.run_id,
+                        operation.operation_id,
+                        provider_run_id=None,
+                    )
+                    raise
+                self._consume(state, cap)
+                confirmed = min(cap, max(0.0, float(result.usage.get("cost_usd", 0.0))))
+                self.runtime.complete_operation(
+                    book_id,
+                    state.run_id,
+                    operation.operation_id,
+                    output={"text": output.text, "notes": output.notes, "usage": result.usage},
+                    confirmed_cost_usd=confirmed,
+                    provider_run_id=result.provider_run_id,
+                )
+                adapted[chapter.chapter_id] = output.text
+                cast(list[dict[str, Any]], provenance["model_runs"]).append(
+                    {
+                        "provider": "openai",
+                        "model": model,
+                        "reasoning_effort": effort,
+                        "provider_run_id": result.provider_run_id,
+                        "usage": result.usage,
+                        "prompt_id": AUDIO_SCRIPT_EDITOR_V1.prompt_id,
+                        "prompt_version": AUDIO_SCRIPT_EDITOR_V1.version,
+                        "prompt_hash": AUDIO_SCRIPT_EDITOR_V1.prompt_hash,
+                        "source_chapter_id": chapter.chapter_id,
+                        "authorized_cost_cap_usd": cap,
+                    }
+                )
+            content, transformations = self.audio_scripts.content_from_master(
+                structured,
+                adaptation_mode="SOURCE_FAITHFUL",
+                adapted_chapters=adapted,
+            )
+            mode = "SOURCE_FAITHFUL"
+        return self.audio_scripts.create_proposal(
+            book_id,
+            source_kind="LITERARY_MASTER",
+            source_identity=master_id,
+            source_hash=master_hash,
+            adaptation_mode=cast(Any, mode),
+            content=content,
+            transformations=transformations,
+            provenance=provenance,
+        )
 
     def _engine(self, book_id: str) -> Engine:
         self.projects.get_project(book_id)
@@ -262,6 +485,11 @@ class AutoBookFinalizer:
                         f"{unit['working_title']}. Preserve meaning and supported facts; make the "
                         "approved chapter function explicit and produce only finished book prose. "
                         + (
+                            "Preserve one-pass listenability and audible orientation. "
+                            if state.delivery_profile in {"AUDIO_FIRST", "DUAL_TEXT_AUDIO"}
+                            else ""
+                        )
+                        + (
                             "Resolve only the supplied verified correction findings and do not "
                             "introduce unrelated changes."
                             if correction_findings
@@ -284,6 +512,7 @@ class AutoBookFinalizer:
                         "current_manuscript_text": current_text,
                         "chapter_contract": contract,
                         "book_context": book_context,
+                        "delivery_profile": state.delivery_profile,
                         "required_corrections": correction_findings or [],
                     },
                     task_payload={
@@ -1003,6 +1232,7 @@ class AutoBookFinalizer:
             self._export_litres_docx(book_id, master.master_id) if prepare_litres_docx else None
         )
         output_files: list[dict[str, Any]] = []
+        audio_script: AudioScriptView | None = None
         try:
             runtime = self.runtime.get(book_id, state.run_id)
             structured = self._structured_master(
@@ -1010,23 +1240,79 @@ class AutoBookFinalizer:
                 master.master_id,
                 book_context,
             )
+            if runtime.intent.outputs.audio_version_requested:
+                self.runtime.set_stage(
+                    book_id,
+                    state.run_id,
+                    AutoBookStage.AUDIO_EDITORIAL,
+                    message="Отдельная аудиоредактура exact Literary Master",
+                )
+                audio_script = self._ensure_audio_script(
+                    book_id,
+                    state,
+                    master_id=master.master_id,
+                    master_hash=master.manifest_hash,
+                    structured=structured,
+                )
+                self.runtime.complete_stage(
+                    book_id,
+                    state.run_id,
+                    AutoBookStage.AUDIO_EDITORIAL,
+                    evidence={
+                        "audio_script_id": audio_script.audio_script_id,
+                        "audio_script_hash": audio_script.content_hash,
+                        "source_master_id": master.master_id,
+                        "source_master_hash": master.manifest_hash,
+                        "authority_status": audio_script.status,
+                        "human_approval_required": True,
+                    },
+                    message="AudioScript подготовлен и ждёт проверки человеком",
+                )
+            else:
+                self.runtime.complete_stage(
+                    book_id,
+                    state.run_id,
+                    AutoBookStage.AUDIO_EDITORIAL,
+                    evidence={"not_requested": True, "provider_calls": 0},
+                    message="Аудиоредакция не выбрана",
+                )
+            text_selection = runtime.intent.outputs.model_copy(
+                update={
+                    "audio_reading_docx": False,
+                    "audio_litres_docx": False,
+                    "voice_text_txt": False,
+                    "pronunciation_dictionary": (
+                        runtime.intent.outputs.pronunciation_dictionary
+                        if not runtime.intent.outputs.audio_version_requested
+                        else False
+                    ),
+                }
+            )
             bundle = self.exporter.export_selected(
                 book_id,
                 state.run_id,
                 structured,
-                runtime.intent.outputs,
+                text_selection,
             )
             output_files = [item.model_dump(mode="json") for item in bundle.artifacts]
-            self.runtime.complete_stage(
-                book_id,
-                state.run_id,
-                AutoBookStage.MASTER_AND_EXPORTS,
-                evidence={
-                    "master_hash": master.manifest_hash,
-                    "selected_outputs": runtime.intent.outputs.selected(),
-                },
-                message="Рукопись и выбранные файлы готовы",
-            )
+            if audio_script is None:
+                self.runtime.complete_stage(
+                    book_id,
+                    state.run_id,
+                    AutoBookStage.MASTER_AND_EXPORTS,
+                    evidence={
+                        "master_hash": master.manifest_hash,
+                        "selected_outputs": runtime.intent.outputs.selected(),
+                    },
+                    message="Рукопись и выбранные файлы готовы",
+                )
+                self.runtime.set_stage(
+                    book_id,
+                    state.run_id,
+                    AutoBookStage.MASTER_AND_EXPORTS,
+                    status="PACKAGE_READY",
+                    message="Рукопись и выбранные файлы готовы",
+                )
         except AutoBookRuntimeError:
             # A run created before migration 0021 keeps its original export behaviour.
             pass
@@ -1038,4 +1324,79 @@ class AutoBookFinalizer:
             requests_used=state.requests_used,
             authorized_cost_usd=state.authorized_cost_usd,
             output_files=output_files,
+            audio_script_id=audio_script.audio_script_id if audio_script is not None else None,
+            awaiting_audio_approval=audio_script is not None,
+        )
+
+    def complete_audio_outputs(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        script: AudioScriptView,
+    ) -> AutoBookFinalizationView:
+        if not script.ready_for_export:
+            raise AutoBookGateError("AudioScript is not current and human-approved")
+        runtime = self.runtime.get(book_id, state.run_id)
+        if script.source_kind != "LITERARY_MASTER":
+            raise AutoBookGateError("Auto Book audio export requires a Literary Master source")
+        master = self.literary.get_master(book_id, script.source_identity)
+        if master.manifest_hash != script.source_hash:
+            raise AutoBookGateError("AudioScript source hash no longer matches its Literary Master")
+        structured = self._structured_master(
+            book_id,
+            master.master_id,
+            self._book_context(book_id),
+        )
+        audio_selection = runtime.intent.outputs.model_copy(
+            update={
+                "full_manuscript_docx": False,
+                "litres_ebook_docx": False,
+                "reading_pdf": False,
+                "epub": False,
+                "reader_extras": False,
+                "publisher_pack": False,
+            }
+        )
+        self.exporter.export_selected(
+            book_id,
+            state.run_id,
+            structured,
+            audio_selection,
+            audio_script=script,
+        )
+        all_files = [
+            item.model_dump(mode="json")
+            for item in self.runtime.list_artifacts(book_id, state.run_id)
+            if item.status == "READY"
+        ]
+        self.runtime.complete_stage(
+            book_id,
+            state.run_id,
+            AutoBookStage.MASTER_AND_EXPORTS,
+            evidence={
+                "master_hash": master.manifest_hash,
+                "audio_script_id": script.audio_script_id,
+                "audio_script_hash": script.content_hash,
+                "selected_outputs": runtime.intent.outputs.selected(),
+                "recording_text_mandatory": True,
+            },
+            message="Утверждённый AudioScript и выбранные файлы готовы",
+        )
+        self.runtime.set_stage(
+            book_id,
+            state.run_id,
+            AutoBookStage.MASTER_AND_EXPORTS,
+            status="PACKAGE_READY",
+            message="Утверждённый AudioScript и выбранные файлы готовы",
+        )
+        return AutoBookFinalizationView(
+            master_id=master.master_id,
+            master_manifest_hash=master.manifest_hash,
+            bookbench_snapshot_id="already-finalized",
+            output_path=None,
+            requests_used=state.requests_used,
+            authorized_cost_usd=state.authorized_cost_usd,
+            output_files=all_files,
+            audio_script_id=script.audio_script_id,
+            awaiting_audio_approval=False,
         )

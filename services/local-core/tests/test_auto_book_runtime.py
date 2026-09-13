@@ -48,15 +48,15 @@ def intent(**overrides: object) -> AutoBookIntent:
     return AutoBookIntent.model_validate(values)
 
 
-def test_runtime_persists_authorization_and_fourteen_stage_plan(tmp_path: Path) -> None:
+def test_runtime_persists_authorization_and_fifteen_stage_plan(tmp_path: Path) -> None:
     book_id = project(tmp_path)
     runtime = DurableAutoBookRuntime(tmp_path)
     run = runtime.create_run(book_id, intent())
 
     assert run.status == "QUEUED"
     assert run.current_stage == AutoBookStage.DEFINITION
-    assert len(AUTO_BOOK_STAGES) == 14
-    assert run.progress_total == 17
+    assert len(AUTO_BOOK_STAGES) == 15
+    assert run.progress_total == 19
     assert run.reserved_cost_usd == 2.5
     assert run.confirmed_cost_usd == 0
     assert run.unknown_cost_usd == 0

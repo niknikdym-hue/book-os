@@ -3,7 +3,6 @@ from __future__ import annotations
 from html import escape
 import json
 from pathlib import Path
-import re
 from typing import Any, Literal
 
 from docx import Document
@@ -32,6 +31,13 @@ from reportlab.platypus import (
 from reportlab.lib import colors  # type: ignore[import-untyped]
 
 from .authority import canonical_json
+from .audio_script import (
+    AudioScriptContent,
+    AudioScriptGateError,
+    AudioScriptSection,
+    AudioScriptService,
+    AudioScriptView,
+)
 from .auto_book_runtime import (
     AutoBookArtifactView,
     AutoBookOutputKind,
@@ -51,6 +57,7 @@ class MasterTable(BaseModel):
     rows: list[list[str]] = Field(min_length=1, max_length=2000)
     audio_equivalent: str = Field(min_length=1, max_length=12000)
     source_note: str | None = Field(default=None, max_length=2000)
+    placement_after_paragraph: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def rectangular(self) -> MasterTable:
@@ -69,6 +76,7 @@ class MasterVisual(BaseModel):
     data: list[tuple[str, float]] = Field(default_factory=list, max_length=100)
     source_note: str | None = Field(default=None, max_length=2000)
     rights_note: str = Field(default="Created programmatically by BOOK OS", max_length=1000)
+    placement_after_paragraph: int | None = Field(default=None, ge=0)
 
 
 class MasterChapter(BaseModel):
@@ -113,6 +121,7 @@ class AutoBookExporter:
         "AUDIO_LITRES_DOCX": "audio-litres.owner-profile.v1",
         "VOICE_TEXT_TXT": "voice-text.v1",
         "PRONUNCIATION_DICTIONARY": "pronunciation.v1",
+        "AUDIO_PRODUCTION_HANDOFF": "book-os-audiobook-handoff.v2",
         "READER_EXTRAS": "reader-extras.v1",
         "PUBLISHER_PACK": "publisher-pack.v1",
     }
@@ -126,6 +135,7 @@ class AutoBookExporter:
         "AUDIO_LITRES_DOCX": "Аудиоредакция-для-Литрес.docx",
         "VOICE_TEXT_TXT": "Текст-для-озвучки.txt",
         "PRONUNCIATION_DICTIONARY": "Словарь-произношения.txt",
+        "AUDIO_PRODUCTION_HANDOFF": "Audiobook-Studio-handoff.json",
         "READER_EXTRAS": "Дополнительные-материалы.docx",
         "PUBLISHER_PACK": "Издательский-пакет.json",
     }
@@ -278,6 +288,44 @@ class AutoBookExporter:
             raise AutoBookExportError("DOCX structural QA failed")
         return qa
 
+    def _audio_docx(self, script: AudioScriptView, output: Path, *, litres: bool) -> dict[str, Any]:
+        if not script.ready_for_export:
+            raise AudioScriptGateError(
+                "audio DOCX requires a current human-approved AudioScript with no blocking checks"
+            )
+        document = Document()
+        self._apply_docx_styles(document)
+        document.add_heading(script.content.title, level=0)
+        document.add_paragraph(script.content.author)
+        for section in script.content.sections:
+            document.add_heading(section.title, level=1)
+            for paragraph in section.recording_paragraphs():
+                document.add_paragraph(paragraph)
+        document.save(str(output))
+        reopened = Document(str(output))
+        paragraph_count = len(reopened.paragraphs)
+        expected = (
+            2
+            + len(script.content.sections)
+            + sum(len(section.recording_paragraphs()) for section in script.content.sections)
+        )
+        if paragraph_count < expected:
+            raise AutoBookExportError("AudioScript DOCX structural QA failed")
+        return {
+            "passed": True,
+            "audio_script_id": script.audio_script_id,
+            "audio_script_version": script.version,
+            "audio_script_hash": script.content_hash,
+            "source_hash": script.source_hash,
+            "authority_status": script.status,
+            "paragraph_count": paragraph_count,
+            "same_snapshot_as_recording_txt": True,
+            "platform_acceptance_claimed": False,
+            "requirements_profile_checked_at": (
+                "owner-litres-audio-profile.v1" if litres else "editorial-reading-profile.v1"
+            ),
+        }
+
     def _pdf(self, master: StructuredBookMaster, output: Path, visual_dir: Path) -> dict[str, Any]:
         font = self._register_pdf_font()
         styles = getSampleStyleSheet()
@@ -382,25 +430,23 @@ class AutoBookExporter:
         return {"passed": True, "document_count": document_count, "viewer_review_required": True}
 
     @staticmethod
-    def _voice_text(master: StructuredBookMaster) -> str:
-        parts = [master.title, master.author]
-        for chapter in master.chapters:
-            parts.extend((chapter.title, *chapter.paragraphs))
-            parts.extend(table.audio_equivalent for table in chapter.tables)
-            parts.extend(visual.audio_equivalent for visual in chapter.visuals)
-        if master.bibliography:
-            parts.append("Библиография доступна в электронной версии книги.")
-        return "\n\n".join(value.strip() for value in parts if value.strip()) + "\n"
-
-    @staticmethod
-    def _pronunciation_dictionary(master: StructuredBookMaster) -> str:
-        text = " ".join(
-            [master.title, master.author]
-            + [paragraph for chapter in master.chapters for paragraph in chapter.paragraphs]
-        )
-        terms = sorted(set(re.findall(r"\b[A-ZА-ЯЁ]{2,}\b", text)))
-        return "# Термин\tПроизношение\tКомментарий\n" + "".join(
-            f"{term}\t\tпроверить перед озвучкой\n" for term in terms
+    def _master_as_pronunciation_content(master: StructuredBookMaster) -> AudioScriptContent:
+        return AudioScriptContent(
+            title=master.title,
+            author=master.author,
+            language=master.language,
+            sections=[
+                AudioScriptSection(
+                    source_chapter_id=chapter.chapter_id,
+                    title=chapter.title,
+                    paragraphs=[
+                        *chapter.paragraphs,
+                        *(table.audio_equivalent for table in chapter.tables),
+                        *(visual.audio_equivalent for visual in chapter.visuals),
+                    ],
+                )
+                for chapter in master.chapters
+            ],
         )
 
     @staticmethod
@@ -421,6 +467,8 @@ class AutoBookExporter:
         run_id: str,
         master: StructuredBookMaster,
         selection: AutoBookOutputSelection,
+        *,
+        audio_script: AudioScriptView | None = None,
     ) -> ExportBundle:
         master_hash = master.manifest_hash
         output_dir = (
@@ -429,8 +477,31 @@ class AutoBookExporter:
         visual_dir = output_dir / "visuals"
         visual_dir.mkdir(parents=True, exist_ok=True)
         artifacts: list[AutoBookArtifactView] = []
-        for kind in selection.selected():
-            output = output_dir / self._FILE_NAMES[kind]
+        audio_service = AudioScriptService(self.data_dir)
+        selected = selection.selected()
+        if selection.audio_version_requested and audio_script is None:
+            raise AudioScriptGateError(
+                "audio outputs cannot be created directly from Literary Master; "
+                "a human-approved AudioScript is required"
+            )
+        if audio_script is not None and not audio_script.ready_for_export:
+            raise AudioScriptGateError("the selected AudioScript is not approved and current")
+        voice_payload: bytes | None = None
+        voice_relative_path: str | None = None
+        for kind in selected:
+            audio_bound = kind in {
+                "AUDIO_READING_DOCX",
+                "AUDIO_LITRES_DOCX",
+                "VOICE_TEXT_TXT",
+                "AUDIO_PRODUCTION_HANDOFF",
+            } or (kind == "PRONUNCIATION_DICTIONARY" and audio_script is not None)
+            kind_dir = (
+                output_dir / f"audio-{audio_script.content_hash[:12]}"
+                if audio_bound and audio_script is not None
+                else output_dir
+            )
+            kind_dir.mkdir(parents=True, exist_ok=True)
+            output = kind_dir / self._FILE_NAMES[kind]
             if kind == "FULL_MANUSCRIPT_DOCX":
                 qa = self._docx(master, output, audio=False, visual_dir=visual_dir)
             elif kind == "LITRES_EBOOK_DOCX":
@@ -438,18 +509,75 @@ class AutoBookExporter:
                 qa["platform_acceptance_claimed"] = False
                 qa["requirements_profile_checked_at"] = "owner-profile.v1"
             elif kind in {"AUDIO_READING_DOCX", "AUDIO_LITRES_DOCX"}:
-                qa = self._docx(master, output, audio=True, visual_dir=visual_dir)
-                qa["table_and_visual_meaning_preserved"] = True
+                assert audio_script is not None
+                qa = self._audio_docx(
+                    audio_script,
+                    output,
+                    litres=kind == "AUDIO_LITRES_DOCX",
+                )
             elif kind == "READING_PDF":
                 qa = self._pdf(master, output, visual_dir)
             elif kind == "EPUB":
                 qa = self._epub(master, output)
             elif kind == "VOICE_TEXT_TXT":
-                output.write_text(self._voice_text(master), encoding="utf-8")
-                qa = {"passed": True, "spoken_text": True, "is_full_text_extraction": False}
+                assert audio_script is not None
+                voice_payload = audio_script.content.clean_recording_text().encode("utf-8")
+                output.write_bytes(voice_payload)
+                voice_relative_path = str(
+                    output.relative_to(self.runtime.projects.projects_dir / book_id)
+                )
+                qa = {
+                    "passed": True,
+                    "encoding": "UTF-8",
+                    "clean_recording_text": True,
+                    "audio_script_id": audio_script.audio_script_id,
+                    "audio_script_hash": audio_script.content_hash,
+                    "source_hash": audio_script.source_hash,
+                    "contains_ssml": False,
+                    "contains_technical_metadata": False,
+                }
             elif kind == "PRONUNCIATION_DICTIONARY":
-                output.write_text(self._pronunciation_dictionary(master), encoding="utf-8")
-                qa = {"passed": True, "technical_dictionary_outside_manuscript": True}
+                content = (
+                    audio_script.content
+                    if audio_script is not None
+                    else self._master_as_pronunciation_content(master)
+                )
+                entries = (
+                    audio_script.pronunciation_entries
+                    if audio_script is not None
+                    else audio_service.discover_pronunciation(content)
+                )
+                output.write_text(audio_service.pronunciation_text(entries), encoding="utf-8")
+                qa = {
+                    "passed": True,
+                    "technical_dictionary_outside_manuscript": True,
+                    "entry_count": len(entries),
+                    "unverified_entries": sum(item.status == "NEEDS_REVIEW" for item in entries),
+                    "empty_recommendations_are_not_verified": all(
+                        item.recommendation or item.status != "VERIFIED" for item in entries
+                    ),
+                }
+            elif kind == "AUDIO_PRODUCTION_HANDOFF":
+                assert audio_script is not None
+                if voice_payload is None or voice_relative_path is None:
+                    raise AudioScriptGateError("handoff requires the mandatory UTF-8 recording TXT")
+                manifest = audio_service.record_handoff(
+                    book_id,
+                    audio_script,
+                    text_relative_path=voice_relative_path,
+                    text_payload=voice_payload,
+                )
+                output.write_bytes(
+                    (
+                        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+                    ).encode("utf-8")
+                )
+                qa = {
+                    "passed": True,
+                    "schema": "book-os-audiobook-handoff.v2",
+                    "audio_script_hash": audio_script.content_hash,
+                    "recording_text_hash": manifest["recording_text"]["content_hash"],
+                }
             elif kind == "READER_EXTRAS":
                 qa = self._docx(
                     master, output, audio=False, include_extras_only=True, visual_dir=visual_dir
@@ -464,7 +592,11 @@ class AutoBookExporter:
                     book_id,
                     run_id,
                     output_kind=kind,
-                    master_hash=master_hash,
+                    master_hash=(
+                        audio_script.content_hash
+                        if audio_bound and audio_script is not None
+                        else master_hash
+                    ),
                     profile_version=self.PROFILE_VERSIONS[kind],
                     exporter_version=self.EXPORTER_VERSION,
                     relative_path=relative_path,

@@ -5,6 +5,10 @@
 **Baseline:** `origin/main` at `19ab44ba30036936f843e9b13f2a0f7c8f7b1204`
 **Date:** 2026-09-13
 
+Audio-output implementation is additionally governed by
+`docs/tasks/TASK_021_AUDIO_EDITORIAL_ADDENDUM.md`. An audio file is not considered ready merely
+because an exporter created it.
+
 ## Why now
 
 The repository contained strong authority, research, memory, editorial, BookBench, Literary Master,
@@ -27,6 +31,7 @@ or material cross-book overlap.
 - research and attachment context, chapter and whole-book checks, mid-book audit;
 - independent exact-snapshot critique and at most two bounded correction passes;
 - structured selected outputs and visual/audio equivalents;
+- a separate source-bound, versioned AudioScript editorial and human-approval workflow;
 - new/external/existing series scenarios, 3–5 concepts, explicit book/file binding and rights;
 - persistent Series Bible, Book Passports, imported sources, similarity findings and Owner decisions;
 - hard series gates before WRITING and finalization;

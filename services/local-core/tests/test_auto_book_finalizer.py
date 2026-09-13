@@ -5,7 +5,13 @@ from zipfile import ZipFile
 from sqlalchemy import text
 
 from book_os_core.auto_book import AutoBookService, AutoBookStartRequest
-from book_os_core.auto_book_finalizer import AUTO_BOOK_FINAL_EDIT_V1, AutoBookFinalizer
+from book_os_core.auto_book_finalizer import (
+    AUDIO_SCRIPT_EDITOR_V1,
+    AUTO_BOOK_FINAL_EDIT_V1,
+    AutoBookFinalizer,
+)
+from book_os_core.audio_script import AudioScriptService
+from book_os_core.auto_book_runtime import AutoBookOutputSelection
 from book_os_core.book_context import (
     BookContextService,
     BookContextUpdateRequest,
@@ -25,6 +31,8 @@ from book_os_core.prompts import PromptTemplate
 
 class PublishingAdapter(DeterministicFakeAdapter):
     def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
+        if prompt.prompt_id == AUDIO_SCRIPT_EDITOR_V1.prompt_id:
+            self.audio_prompt_calls = getattr(self, "audio_prompt_calls", 0) + 1
         if request.task_type != "SECTION_DRAFT":
             return super().generate(request, prompt)
 
@@ -281,3 +289,110 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
     assert "LITRES_DOCX" in export_formats
     assert unit_statuses and set(unit_statuses) == {"APPROVED"}
     assert any(item.get("final_editorial_pass") is True for item in approval_gates)
+
+
+def test_audio_first_uses_approved_listening_master_without_redundant_rewrite_then_waits_for_human(
+    tmp_path: Path,
+) -> None:
+    book_id = ready_book(tmp_path)
+    gateway = ModelGateway({"openai": PublishingAdapter()})
+    auto = AutoBookService(tmp_path, gateway)
+    state = auto.start(
+        book_id,
+        AutoBookStartRequest(
+            idea="Создать книгу сразу для последовательного прослушивания.",
+            delivery_profile="AUDIO_FIRST",
+            outputs=AutoBookOutputSelection(
+                full_manuscript_docx=False,
+                audio_reading_docx=True,
+            ),
+            max_cost_usd_per_request=2,
+            max_total_cost_usd=30,
+            max_requests=30,
+            prepare_litres_docx=False,
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    for _ in range(40):
+        if state.status != "RUNNING":
+            break
+        state = auto.advance(book_id)
+    assert state.status == "DONE"
+
+    finalizer = AutoBookFinalizer(tmp_path, gateway)
+    final = finalizer.finalize(book_id, state, prepare_litres_docx=False)
+    assert final.awaiting_audio_approval is True
+    assert final.audio_script_id is not None
+    assert not {
+        "AUDIO_READING_DOCX",
+        "VOICE_TEXT_TXT",
+        "AUDIO_PRODUCTION_HANDOFF",
+    } & {item["output_kind"] for item in final.output_files}
+
+    proposed = AudioScriptService(tmp_path).get(book_id, final.audio_script_id)
+    assert proposed.adaptation_mode == "AUDIO_NATIVE"
+    assert proposed.provenance["redundant_rewrite_skipped"] is True
+    assert proposed.status == "PROPOSED"
+    attention = sorted(
+        {
+            finding.code
+            for check in proposed.quality_checks
+            for finding in check.findings
+            if finding.severity == "ATTENTION"
+        }
+    )
+    approved = AudioScriptService(tmp_path).approve(
+        book_id,
+        proposed.audio_script_id,
+        human_actor="Owner",
+        accepted_attention_codes=attention,
+    )
+    completed = finalizer.complete_audio_outputs(book_id, state, approved)
+    kinds = {item["output_kind"] for item in completed.output_files}
+    assert {"AUDIO_READING_DOCX", "VOICE_TEXT_TXT", "AUDIO_PRODUCTION_HANDOFF"} <= kinds
+
+
+def test_text_first_audio_output_runs_a_real_separate_audio_editorial_pass(
+    tmp_path: Path,
+) -> None:
+    book_id = ready_book(tmp_path)
+    adapter = PublishingAdapter()
+    gateway = ModelGateway({"openai": adapter})
+    auto = AutoBookService(tmp_path, gateway)
+    state = auto.start(
+        book_id,
+        AutoBookStartRequest(
+            idea="Создать текстовую книгу и отдельную версию для прослушивания.",
+            delivery_profile="TEXT_FIRST",
+            outputs=AutoBookOutputSelection(
+                full_manuscript_docx=True,
+                audio_reading_docx=True,
+            ),
+            max_cost_usd_per_request=2,
+            max_total_cost_usd=40,
+            max_requests=40,
+            prepare_litres_docx=False,
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    for _ in range(40):
+        if state.status != "RUNNING":
+            break
+        state = auto.advance(book_id)
+    assert state.status == "DONE"
+
+    final = AutoBookFinalizer(tmp_path, gateway).finalize(
+        book_id,
+        state,
+        prepare_litres_docx=False,
+    )
+    assert final.awaiting_audio_approval is True
+    assert final.audio_script_id is not None
+    proposed = AudioScriptService(tmp_path).get(book_id, final.audio_script_id)
+    assert proposed.adaptation_mode == "SOURCE_FAITHFUL"
+    assert getattr(adapter, "audio_prompt_calls", 0) == len(proposed.content.sections)
+    assert all(
+        section.paragraphs[0].startswith("Черновой материал")
+        for section in proposed.content.sections
+    )
+    assert len(proposed.provenance["model_runs"]) == len(proposed.content.sections)

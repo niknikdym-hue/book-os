@@ -43,6 +43,7 @@ class AutoBookStage(StrEnum):
     VISUALS = "VISUALS"
     INDEPENDENT_CRITIQUE = "INDEPENDENT_CRITIQUE"
     CORRECTION = "CORRECTION"
+    AUDIO_EDITORIAL = "AUDIO_EDITORIAL"
     MASTER_AND_EXPORTS = "MASTER_AND_EXPORTS"
 
 
@@ -69,6 +70,7 @@ AutoBookOutputKind = Literal[
     "AUDIO_LITRES_DOCX",
     "VOICE_TEXT_TXT",
     "PRONUNCIATION_DICTIONARY",
+    "AUDIO_PRODUCTION_HANDOFF",
     "READER_EXTRAS",
     "PUBLISHER_PACK",
 ]
@@ -101,6 +103,10 @@ class AutoBookOutputSelection(BaseModel):
     reader_extras: bool = False
     publisher_pack: bool = False
 
+    @property
+    def audio_version_requested(self) -> bool:
+        return self.audio_reading_docx or self.audio_litres_docx or self.voice_text_txt
+
     def selected(self) -> list[AutoBookOutputKind]:
         mapping: tuple[tuple[str, AutoBookOutputKind], ...] = (
             ("full_manuscript_docx", "FULL_MANUSCRIPT_DOCX"),
@@ -114,7 +120,12 @@ class AutoBookOutputSelection(BaseModel):
             ("reader_extras", "READER_EXTRAS"),
             ("publisher_pack", "PUBLISHER_PACK"),
         )
-        return [output for field, output in mapping if bool(getattr(self, field))]
+        selected = [output for field, output in mapping if bool(getattr(self, field))]
+        if self.audio_version_requested:
+            if "VOICE_TEXT_TXT" not in selected:
+                selected.append("VOICE_TEXT_TXT")
+            selected.append("AUDIO_PRODUCTION_HANDOFF")
+        return selected
 
 
 class AutoBookVisualPolicy(BaseModel):
@@ -130,6 +141,7 @@ class AutoBookIntent(BaseModel):
     series_name: str | None = Field(default=None, max_length=500)
     target_characters: int = Field(default=180_000, ge=4_000, le=2_000_000)
     model_choice: str = "AUTO"
+    delivery_profile: Literal["TEXT_FIRST", "AUDIO_FIRST", "DUAL_TEXT_AUDIO"] = "TEXT_FIRST"
     outputs: AutoBookOutputSelection = Field(default_factory=AutoBookOutputSelection)
     visuals: AutoBookVisualPolicy = Field(default_factory=AutoBookVisualPolicy)
     attachments: list[AutoBookAttachment] = Field(default_factory=list, max_length=40)

@@ -21,7 +21,7 @@ def test_fresh_database_runs_current_migrations_with_foreign_keys_and_wal(tmp_pa
         assert connection.execute(text("PRAGMA journal_mode")).scalar_one() == "wal"
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0022"
+            == "0023"
         )
         assert set(connection.execute(text("SELECT version FROM schema_metadata")).scalars()) == {
             "0001",
@@ -46,4 +46,14 @@ def test_fresh_database_runs_current_migrations_with_foreign_keys_and_wal(tmp_pa
             "0020",
             "0021",
             "0022",
+            "0023",
         }
+        tables = set(
+            connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).scalars()
+        )
+        assert {
+            "audio_scripts",
+            "audio_script_quality_checks",
+            "audio_pronunciation_entries",
+            "audio_production_handoffs",
+        } <= tables

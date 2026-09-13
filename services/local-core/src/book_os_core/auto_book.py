@@ -63,7 +63,7 @@ from .series_production import (
 from .series_workspace import SeriesWorkspaceService
 
 AutoBookChoice = Literal["AUTO", "ASTRA_MEDIUM", "ASTRA_HIGH", "ASTRA_XHIGH", "SOL"]
-AutoBookStatus = Literal["RUNNING", "DONE", "FAILED", "STOPPED"]
+AutoBookStatus = Literal["RUNNING", "DONE", "FAILED", "STOPPED", "AWAITING_AUDIO_APPROVAL"]
 AutoBookPhase = Literal[
     "BOOK_CONTRACT",
     "APPROVE_BOOK_CONTRACT",
@@ -98,6 +98,7 @@ class AutoBookStartRequest(BaseModel):
     target_characters: int = Field(default=180_000, ge=4_000, le=2_000_000)
     series_name: str | None = Field(default=None, max_length=500)
     model_choice: AutoBookChoice = "AUTO"
+    delivery_profile: Literal["TEXT_FIRST", "AUDIO_FIRST", "DUAL_TEXT_AUDIO"] = "TEXT_FIRST"
     max_cost_usd_per_request: float = Field(default=1.0, gt=0, le=20)
     max_total_cost_usd: float = Field(default=25.0, gt=0, le=500)
     max_requests: int = Field(default=40, ge=1, le=200)
@@ -116,6 +117,7 @@ class AutoBookRunView(BaseModel):
     idea: str
     reader_hint: str
     model_choice: AutoBookChoice
+    delivery_profile: Literal["TEXT_FIRST", "AUDIO_FIRST", "DUAL_TEXT_AUDIO"] = "TEXT_FIRST"
     max_cost_usd_per_request: float
     max_total_cost_usd: float
     max_requests: int
@@ -137,6 +139,7 @@ class AutoBookRunView(BaseModel):
     current_chapter_ordinal: int | None = None
     last_action: str = ""
     output_path: str | None = None
+    audio_script_id: str | None = None
     error: str | None = None
     started_at: str
     updated_at: str
@@ -525,6 +528,7 @@ class AutoBookService:
                 series_name=request.series_name,
                 target_characters=request.target_characters,
                 model_choice=request.model_choice,
+                delivery_profile=request.delivery_profile,
                 outputs=output_selection,
                 visuals=request.visuals,
                 attachments=persisted_attachments,
@@ -542,6 +546,7 @@ class AutoBookService:
             idea=request.idea.strip(),
             reader_hint=request.reader_hint.strip(),
             model_choice=request.model_choice,
+            delivery_profile=request.delivery_profile,
             max_cost_usd_per_request=request.max_cost_usd_per_request,
             max_total_cost_usd=request.max_total_cost_usd,
             max_requests=request.max_requests,
@@ -640,12 +645,26 @@ class AutoBookService:
         resolved_effort = effort if effort is not None else choice.reasoning_effort
         return choice, resolved_effort if choice.model == "gpt-6-astra" else None
 
+    @staticmethod
+    def _delivery_instruction(state: AutoBookRunView) -> str:
+        if state.delivery_profile == "AUDIO_FIRST":
+            return (
+                " This is AUDIO_FIRST: design for one-pass listening, audible orientation, natural "
+                "spoken transitions, manageable lists and pronounceable numbers without relying on a page."
+            )
+        if state.delivery_profile == "DUAL_TEXT_AUDIO":
+            return (
+                " This is DUAL_TEXT_AUDIO: preserve professional reading quality while keeping the "
+                "core argument self-sufficient for listening and giving every visual an audio strategy."
+            )
+        return " This is TEXT_FIRST; do not silently apply audio-only rewrites during authoring."
+
     def _book_contract(self, state: AutoBookRunView, cap: float) -> PlanningProposalView:
         choice, effort = self._planning_choice(state, "BOOK_CONTRACT_PROPOSAL")
         result = self.planning.propose_book_contract(
             state.book_id,
             BookContractPlanningRequest(
-                idea=state.idea,
+                idea=state.idea + self._delivery_instruction(state),
                 reader_hint=state.reader_hint,
                 provider=choice.provider,
                 model=choice.model,
@@ -665,7 +684,7 @@ class AutoBookService:
             ArchitecturePlanningRequest(
                 planning_note=(
                     "Auto Book: build the strongest complete architecture "
-                    "for the approved book contract."
+                    "for the approved book contract." + self._delivery_instruction(state)
                 ),
                 provider=choice.provider,
                 model=choice.model,
@@ -688,6 +707,7 @@ class AutoBookService:
             ChapterContractPlanningRequest(
                 planning_note=(
                     "Auto Book: make this chapter distinct, necessary, and non-repetitive."
+                    + self._delivery_instruction(state)
                 ),
                 provider=choice.provider,
                 model=choice.model,
@@ -734,7 +754,7 @@ class AutoBookService:
                     "book context. "
                     f"Aim for about {per_chapter} characters with spaces. Avoid repetition, "
                     "filler, meta-commentary, author instructions, and placeholders. "
-                    "Return only coherent book prose."
+                    "Return only coherent book prose." + self._delivery_instruction(state)
                 ),
                 provider="openai",
                 model=model,

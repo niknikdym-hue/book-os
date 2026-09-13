@@ -18,6 +18,7 @@ from .auto_book import (
 )
 from .auto_book_finalizer import AutoBookFinalizer
 from .auto_book_runtime import AutoBookRuntimeError
+from .audio_script import AudioScriptError, AudioScriptGateError, AudioScriptService
 from .book_context import BookContextService
 from .model_gateway import ModelGateway
 from .research_adapters import ResearchGateway
@@ -28,6 +29,11 @@ class AutoBookChangeRequest(BaseModel):
     request_text: str = Field(min_length=1, max_length=12000)
 
 
+class AudioScriptApprovalRequest(BaseModel):
+    human_actor: str = Field(min_length=1, max_length=300)
+    accepted_attention_codes: list[str] = Field(default_factory=list, max_length=100)
+
+
 def build_auto_book_router(
     data_dir: Path,
     require_token: Callable[..., None],
@@ -36,6 +42,7 @@ def build_auto_book_router(
 ) -> APIRouter:
     service = AutoBookService(data_dir, gateway, research_gateway)
     finalizer = AutoBookFinalizer(data_dir, gateway)
+    audio_scripts = AudioScriptService(data_dir)
     contexts = BookContextService(data_dir)
     series_workspaces = SeriesWorkspaceService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
@@ -203,12 +210,20 @@ def build_auto_book_router(
         state.phase = "DONE"
         state.output_path = result.output_path
         state.output_files = result.output_files
+        state.audio_script_id = result.audio_script_id
         state.error = None
-        state.last_action = (
-            "Literary Master locked; LitRes-ready DOCX created"
-            if result.output_path
-            else "Literary Master locked; final review completed"
-        )
+        if result.awaiting_audio_approval:
+            state.status = "AWAITING_AUDIO_APPROVAL"
+            state.phase = "EXPORT"
+            state.last_action = (
+                "AudioScript подготовлен отдельно от рукописи и ждёт утверждения человеком"
+            )
+        else:
+            state.last_action = (
+                "Literary Master locked; LitRes-ready DOCX created"
+                if result.output_path
+                else "Literary Master locked; final review completed"
+            )
         return service._write(state)
 
     @router.get("/api/projects/{book_id}/auto-book")
@@ -304,5 +319,42 @@ def build_auto_book_router(
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
+
+    @router.get("/api/projects/{book_id}/auto-book/audio-script")
+    def get_auto_book_audio_script(book_id: str) -> dict[str, object] | None:
+        current = service.get(book_id)
+        if current is None or current.audio_script_id is None:
+            return None
+        try:
+            return audio_scripts.get(book_id, current.audio_script_id).model_dump(mode="json")
+        except AudioScriptError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/api/projects/{book_id}/auto-book/audio-script/approve")
+    def approve_auto_book_audio_script(
+        book_id: str,
+        payload: AudioScriptApprovalRequest,
+    ) -> dict[str, object]:
+        current = service.get(book_id)
+        if current is None or current.audio_script_id is None:
+            raise HTTPException(status_code=404, detail="AudioScript has not been prepared")
+        if current.status != "AWAITING_AUDIO_APPROVAL":
+            raise HTTPException(status_code=409, detail="Auto Book is not awaiting audio approval")
+        try:
+            approved = audio_scripts.approve(
+                book_id,
+                current.audio_script_id,
+                human_actor=payload.human_actor,
+                accepted_attention_codes=payload.accepted_attention_codes,
+            )
+            result = finalizer.complete_audio_outputs(book_id, current, approved)
+        except (AudioScriptGateError, AutoBookError, AutoBookRuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        current.status = "DONE"
+        current.phase = "DONE"
+        current.output_files = result.output_files
+        current.error = None
+        current.last_action = "AudioScript утверждён человеком; аудиофайлы и handoff готовы"
+        return service._write(current).model_dump(mode="json")
 
     return router

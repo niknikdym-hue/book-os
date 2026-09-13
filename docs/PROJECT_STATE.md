@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT STATE
 
 **Status:** AUTO BOOK COMPLETE CYCLE — IMPLEMENTED AWAITING REVIEW
-**Version:** 3.0.0-candidate
+**Version:** 3.1.0-candidate
 **Date:** 2026-09-13
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -33,14 +33,19 @@ product layer:
   alt/audio equivalents, bibliography and independent format QA;
 - selected DOCX/LitRes/PDF/EPUB/audio/TXT/pronunciation/extras/publisher outputs are generated
   independently and become stale when their exact master changes;
+- audio outputs now require a separately versioned exact-source AudioScript, source/semantic and
+  listenability checks, explicit HUMAN approval, one clean UTF-8 recording TXT and an immutable
+  Audiobook Studio handoff; AUDIO_FIRST/DUAL constraints propagate upstream and existing-text audio
+  adaptation remains a separate workflow;
 - Series Studio supports new series, external import and continuation of a saved BOOK OS series,
   with Series Bible, Book Passports, immutable sources, explicit rights, difference maps and
   fail-closed writing/finalization gates;
 - the Owner-authorized «Секреты продвижения услуг» preset preserves four fixed titles/order and
   four planned directions without starting manuscript generation.
 
-Candidate schema head: Alembic `0022`. Migration `0021` contains durable Auto Book runtime;
-migration `0022` contains the series workspace/read model and decisions.
+Candidate schema head: Alembic `0023`. Migration `0021` contains durable Auto Book runtime;
+migration `0022` contains the series workspace/read model and decisions; migration `0023` contains
+AudioScript authority, source/script-bound QA, pronunciation and production-handoff records.
 
 ## Acceptance boundary
 

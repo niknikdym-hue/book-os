@@ -10,6 +10,7 @@ from book_os_core.auto_book_exports import (
     MasterVisual,
     StructuredBookMaster,
 )
+from book_os_core.audio_script import AudioScriptService
 from book_os_core.auto_book_runtime import (
     AutoBookIntent,
     AutoBookOutputSelection,
@@ -73,7 +74,7 @@ def fixture_master(*, suffix: str = "") -> StructuredBookMaster:
                         alt_text="Три столбца растут от одного до трёх.",
                         audio_equivalent=(
                             "График на условных данных показывает последовательный рост "
-                            "показателя от одного до трёх."
+                            "показателя от 1 до 3; для записи числа нужно произнести словами."
                         ),
                         data=[("А", 1), ("Б", 2), ("В", 3)],
                         source_note="Условные fixture-данные, не фактическое утверждение",
@@ -100,14 +101,51 @@ def test_selected_outputs_keep_sixteen_native_tables_and_audio_meaning(tmp_path:
         publisher_pack=True,
     )
     book_id, run_id = setup_run(tmp_path, selection)
+    master = fixture_master()
+    audio_service = AudioScriptService(tmp_path)
+    content, transformations = audio_service.content_from_master(
+        master,
+        adaptation_mode="SOURCE_FAITHFUL",
+        adapted_chapters={
+            "chapter-1": (
+                "Сначала разберём механизм решения так, чтобы его можно было понять с первого "
+                "прослушивания.\n\nЗатем свяжем проверку с практическим следующим шагом."
+            )
+        },
+    )
+    proposed = audio_service.create_proposal(
+        book_id,
+        source_kind="LITERARY_MASTER",
+        source_identity="master-fixture-v1",
+        source_hash=master.manifest_hash,
+        adaptation_mode="SOURCE_FAITHFUL",
+        content=content,
+        transformations=transformations,
+        provenance={"operation": "fixture audio edit", "provider_calls": 0},
+    )
+    attention = sorted(
+        {
+            finding.code
+            for check in proposed.quality_checks
+            for finding in check.findings
+            if finding.severity == "ATTENTION"
+        }
+    )
+    approved = audio_service.approve(
+        book_id,
+        proposed.audio_script_id,
+        human_actor="Owner fixture",
+        accepted_attention_codes=attention,
+    )
     bundle = AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path)).export_selected(
         book_id,
         run_id,
-        fixture_master(),
+        master,
         selection,
+        audio_script=approved,
     )
 
-    assert len(bundle.artifacts) == 10
+    assert len(bundle.artifacts) == 11
     by_kind = {artifact.output_kind: artifact for artifact in bundle.artifacts}
     project_dir = tmp_path / "projects" / book_id
 
@@ -125,6 +163,15 @@ def test_selected_outputs_keep_sixteen_native_tables_and_audio_meaning(tmp_path:
     assert "Таблица 1 показывает" in voice
     assert "График на условных данных" in voice
     assert "|" not in voice
+    assert "Библиография доступна" not in voice
+    assert by_kind["VOICE_TEXT_TXT"].qa["audio_script_hash"] == approved.content_hash
+    assert by_kind["AUDIO_READING_DOCX"].qa["audio_script_hash"] == approved.content_hash
+
+    handoff = (project_dir / by_kind["AUDIO_PRODUCTION_HANDOFF"].relative_path).read_text(
+        encoding="utf-8"
+    )
+    assert approved.audio_script_id in handoff
+    assert approved.source_hash in handoff
 
     pdf_payload = (project_dir / by_kind["READING_PDF"].relative_path).read_bytes()
     assert pdf_payload.startswith(b"%PDF-")
@@ -160,3 +207,71 @@ def test_late_output_selection_exports_only_missing_derivative_and_marks_old_sta
         if item.output_kind == "FULL_MANUSCRIPT_DOCX"
     ]
     assert [item.status for item in manuscripts] == ["STALE", "READY"]
+
+
+def test_new_audio_script_version_preserves_old_files_and_marks_old_artifacts_stale(
+    tmp_path: Path,
+) -> None:
+    selection = AutoBookOutputSelection(
+        full_manuscript_docx=False,
+        audio_reading_docx=True,
+    )
+    book_id, run_id = setup_run(tmp_path, selection)
+    master = fixture_master()
+    service = AudioScriptService(tmp_path)
+    exporter = AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path))
+    paths: list[str] = []
+    for suffix in ("Первая аудиоредакция.", "Вторая исправленная аудиоредакция."):
+        content, mapping = service.content_from_master(
+            master,
+            adaptation_mode="SOURCE_FAITHFUL",
+            adapted_chapters={"chapter-1": suffix},
+        )
+        proposed = service.create_proposal(
+            book_id,
+            source_kind="LITERARY_MASTER",
+            source_identity="master-fixture-v1",
+            source_hash=master.manifest_hash,
+            adaptation_mode="SOURCE_FAITHFUL",
+            content=content,
+            transformations=mapping,
+            provenance={"provider_calls": 0},
+        )
+        attention = sorted(
+            {
+                finding.code
+                for check in proposed.quality_checks
+                for finding in check.findings
+                if finding.severity == "ATTENTION"
+            }
+        )
+        approved = service.approve(
+            book_id,
+            proposed.audio_script_id,
+            human_actor="Owner",
+            accepted_attention_codes=attention,
+        )
+        bundle = exporter.export_selected(
+            book_id,
+            run_id,
+            master,
+            selection,
+            audio_script=approved,
+        )
+        paths.append(
+            next(
+                item.relative_path
+                for item in bundle.artifacts
+                if item.output_kind == "AUDIO_READING_DOCX"
+            )
+        )
+
+    assert paths[0] != paths[1]
+    project = tmp_path / "projects" / book_id
+    assert all((project / item).is_file() for item in paths)
+    audio_artifacts = [
+        item
+        for item in DurableAutoBookRuntime(tmp_path).list_artifacts(book_id, run_id)
+        if item.output_kind == "AUDIO_READING_DOCX"
+    ]
+    assert [item.status for item in audio_artifacts] == ["STALE", "READY"]
