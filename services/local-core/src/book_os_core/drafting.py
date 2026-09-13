@@ -142,9 +142,11 @@ class DraftingService:
                 else None
             ),
             "target_characters": context.target_characters,
+            "target_length_policy": "GUIDANCE_NOT_PADDING",
             "min_characters": context.min_characters,
             "max_characters": context.max_characters,
             "include_bibliography": context.include_bibliography,
+            "internal_research_and_evidence": "ALWAYS_PRESERVED",
             "plan_illustrations": context.plan_illustrations,
             "visual_asset_format": context.visual_asset_format,
             "visual_materials_policy": context.visual_materials_policy,

@@ -35,10 +35,11 @@ from .context_planning import ContextAwarePlanningService
 from .drafting import DraftSectionRequest, DraftingService
 from .editorial import EditorialService
 from .editorial_diagnostics import EditorialDiagnostics
-from .model_gateway import ModelGateway, ReasoningEffort
+from .model_gateway import BookConceptProposalOutput, ModelGateway, ReasoningEffort
 from .model_routing import ModelRoutingService, RoutingChoice
 from .planning import (
     ArchitecturePlanningRequest,
+    BookConceptPlanningRequest,
     BookContractPlanningRequest,
     ChapterContractPlanningRequest,
     PlanningProposalView,
@@ -63,8 +64,17 @@ from .series_production import (
 from .series_workspace import SeriesWorkspaceService
 
 AutoBookChoice = Literal["AUTO", "ASTRA_MEDIUM", "ASTRA_HIGH", "ASTRA_XHIGH", "SOL"]
-AutoBookStatus = Literal["RUNNING", "DONE", "FAILED", "STOPPED", "AWAITING_AUDIO_APPROVAL"]
+AutoBookStatus = Literal[
+    "RUNNING",
+    "DONE",
+    "FAILED",
+    "STOPPED",
+    "AWAITING_CONCEPT_APPROVAL",
+    "AWAITING_AUDIO_APPROVAL",
+]
 AutoBookPhase = Literal[
+    "CONCEPT_DEVELOPMENT",
+    "CONCEPT_REVIEW",
     "BOOK_CONTRACT",
     "APPROVE_BOOK_CONTRACT",
     "RESEARCH",
@@ -103,6 +113,7 @@ class AutoBookStartRequest(BaseModel):
     max_total_cost_usd: float = Field(default=25.0, gt=0, le=500)
     max_requests: int = Field(default=40, ge=1, le=200)
     prepare_litres_docx: bool = True
+    omit_public_bibliography: bool | None = None
     outputs: AutoBookOutputSelection | None = None
     visuals: AutoBookVisualPolicy = Field(default_factory=AutoBookVisualPolicy)
     attachments: list[AutoBookAttachment] = Field(default_factory=list, max_length=40)
@@ -122,6 +133,9 @@ class AutoBookRunView(BaseModel):
     max_total_cost_usd: float
     max_requests: int
     prepare_litres_docx: bool
+    concept: BookConceptProposalOutput | None = None
+    concept_revision: int = 0
+    concept_feedback: str = ""
     requests_used: int = 0
     authorized_cost_usd: float = 0.0
     estimated_cost_usd: float = 0.0
@@ -343,6 +357,8 @@ class AutoBookService:
         )
         temporary.replace(path)
         phase_stage = {
+            "CONCEPT_DEVELOPMENT": AutoBookStage.DEFINITION,
+            "CONCEPT_REVIEW": AutoBookStage.DEFINITION,
             "BOOK_CONTRACT": AutoBookStage.DEFINITION,
             "APPROVE_BOOK_CONTRACT": AutoBookStage.DEFINITION,
             "RESEARCH": AutoBookStage.RESEARCH,
@@ -496,9 +512,17 @@ class AutoBookService:
 
     def start(self, book_id: str, request: AutoBookStartRequest) -> AutoBookRunView:
         current = self.get(book_id)
-        if current is not None and current.status == "RUNNING":
+        if current is not None and current.status in {
+            "RUNNING",
+            "AWAITING_CONCEPT_APPROVAL",
+            "AWAITING_AUDIO_APPROVAL",
+        }:
             raise AutoBookGateError("Auto Book is already running for this book")
         self._ensure_context(book_id, request)
+        if request.omit_public_bibliography is not None:
+            self.contexts.set_public_bibliography(
+                book_id, include=not request.omit_public_bibliography
+            )
         if request.model_choice == "AUTO":
             # Main author Auto mode must not be silently hijacked by a legacy hidden book pin.
             self.routing.clear_book_pin(book_id)
@@ -542,7 +566,7 @@ class AutoBookService:
             run_id=run_id,
             book_id=book_id,
             status="RUNNING",
-            phase="BOOK_CONTRACT",
+            phase="CONCEPT_DEVELOPMENT",
             idea=request.idea.strip(),
             reader_hint=request.reader_hint.strip(),
             model_choice=request.model_choice,
@@ -664,7 +688,16 @@ class AutoBookService:
         result = self.planning.propose_book_contract(
             state.book_id,
             BookContractPlanningRequest(
-                idea=state.idea + self._delivery_instruction(state),
+                idea=(
+                    state.idea
+                    + "\n\nAUTHOR-APPROVED CONCEPT:\n"
+                    + json.dumps(
+                        state.concept.model_dump(mode="json") if state.concept else {},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    + self._delivery_instruction(state)
+                ),
                 reader_hint=state.reader_hint,
                 provider=choice.provider,
                 model=choice.model,
@@ -676,6 +709,56 @@ class AutoBookService:
         )
         self.routing.record_run(state.book_id, result.run_id, choice)
         return result
+
+    def _concept(self, state: AutoBookRunView, cap: float) -> None:
+        choice, effort = self._planning_choice(state, "BOOK_CONCEPT_PROPOSAL")
+        result = self.planning.propose_book_concept(
+            state.book_id,
+            BookConceptPlanningRequest(
+                idea=state.idea,
+                reader_hint=state.reader_hint,
+                feedback=state.concept_feedback,
+                provider=choice.provider,
+                model=choice.model,
+                reasoning_effort=effort,
+                max_output_tokens=2800,
+                max_cost_usd=cap,
+                untrusted_context=self._attachment_excerpts(state),
+            ),
+        )
+        self.routing.record_run(state.book_id, result.run_id, choice)
+        state.concept = result.concept
+        state.concept_revision += 1
+        state.concept_feedback = ""
+
+    def accept_concept(
+        self,
+        book_id: str,
+        concept: BookConceptProposalOutput | None = None,
+    ) -> AutoBookRunView:
+        state = self._require_state(book_id)
+        if state.status != "AWAITING_CONCEPT_APPROVAL" or state.phase != "CONCEPT_REVIEW":
+            raise AutoBookGateError("Auto Book is not awaiting concept approval")
+        if concept is not None:
+            state.concept = concept
+        if state.concept is None:
+            raise AutoBookGateError("concept proposal is missing")
+        state.status = "RUNNING"
+        state.phase = "BOOK_CONTRACT"
+        state.error = None
+        state.last_action = "Concept accepted by author; preparing Book Definition"
+        return self._write(state)
+
+    def request_another_concept(self, book_id: str, feedback: str = "") -> AutoBookRunView:
+        state = self._require_state(book_id)
+        if state.status != "AWAITING_CONCEPT_APPROVAL" or state.phase != "CONCEPT_REVIEW":
+            raise AutoBookGateError("Auto Book is not awaiting concept review")
+        state.status = "RUNNING"
+        state.phase = "CONCEPT_DEVELOPMENT"
+        state.concept_feedback = feedback.strip()
+        state.error = None
+        state.last_action = "Author requested another concept variant"
+        return self._write(state)
 
     def _architecture(self, state: AutoBookRunView, cap: float) -> PlanningProposalView:
         choice, effort = self._planning_choice(state, "ARCHITECTURE_PROPOSAL")
@@ -1007,7 +1090,18 @@ class AutoBookService:
             return state
         delegated = _DelegatedProjectService(self.data_dir, state.run_id)
         try:
-            if state.phase == "BOOK_CONTRACT":
+            if state.phase == "CONCEPT_DEVELOPMENT":
+                cap = self._remaining_call_cap(state)
+                self._concept(state, cap)
+                self._consume_call(state, cap)
+                state.phase = "CONCEPT_REVIEW"
+                state.status = "AWAITING_CONCEPT_APPROVAL"
+                state.last_action = "Concept proposal is ready for author confirmation"
+
+            elif state.phase == "CONCEPT_REVIEW":
+                raise AutoBookGateError("Author confirmation is required before Book Definition")
+
+            elif state.phase == "BOOK_CONTRACT":
                 cap = self._remaining_call_cap(state)
                 result = self._book_contract(state, cap)
                 self._consume_call(state, cap)

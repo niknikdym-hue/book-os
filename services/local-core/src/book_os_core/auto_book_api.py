@@ -26,13 +26,21 @@ from .audio_script import (
     AudioScriptService,
 )
 from .book_context import BookContextService
-from .model_gateway import ModelGateway
+from .model_gateway import BookConceptProposalOutput, ModelGateway
 from .research_adapters import ResearchGateway
 from .series_workspace import SeriesWorkspaceGateError, SeriesWorkspaceService
 
 
 class AutoBookChangeRequest(BaseModel):
     request_text: str = Field(min_length=1, max_length=12000)
+
+
+class AutoBookConceptApprovalRequest(BaseModel):
+    concept: BookConceptProposalOutput | None = None
+
+
+class AutoBookConceptAlternativeRequest(BaseModel):
+    feedback: str = Field(default="", max_length=4000)
 
 
 class AudioScriptApprovalRequest(BaseModel):
@@ -279,6 +287,28 @@ def build_auto_book_router(
             return finalize_if_needed(book_id, state).model_dump(mode="json")
         except httpx.TransportError as exc:
             pause_after_provider_disconnect(book_id, exc)
+        except AutoBookError as exc:
+            raise_http(exc)
+        raise AssertionError("unreachable")
+
+    @router.post("/api/projects/{book_id}/auto-book/concept/approve")
+    def approve_auto_book_concept(
+        book_id: str, payload: AutoBookConceptApprovalRequest
+    ) -> dict[str, object]:
+        try:
+            return service.accept_concept(book_id, payload.concept).model_dump(mode="json")
+        except AutoBookError as exc:
+            raise_http(exc)
+        raise AssertionError("unreachable")
+
+    @router.post("/api/projects/{book_id}/auto-book/concept/alternative")
+    def request_auto_book_concept_alternative(
+        book_id: str, payload: AutoBookConceptAlternativeRequest
+    ) -> dict[str, object]:
+        try:
+            return service.request_another_concept(book_id, payload.feedback).model_dump(
+                mode="json"
+            )
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")

@@ -23,12 +23,28 @@ type ContextProfile = {
 type BookContextView = {
   author_profile: ContextProfile | null;
   target_characters: number | null;
+  include_bibliography?: boolean;
   ready_for_planning: boolean;
+};
+
+type BookConcept = {
+  essence: string;
+  reader_job: string;
+  reader_problem: string;
+  reader_transformation: string;
+  central_idea: string;
+  central_promise: string;
+  differentiation: string;
+  why_now: string;
+  scope_in: string[];
+  scope_out: string[];
+  series_place: string;
+  overlap_risks: string[];
 };
 
 type AutoBookState = {
   run_id: string;
-  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_AUDIO_APPROVAL";
+  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_CONCEPT_APPROVAL" | "AWAITING_AUDIO_APPROVAL";
   phase: string;
   requests_used: number;
   max_requests: number;
@@ -55,6 +71,8 @@ type AutoBookState = {
   progress_total?: number;
   started_at?: string | null;
   updated_at?: string | null;
+  concept?: BookConcept | null;
+  concept_revision?: number;
 };
 
 type AudioScriptState = {
@@ -429,8 +447,11 @@ export function LaunchPlanningPanel({
   const [visualsAsNeeded, setVisualsAsNeeded] = useState(true);
   const [allowGenerativeVisuals, setAllowGenerativeVisuals] = useState(false);
   const [includeOptionalVisuals, setIncludeOptionalVisuals] = useState(true);
+  const [omitPublicBibliography, setOmitPublicBibliography] = useState(false);
   const [authorizeAuto, setAuthorizeAuto] = useState(false);
   const [autoState, setAutoState] = useState<AutoBookState | null>(null);
+  const [conceptDraft, setConceptDraft] = useState<BookConcept | null>(null);
+  const [editingConcept, setEditingConcept] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [changeRequest, setChangeRequest] = useState("");
@@ -468,6 +489,7 @@ export function LaunchPlanningPanel({
       `/api/projects/${project.book_id}/auto-book`,
     );
     setAutoState(state);
+    if (state?.concept) setConceptDraft(state.concept);
     if (state?.audio_script_id) {
       setAudioScript(
         await api<AudioScriptState>(
@@ -492,6 +514,7 @@ export function LaunchPlanningPanel({
         ? String(context.target_characters)
         : current,
     );
+    setOmitPublicBibliography(context.include_bibliography === false);
   }, [api, project.book_id]);
 
   useEffect(() => {
@@ -586,6 +609,7 @@ export function LaunchPlanningPanel({
           max_requests: maxRequests,
           series_name: seriesName.trim() || null,
           prepare_litres_docx: outputs.litres_ebook_docx,
+          omit_public_bibliography: omitPublicBibliography,
           outputs,
           visuals: {
             as_needed: visualsAsNeeded,
@@ -602,6 +626,43 @@ export function LaunchPlanningPanel({
     } catch (reason) {
       setError(String(reason));
       await reloadAutoState().catch(() => undefined);
+      setAutoBusy(false);
+    }
+  }
+
+  async function acceptConcept() {
+    if (!conceptDraft) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const accepted = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/concept/approve`,
+        { concept: conceptDraft },
+      );
+      setAutoState(accepted);
+      setEditingConcept(false);
+      await driveAutoBook(accepted);
+    } catch (reason) {
+      setError(String(reason));
+      setAutoBusy(false);
+    }
+  }
+
+  async function requestAnotherConcept() {
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const next = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/concept/alternative`,
+        { feedback: editingConcept ? "Предложить иной профессиональный угол с учётом правок автора" : "" },
+      );
+      setAutoState(next);
+      setEditingConcept(false);
+      await driveAutoBook(next);
+    } catch (reason) {
+      setError(String(reason));
       setAutoBusy(false);
     }
   }
@@ -820,7 +881,7 @@ export function LaunchPlanningPanel({
       </section>
       )}
 
-      {workflowMode === "NEW_BOOK" && autoState?.status !== "RUNNING" && !autoBusy && autoState?.status !== "DONE" && autoState?.status !== "AWAITING_AUDIO_APPROVAL" && (
+      {workflowMode === "NEW_BOOK" && autoState?.status !== "RUNNING" && !autoBusy && autoState?.status !== "DONE" && autoState?.status !== "AWAITING_CONCEPT_APPROVAL" && autoState?.status !== "AWAITING_AUDIO_APPROVAL" && (
         <>
           <details className="advanced-settings ai-project-settings">
             <summary>
@@ -863,9 +924,12 @@ export function LaunchPlanningPanel({
                     rows={5}
                     value={idea}
                     onChange={(event) => setIdea(event.target.value)}
-                    placeholder="О чём книга и какой результат она должна дать читателю"
+                    placeholder="Например: хочу написать книгу о том, как продавать онлайн-курсы. Не про создание курсов, а про систему продаж и прибыльность."
                   />
-                  {!ideaReady && <small className="field-error">Нужно минимум 3 символа.</small>}
+                  <small>
+                    Опишите замысел свободно. Обычно достаточно 1–3 предложений. BOOK OS сам
+                    поможет превратить идею в полноценную концепцию книги.
+                  </small>
                 </label>
                 <label className="field">
                   <span>Кому книга — необязательно</span>
@@ -908,7 +972,8 @@ export function LaunchPlanningPanel({
                   aria-invalid={!targetReady}
                 />
                 <small className={targetReady ? "" : "field-error"}>
-                  Минимум 4 000, максимум 2 000 000 знаков.
+                  Это ориентир, а не требование раздувать текст. Качество и полнота важнее точного
+                  числа. Допустимый диапазон: 4 000–2 000 000 знаков.
                 </small>
               </label>
               <label className="field">
@@ -1082,6 +1147,21 @@ export function LaunchPlanningPanel({
                   </label>
                 </>
               )}
+              <div className="bibliography-default">
+                <strong>Библиография включена автоматически</strong>
+                <p className="muted">
+                  Для нонфикшена BOOK OS формирует список реально использованных и проверенных
+                  источников. Внутренние Research, Evidence и provenance сохраняются всегда.
+                </p>
+                <label className="paid-approval compact-option">
+                  <input
+                    type="checkbox"
+                    checked={omitPublicBibliography}
+                    onChange={(event) => setOmitPublicBibliography(event.target.checked)}
+                  />
+                  <span>Убрать библиографию из книги</span>
+                </label>
+              </div>
             </div>
           </section>
           </details>
@@ -1171,6 +1251,67 @@ export function LaunchPlanningPanel({
             {autoCanStart ? "Запустить создание книги" : "Запуск станет доступен после заполнения обязательных полей"}
           </button>
         </>
+      )}
+
+      {workflowMode === "NEW_BOOK" && autoState?.status === "AWAITING_CONCEPT_APPROVAL" && conceptDraft && (
+        <section className="planning-step concept-review-card" aria-label="BOOK OS предлагает концепцию">
+          <p className="eyebrow">НУЖНО РЕШЕНИЕ АВТОРА</p>
+          <h4>BOOK OS предлагает концепцию</h4>
+          <p className="muted">
+            Это ещё не Book Definition. Проверьте направление: после принятия BOOK OS продолжит
+            исследование, архитектуру и полный цикл книги.
+          </p>
+          {([
+            ["essence", "Суть книги"],
+            ["reader_job", "Для кого"],
+            ["reader_transformation", "Что изменится после прочтения"],
+            ["central_promise", "Главное обещание"],
+            ["differentiation", "Чем книга отличается"],
+            ["why_now", "Почему сейчас"],
+            ["series_place", "Место в серии"],
+          ] as const).map(([key, label]) => (
+            <label className="field" key={key}>
+              <span>{label}</span>
+              {editingConcept ? (
+                <textarea
+                  rows={key === "essence" ? 3 : 2}
+                  value={conceptDraft[key]}
+                  onChange={(event) => setConceptDraft({ ...conceptDraft, [key]: event.target.value })}
+                />
+              ) : (
+                <p>{conceptDraft[key]}</p>
+              )}
+            </label>
+          ))}
+          {([ ["scope_in", "Что входит в книгу"], ["scope_out", "Что сознательно не входит"] ] as const).map(([key, label]) => (
+            <label className="field" key={key}>
+              <span>{label}</span>
+              {editingConcept ? (
+                <textarea
+                  rows={3}
+                  value={conceptDraft[key].join("\n")}
+                  onChange={(event) => setConceptDraft({
+                    ...conceptDraft,
+                    [key]: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean),
+                  })}
+                />
+              ) : (
+                <p>{conceptDraft[key].join(" · ")}</p>
+              )}
+            </label>
+          ))}
+          <div className="actions planning-action">
+            <button className="primary" type="button" disabled={autoBusy} onClick={() => void acceptConcept()}>
+              Принять концепцию
+            </button>
+            <button className="ghost" type="button" disabled={autoBusy} onClick={() => setEditingConcept((value) => !value)}>
+              {editingConcept ? "Закончить правки" : "Изменить"}
+            </button>
+            <button className="ghost" type="button" disabled={autoBusy} onClick={() => void requestAnotherConcept()}>
+              Предложить другой вариант
+            </button>
+          </div>
+        </section>
       )}
 
       {workflowMode === "EXISTING_AUDIO" && (

@@ -41,9 +41,12 @@ class ContextAwarePlanningService(PlanningService):
                 else None
             ),
             "target_characters": context.target_characters,
+            "target_length_policy": "GUIDANCE_NOT_PADDING",
             "min_characters": context.min_characters,
             "max_characters": context.max_characters,
             "include_bibliography": context.include_bibliography,
+            "bibliography_preference": context.bibliography_preference,
+            "internal_research_and_evidence": "ALWAYS_PRESERVED",
             "plan_illustrations": context.plan_illustrations,
             "visual_asset_format": context.visual_asset_format,
             "visual_materials_policy": context.visual_materials_policy,
@@ -102,9 +105,14 @@ class ContextAwarePlanningService(PlanningService):
                         else None
                     ),
                     "target_characters": book_context["target_characters"],
+                    "target_length_policy": book_context["target_length_policy"],
                     "min_characters": book_context["min_characters"],
                     "max_characters": book_context["max_characters"],
                     "include_bibliography": book_context["include_bibliography"],
+                    "bibliography_preference": book_context["bibliography_preference"],
+                    "internal_research_and_evidence": book_context[
+                        "internal_research_and_evidence"
+                    ],
                     "plan_illustrations": book_context["plan_illustrations"],
                     "visual_asset_format": book_context["visual_asset_format"],
                     "visual_materials_policy": book_context["visual_materials_policy"],

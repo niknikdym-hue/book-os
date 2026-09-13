@@ -11,7 +11,7 @@ from book_os_core.book_context import (
     ProfileCreateRequest,
     ProfileRegistry,
 )
-from book_os_core.model_gateway import ModelGateway, ModelTaskRequest
+from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway, ModelTaskRequest
 from book_os_core.projects import NewBookRequest, ProjectService
 from book_os_core.prompts import PromptTemplate
 
@@ -85,7 +85,7 @@ def test_provider_disconnect_pauses_auto_book_without_losing_progress(tmp_path: 
         },
     )
     assert started.status_code == 200
-    assert started.json()["phase"] == "BOOK_CONTRACT"
+    assert started.json()["phase"] == "CONCEPT_DEVELOPMENT"
 
     assert client.get(f"/api/projects/{book_id}/auto-book/costs").status_code == 401
     costs = client.get(f"/api/projects/{book_id}/auto-book/costs", headers=headers)
@@ -105,7 +105,7 @@ def test_provider_disconnect_pauses_auto_book_without_losing_progress(tmp_path: 
     assert state.status_code == 200
     payload = state.json()
     assert payload["status"] == "RUNNING"
-    assert payload["phase"] == "BOOK_CONTRACT"
+    assert payload["phase"] == "CONCEPT_DEVELOPMENT"
     assert payload["requests_used"] == 1
     assert payload["authorized_cost_usd"] == 1.0
     assert "Server disconnected" in payload["error"]
@@ -167,3 +167,50 @@ def test_local_core_worker_marks_unknown_outcome_and_refuses_blind_retry(tmp_pat
     )
     assert retry.status_code == 409
     assert "Нельзя слепо повторить" in retry.json()["detail"]
+
+
+def test_concept_decision_api_is_authenticated_and_resumes_book_definition(tmp_path: Path) -> None:
+    token = "test-token"
+    app = FastAPI()
+
+    def require_token(authorization: str | None = Header(default=None)) -> None:
+        if authorization != f"Bearer {token}":
+            raise HTTPException(status_code=401, detail="unauthorized")
+
+    app.include_router(
+        build_auto_book_router(
+            tmp_path,
+            require_token,
+            ModelGateway({"openai": DeterministicFakeAdapter()}),
+        )
+    )
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+    book_id = ready_book(tmp_path)
+    started = client.post(
+        f"/api/projects/{book_id}/auto-book/start",
+        headers=headers,
+        json={
+            "idea": "Как продать онлайн-курсы",
+            "reader_hint": "",
+            "max_cost_usd_per_request": 1,
+            "max_total_cost_usd": 20,
+            "max_requests": 20,
+            "owner_authorizes_auto_progress": True,
+        },
+    )
+    assert started.status_code == 200
+    proposed = client.post(f"/api/projects/{book_id}/auto-book/advance", headers=headers)
+    assert proposed.status_code == 200
+    assert proposed.json()["status"] == "AWAITING_CONCEPT_APPROVAL"
+    assert (
+        client.post(f"/api/projects/{book_id}/auto-book/concept/approve", json={}).status_code
+        == 401
+    )
+    accepted = client.post(
+        f"/api/projects/{book_id}/auto-book/concept/approve",
+        headers=headers,
+        json={},
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["phase"] == "BOOK_CONTRACT"

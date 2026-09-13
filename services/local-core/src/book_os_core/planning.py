@@ -16,6 +16,7 @@ from .model_gateway import (
     ArchitectureChapterProposalOutput,
     AuthorityInputRef,
     BookArchitectureProposalOutput,
+    BookConceptProposalOutput,
     BookContractProposalOutput,
     ChapterContractProposalOutput,
     ModelGateway,
@@ -33,6 +34,7 @@ from .projects import (
 from .prompts import (
     ARCHITECTURE_PROPOSAL_V1,
     BOOK_CONTRACT_PROPOSAL_V1,
+    BOOK_CONCEPT_PROPOSAL_V1,
     CHAPTER_CONTRACT_PROPOSAL_V1,
     PromptTemplate,
 )
@@ -55,6 +57,23 @@ class BookContractPlanningRequest(BaseModel):
     max_output_tokens: int = Field(default=2600, ge=500, le=8000)
     max_cost_usd: float = Field(gt=0)
     untrusted_context: list[str] = Field(default_factory=list, max_length=40)
+
+
+class BookConceptPlanningRequest(BookContractPlanningRequest):
+    feedback: str = Field(default="", max_length=4000)
+
+
+class BookConceptProposalView(BaseModel):
+    run_id: str
+    provider: str
+    model: str
+    reasoning_effort: ReasoningEffort | None = None
+    provider_run_id: str | None
+    prompt_id: str
+    prompt_version: str
+    prompt_hash: str
+    usage: dict[str, Any]
+    concept: BookConceptProposalOutput
 
 
 class ArchitecturePlanningRequest(BaseModel):
@@ -312,6 +331,54 @@ class PlanningService:
             usage=usage,
             status="SUCCEEDED",
             project=updated,
+        )
+
+    def propose_book_concept(
+        self, book_id: str, request: BookConceptPlanningRequest
+    ) -> BookConceptProposalView:
+        project = self.projects.get_project(book_id)
+        model = self._resolved_model(request.provider, request.model)
+        run_id, raw, usage, provider_run_id = self._run(
+            book_id=book_id,
+            chapter_id=None,
+            run_kind="BOOK_CONCEPT_PROPOSAL",
+            provider=request.provider,
+            model=model,
+            prompt=BOOK_CONCEPT_PROPOSAL_V1,
+            objective=f"Разработать профессиональную концепцию из короткой идеи: {request.idea.strip()}",
+            authority_inputs=[],
+            authoritative_context={
+                "project": {
+                    "working_title": project.working_title,
+                    "domain": project.domain,
+                    "primary_subtype": project.primary_subtype,
+                    "secondary_subtype": project.secondary_subtype,
+                },
+                "raw_idea": request.idea.strip(),
+                "reader_hint": request.reader_hint.strip(),
+                "author_feedback": request.feedback.strip(),
+            },
+            request_payload=request.model_dump(mode="json"),
+            max_output_tokens=request.max_output_tokens,
+            max_cost_usd=request.max_cost_usd,
+            reasoning_effort=request.reasoning_effort,
+            untrusted_context=request.untrusted_context,
+        )
+        try:
+            concept = BookConceptProposalOutput.model_validate(raw)
+        except ValidationError as exc:
+            raise ModelOutputError("Book concept failed schema validation") from exc
+        return BookConceptProposalView(
+            run_id=run_id,
+            provider=request.provider,
+            model=model,
+            reasoning_effort=request.reasoning_effort,
+            provider_run_id=provider_run_id,
+            prompt_id=BOOK_CONCEPT_PROPOSAL_V1.prompt_id,
+            prompt_version=BOOK_CONCEPT_PROPOSAL_V1.version,
+            prompt_hash=BOOK_CONCEPT_PROPOSAL_V1.prompt_hash,
+            usage=usage,
+            concept=concept,
         )
 
     def propose_architecture(

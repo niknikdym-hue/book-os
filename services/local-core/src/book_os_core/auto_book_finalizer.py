@@ -148,6 +148,8 @@ class AutoBookFinalizer:
             "source_master_hash": master_hash,
             "delivery_profile": delivery,
             "model_runs": [],
+            # Kept as metadata/accompanying evidence; never injected into recording paragraphs.
+            "source_attribution": self._verified_bibliography(book_id),
         }
         if delivery in {"AUDIO_FIRST", "DUAL_TEXT_AUDIO"}:
             content, transformations = self.audio_scripts.content_from_master(
@@ -851,30 +853,7 @@ class AutoBookFinalizer:
                             paragraphs=paragraphs,
                         )
                     )
-                source_rows = list(
-                    connection.execute(
-                        text(
-                            "SELECT DISTINCT s.title,s.canonical_url,s.doi FROM sources s "
-                            "JOIN evidence e ON e.source_id=s.source_id "
-                            "JOIN claims c ON c.claim_id=e.claim_id "
-                            "WHERE c.book_id=:book_id AND e.status='ACTIVE' "
-                            "ORDER BY s.title,s.canonical_url"
-                        ),
-                        {"book_id": book_id},
-                    ).mappings()
-                )
-                bibliography = [
-                    ". ".join(
-                        value
-                        for value in (
-                            str(row["title"]),
-                            f"DOI: {row['doi']}" if row["doi"] else "",
-                            str(row["canonical_url"]) if row["canonical_url"] else "",
-                        )
-                        if value
-                    )
-                    for row in source_rows
-                ]
+                bibliography = self._verified_bibliography(book_id)
         finally:
             engine.dispose()
         author_profile = book_context.get("author_profile")
@@ -889,6 +868,37 @@ class AutoBookFinalizer:
             chapters=chapters,
             bibliography=bibliography if book_context.get("include_bibliography") else [],
         )
+
+    def _verified_bibliography(self, book_id: str) -> list[str]:
+        """Return only sources bound to active evidence for a verified manuscript claim."""
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                rows = connection.execute(
+                    text(
+                        "SELECT DISTINCT s.title,s.canonical_url,s.doi FROM sources s "
+                        "JOIN evidence e ON e.source_id=s.source_id "
+                        "JOIN claims c ON c.claim_id=e.claim_id "
+                        "WHERE c.book_id=:book_id AND e.status='ACTIVE' "
+                        "AND c.verification_state IN ('SUPPORTED','PARTIALLY_SUPPORTED') "
+                        "ORDER BY s.title,s.canonical_url"
+                    ),
+                    {"book_id": book_id},
+                ).mappings()
+                return [
+                    ". ".join(
+                        value
+                        for value in (
+                            str(row["title"]),
+                            f"DOI: {row['doi']}" if row["doi"] else "",
+                            str(row["canonical_url"]) if row["canonical_url"] else "",
+                        )
+                        if value
+                    )
+                    for row in rows
+                ]
+        finally:
+            engine.dispose()
 
     def _structured_current(
         self,

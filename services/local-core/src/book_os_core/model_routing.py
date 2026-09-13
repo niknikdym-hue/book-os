@@ -76,6 +76,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         auto={
             # Core book creation is deliberately Astra-first. Sol remains a first-class
             # manual author choice, but Auto Book must not silently switch families.
+            "BOOK_CONCEPT_PROPOSAL": "gpt-6-astra",
             "BOOK_CONTRACT_PROPOSAL": "gpt-6-astra",
             "ARCHITECTURE_PROPOSAL": "gpt-6-astra",
             "CHAPTER_CONTRACT_PROPOSAL": "gpt-6-astra",
@@ -95,6 +96,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
             ("yandexgpt-5-lite", "YandexGPT Lite 5"),
         ),
         auto={
+            "BOOK_CONCEPT_PROPOSAL": "aliceai-llm",
             "BOOK_CONTRACT_PROPOSAL": "aliceai-llm",
             "ARCHITECTURE_PROPOSAL": "aliceai-llm",
             "CHAPTER_CONTRACT_PROPOSAL": "aliceai-llm",
@@ -143,6 +145,12 @@ class ModelRoutingService:
             "medium",
             "STANDARD",
             "Escalate only for a concrete unresolved semantic or voice defect",
+        ),
+        "BOOK_CONCEPT_PROPOSAL": (
+            "gpt-6-astra",
+            "high",
+            "COMPLEX",
+            "Escalate only when reader value, differentiation, or series boundaries remain weak",
         ),
         "BOOK_CONTRACT_PROPOSAL": (
             "gpt-6-astra",

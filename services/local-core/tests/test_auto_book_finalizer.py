@@ -217,6 +217,9 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
             owner_authorizes_auto_progress=True,
         ),
     )
+    state = auto.advance(book_id)
+    assert state.status == "AWAITING_CONCEPT_APPROVAL"
+    state = auto.accept_concept(book_id)
     for _ in range(40):
         if state.status != "RUNNING":
             break
@@ -231,8 +234,8 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
         prepare_litres_docx=True,
     )
 
-    # Six planning/writing calls, two final edits and one independent exact-snapshot critique.
-    assert final.requests_used == 9
+    # Concept + six planning/writing calls, two final edits and one independent critique.
+    assert final.requests_used == 10
     assert adapter.last_request is not None
     assert adapter.last_request.role == "EVALUATOR"
     assert adapter.last_request.task_type == "BOOKBENCH_JUDGE"
@@ -313,6 +316,8 @@ def test_audio_first_uses_approved_listening_master_without_redundant_rewrite_th
             owner_authorizes_auto_progress=True,
         ),
     )
+    state = auto.advance(book_id)
+    state = auto.accept_concept(book_id)
     for _ in range(40):
         if state.status != "RUNNING":
             break
@@ -375,6 +380,8 @@ def test_text_first_audio_output_runs_a_real_separate_audio_editorial_pass(
             owner_authorizes_auto_progress=True,
         ),
     )
+    state = auto.advance(book_id)
+    state = auto.accept_concept(book_id)
     for _ in range(40):
         if state.status != "RUNNING":
             break

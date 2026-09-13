@@ -103,6 +103,11 @@ def run_auto_book(tmp_path: Path, book_id: str) -> tuple[AutoBookService, object
             owner_authorizes_auto_progress=True,
         ),
     )
+    state = service.advance(book_id)
+    assert state.status == "AWAITING_CONCEPT_APPROVAL"
+    assert state.phase == "CONCEPT_REVIEW"
+    assert state.concept is not None
+    state = service.accept_concept(book_id)
     for _ in range(30):
         if state.status != "RUNNING":
             break
@@ -115,7 +120,7 @@ def assert_completed_book(
 ) -> None:
     assert getattr(state, "status") == "DONE"
     assert getattr(state, "phase") == "DONE"
-    assert getattr(state, "requests_used") == 6
+    assert getattr(state, "requests_used") == 7
     output_path = getattr(state, "output_path")
     assert output_path is not None
     output = Path(output_path)

@@ -26,7 +26,7 @@ const author = {
 
 type RunningState = {
   run_id: string;
-  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_AUDIO_APPROVAL";
+  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_CONCEPT_APPROVAL" | "AWAITING_AUDIO_APPROVAL";
   phase: string;
   requests_used: number;
   max_requests: number;
@@ -37,6 +37,20 @@ type RunningState = {
   output_path: string | null;
   error: string | null;
   audio_script_id?: string | null;
+  concept?: {
+    essence: string;
+    reader_job: string;
+    reader_problem: string;
+    reader_transformation: string;
+    central_idea: string;
+    central_promise: string;
+    differentiation: string;
+    why_now: string;
+    scope_in: string[];
+    scope_out: string[];
+    series_place: string;
+    overlap_risks: string[];
+  } | null;
 };
 
 function fakeApi(autoState: RunningState | null = null, audioScript: object | null = null) {
@@ -304,6 +318,65 @@ it("keeps launch disabled until the required idea and authorization are present,
   expect(readyLaunch).toHaveClass("ready");
 });
 
+it("treats a short natural-language idea as sufficient and explains the concept pass", async () => {
+  render(
+    <LaunchPlanningPanel project={project} chapter={null} onProject={() => undefined} api={fakeApi()} />,
+  );
+  await screen.findByText("СИСТЕМА ГОТОВА");
+  fireEvent.change(screen.getByLabelText(/Идея книги/), {
+    target: { value: "Как продать онлайн-курсы" },
+  });
+  expect(screen.getByText(/Обычно достаточно 1–3 предложений/)).toBeInTheDocument();
+  expect(screen.queryByText("Нужно минимум 3 символа.")).not.toBeInTheDocument();
+});
+
+it("shows nonfiction bibliography as an automatic default with opt-out semantics", async () => {
+  render(
+    <LaunchPlanningPanel project={project} chapter={null} onProject={() => undefined} api={fakeApi()} />,
+  );
+  expect(await screen.findByText("Библиография включена автоматически")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Убрать библиографию из книги" })).not.toBeChecked();
+  expect(screen.getByText(/Research, Evidence и provenance сохраняются всегда/)).toBeInTheDocument();
+});
+
+it("renders the durable concept review as a separate author gate before Book Definition", async () => {
+  const awaiting: RunningState = {
+    run_id: "01JRUN00000000000000000000",
+    status: "AWAITING_CONCEPT_APPROVAL",
+    phase: "CONCEPT_REVIEW",
+    requests_used: 1,
+    max_requests: 40,
+    authorized_cost_usd: 1,
+    max_total_cost_usd: 25,
+    current_chapter_ordinal: null,
+    last_action: "Concept ready",
+    output_path: null,
+    error: null,
+    concept: {
+      essence: "Система прибыльных продаж онлайн-курсов",
+      reader_job: "Эксперт с нестабильными продажами",
+      reader_problem: "Неясно, где ломается экономика",
+      reader_transformation: "От запусков к системе",
+      central_idea: "Продаётся путь к результату",
+      central_promise: "Собрать управляемую систему продаж",
+      differentiation: "Продажи и экономика вместо записи уроков",
+      why_now: "AI удешевил информацию",
+      scope_in: ["спрос", "цена", "воронка"],
+      scope_out: ["техника записи"],
+      series_place: "Самостоятельная территория серии",
+      overlap_risks: ["общие советы по продвижению"],
+    },
+  };
+  render(
+    <LaunchPlanningPanel project={project} chapter={null} onProject={() => undefined} api={fakeApi(awaiting)} />,
+  );
+  expect(await screen.findByRole("heading", { name: "BOOK OS предлагает концепцию" })).toBeInTheDocument();
+  expect(screen.getByText("Эксперт с нестабильными продажами")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Принять концепцию" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Изменить" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Предложить другой вариант" })).toBeInTheDocument();
+});
+
 it("shows the real 4000-character minimum and refuses 1800 characters", async () => {
   render(
     <LaunchPlanningPanel
@@ -320,7 +393,7 @@ it("shows the real 4000-character minimum and refuses 1800 characters", async ()
   });
   fireEvent.change(screen.getByLabelText(/Желаемый объём/), { target: { value: "1800" } });
 
-  expect(screen.getByText("Минимум 4 000, максимум 2 000 000 знаков.")).toHaveClass(
+  expect(screen.getByText(/Допустимый диапазон: 4 000–2 000 000 знаков/)).toHaveClass(
     "field-error",
   );
   expect(

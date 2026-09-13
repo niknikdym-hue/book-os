@@ -11,6 +11,7 @@ from .model_gateway import (
     BookArchitectureProposalOutput,
     BookBenchJudgeOutput,
     BookBenchPairwiseOutput,
+    BookConceptProposalOutput,
     BookContractProposalOutput,
     ChapterContractProposalOutput,
     ModelAdapterResult,
@@ -22,6 +23,7 @@ from .model_gateway import (
 from .prompts import PromptTemplate
 
 LocalTaskClass = Literal[
+    "BOOK_CONCEPT_PROPOSAL",
     "BOOK_CONTRACT_PROPOSAL",
     "ARCHITECTURE_PROPOSAL",
     "CHAPTER_CONTRACT_PROPOSAL",
@@ -34,6 +36,7 @@ LocalTaskClass = Literal[
     "CONTRADICTION_REPETITION",
 ]
 ExecutableLocalTaskClass = Literal[
+    "BOOK_CONCEPT_PROPOSAL",
     "BOOK_CONTRACT_PROPOSAL",
     "ARCHITECTURE_PROPOSAL",
     "CHAPTER_CONTRACT_PROPOSAL",
@@ -221,6 +224,7 @@ class LocalReadinessService:
 
 _OUTPUT_TYPES: dict[str, type[BaseModel]] = {
     "SECTION_DRAFT": SectionDraftOutput,
+    "BOOK_CONCEPT_PROPOSAL": BookConceptProposalOutput,
     "BOOK_CONTRACT_PROPOSAL": BookContractProposalOutput,
     "ARCHITECTURE_PROPOSAL": BookArchitectureProposalOutput,
     "CHAPTER_CONTRACT_PROPOSAL": ChapterContractProposalOutput,
