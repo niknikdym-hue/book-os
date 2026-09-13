@@ -168,6 +168,52 @@ def test_blocking_page_language_or_visual_dependency_cannot_be_approved(tmp_path
             service.approve(book_id, proposed.audio_script_id, human_actor="Owner")
 
 
+def test_human_correction_creates_a_new_checked_version_and_preserves_history(
+    tmp_path: Path,
+) -> None:
+    book_id = setup_book(tmp_path)
+    service = AudioScriptService(tmp_path)
+    blocked = service.create_proposal(
+        book_id,
+        source_kind="IMPORTED_SOURCE",
+        source_identity="source.txt",
+        source_hash="e" * 64,
+        adaptation_mode="SOURCE_FAITHFUL",
+        content=clean_content(page_reference=True),
+        transformations=transformations(),
+        provenance={"provider_calls": 0},
+    )
+
+    tampered = clean_content()
+    tampered.sections[0].visual_decisions[0].source_facts = ["35"]
+    with pytest.raises(AudioScriptGateError, match="immutable visual metadata"):
+        service.revise_by_human(
+            book_id,
+            blocked.audio_script_id,
+            content=tampered,
+            human_actor="Owner",
+            change_summary="Попытка изменить исходные данные визуального материала.",
+        )
+
+    revised = service.revise_by_human(
+        book_id,
+        blocked.audio_script_id,
+        content=clean_content(),
+        human_actor="Owner",
+        change_summary="Убрана ссылка на страницу; переход переписан для слушателя.",
+    )
+
+    assert revised.version == blocked.version + 1
+    assert revised.status == "PROPOSED"
+    assert revised.provenance["parent_audio_script_id"] == blocked.audio_script_id
+    assert revised.provenance["revision_actor_kind"] == "HUMAN"
+    assert service.get(book_id, blocked.audio_script_id).status == "SUPERSEDED"
+    assert not any(
+        item.state == "BLOCKING" and item.check_kind == "PAGE_DEPENDENT_LANGUAGE"
+        for item in revised.quality_checks
+    )
+
+
 def test_pronunciation_ledger_covers_names_foreign_acronyms_terms_and_ambiguous_stress(
     tmp_path: Path,
 ) -> None:

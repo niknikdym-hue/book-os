@@ -65,10 +65,40 @@ type AudioScriptState = {
   source_hash: string;
   content_hash: string;
   adaptation_mode: "SOURCE_FAITHFUL" | "LISTENING_ADAPTATION" | "AUDIO_NATIVE";
+  content: AudioScriptContentState;
   quality_checks: Array<{
     check_kind: string;
     state: "PASS" | "ATTENTION" | "BLOCKING";
     findings: Array<{ code: string; location: string; detail: string; severity: string }>;
+  }>;
+};
+
+type AudioVisualDisposition =
+  | "SPOKEN_REWRITE"
+  | "AUDIO_EXPLANATION"
+  | "COMPANION_ARTIFACT"
+  | "SUPPLEMENT_REFERENCE"
+  | "OMIT_FROM_AUDIO"
+  | "BLOCKED";
+
+type AudioScriptContentState = {
+  title: string;
+  author: string;
+  language: string;
+  sections: Array<{
+    source_chapter_id: string;
+    title: string;
+    paragraphs: string[];
+    visual_decisions: Array<{
+      object_id: string;
+      kind: "TABLE" | "CHART" | "SCHEME" | "ILLUSTRATION";
+      title: string;
+      significant: boolean;
+      disposition: AudioVisualDisposition;
+      placement_after_paragraph: number;
+      explanation: string;
+      source_facts: string[];
+    }>;
   }>;
 };
 
@@ -223,6 +253,144 @@ async function encodeAttachment(item: PendingAttachment) {
     intent: item.intent ?? null,
     content_base64: window.btoa(binary),
   };
+}
+
+function AudioScriptRevisionEditor({
+  script,
+  busy,
+  onSave,
+}: {
+  script: AudioScriptState;
+  busy: boolean;
+  onSave: (content: AudioScriptContentState, summary: string) => Promise<void>;
+}) {
+  const [content, setContent] = useState<AudioScriptContentState>(script.content);
+  const [summary, setSummary] = useState("");
+
+  useEffect(() => {
+    setContent(script.content);
+    setSummary("");
+  }, [script.audio_script_id, script.content]);
+
+  const invalid =
+    !summary.trim() ||
+    content.sections.some(
+      (section) =>
+        section.paragraphs.length === 0 ||
+        section.paragraphs.some((paragraph) => !paragraph.trim()) ||
+        section.visual_decisions.some(
+          (visual) =>
+            ["SPOKEN_REWRITE", "AUDIO_EXPLANATION"].includes(visual.disposition) &&
+            !visual.explanation.trim(),
+        ),
+    );
+
+  return (
+    <details className="advanced-settings planning-settings" open>
+      <summary>Исправить отмеченные места в новой версии AudioScript</summary>
+      <p className="muted">
+        Исходная рукопись и предыдущая версия сохранятся. После сохранения BOOK OS заново выполнит
+        все проверки; выпуск останется закрыт, пока есть BLOCKING.
+      </p>
+      {content.sections.map((section, sectionIndex) => (
+        <div className="planning-step" key={section.source_chapter_id}>
+          <strong>{section.title}</strong>
+          <label className="field">
+            <span>Текст раздела для последовательного прослушивания</span>
+            <textarea
+              rows={10}
+              value={section.paragraphs.join("\n\n")}
+              onChange={(event) => {
+                const paragraphs = event.target.value
+                  .split(/\n\s*\n/)
+                  .map((item) => item.trim())
+                  .filter(Boolean);
+                setContent((current) => ({
+                  ...current,
+                  sections: current.sections.map((item, index) =>
+                    index === sectionIndex ? { ...item, paragraphs } : item,
+                  ),
+                }));
+              }}
+            />
+          </label>
+          {section.visual_decisions.map((visual, visualIndex) => (
+            <div className="form-grid" key={visual.object_id}>
+              <label className="field">
+                <span>{visual.kind}: {visual.title}</span>
+                <select
+                  value={visual.disposition}
+                  onChange={(event) => {
+                    const disposition = event.target.value as AudioVisualDisposition;
+                    setContent((current) => ({
+                      ...current,
+                      sections: current.sections.map((item, index) =>
+                        index === sectionIndex
+                          ? {
+                              ...item,
+                              visual_decisions: item.visual_decisions.map((decision, position) =>
+                                position === visualIndex ? { ...decision, disposition } : decision,
+                              ),
+                            }
+                          : item,
+                      ),
+                    }));
+                  }}
+                >
+                  <option value="AUDIO_EXPLANATION">Объяснить словами</option>
+                  <option value="SPOKEN_REWRITE">Переписать для произнесения</option>
+                  <option value="SUPPLEMENT_REFERENCE">Ссылка на дополнительные материалы</option>
+                  <option value="COMPANION_ARTIFACT">Сопроводительный материал</option>
+                  <option value="OMIT_FROM_AUDIO">Не включать без потери смысла</option>
+                  <option value="BLOCKED">Пока заблокировано</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Что услышит слушатель в этом месте</span>
+                <textarea
+                  rows={5}
+                  value={visual.explanation}
+                  onChange={(event) => {
+                    const explanation = event.target.value;
+                    setContent((current) => ({
+                      ...current,
+                      sections: current.sections.map((item, index) =>
+                        index === sectionIndex
+                          ? {
+                              ...item,
+                              visual_decisions: item.visual_decisions.map((decision, position) =>
+                                position === visualIndex ? { ...decision, explanation } : decision,
+                              ),
+                            }
+                          : item,
+                      ),
+                    }));
+                  }}
+                />
+                <small>Сохраните факты, числа, ограничение и вывод визуального материала.</small>
+              </label>
+            </div>
+          ))}
+        </div>
+      ))}
+      <label className="field required-field">
+        <span>Что исправлено</span>
+        <input
+          value={summary}
+          onChange={(event) => setSummary(event.target.value)}
+          placeholder="Например: убраны ссылки на страницу, уточнено произнесение чисел"
+        />
+      </label>
+      <button
+        type="button"
+        className={`primary auto-launch-button ${invalid ? "" : "ready"}`}
+        disabled={invalid || busy}
+        onClick={() => void onSave(content, summary.trim())}
+      >
+        Сохранить исправленную версию и повторить проверки
+      </button>
+    </details>
+  );
 }
 
 export function LaunchPlanningPanel({
@@ -485,6 +653,29 @@ export function LaunchPlanningPanel({
     }
   }
 
+  async function reviseAutoAudioScript(content: AudioScriptContentState, summary: string) {
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const revised = await api<AudioScriptState>(
+        "PUT",
+        `/api/projects/${project.book_id}/auto-book/audio-script`,
+        {
+          content,
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          change_summary: summary,
+        },
+      );
+      setAudioScript(revised);
+      setApproveAudio(false);
+      await reloadAutoState();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
   async function prepareExistingAudio() {
     if (!existingSource || !existingAuthorize || !credentialAvailable) return;
     setAutoBusy(true);
@@ -548,6 +739,29 @@ export function LaunchPlanningPanel({
         },
       );
       setExistingApprovedFiles(result.artifacts);
+      setApproveAudio(false);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
+  async function reviseExistingAudioScript(content: AudioScriptContentState, summary: string) {
+    if (!existingAudio) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const revised = await api<AudioScriptState>(
+        "PUT",
+        `/api/projects/${project.book_id}/audio-scripts/${existingAudio.audio_script.audio_script_id}`,
+        {
+          content,
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          change_summary: summary,
+        },
+      );
+      setExistingAudio({ ...existingAudio, audio_script: revised, artifacts: [] });
       setApproveAudio(false);
     } catch (reason) {
       setError(String(reason));
@@ -1131,7 +1345,17 @@ export function LaunchPlanningPanel({
                 </ul>
               </div>
               {existingAudio.audio_script.quality_checks.some((item) => item.state === "BLOCKING") ? (
-                <div className="alert inline-alert">Есть блокирующие проблемы: выпуск запрещён до исправления.</div>
+                <>
+                  <div className="alert inline-alert">
+                    Есть блокирующие проблемы: выпуск запрещён до исправления.
+                  </div>
+                  <AudioScriptRevisionEditor
+                    key={existingAudio.audio_script.audio_script_id}
+                    script={existingAudio.audio_script}
+                    busy={autoBusy}
+                    onSave={reviseExistingAudioScript}
+                  />
+                </>
               ) : (
                 <>
                   <label className="paid-approval required-approval">
@@ -1274,10 +1498,20 @@ export function LaunchPlanningPanel({
             </div>
           )}
           {audioBlockingChecks.length > 0 ? (
-            <div className="alert inline-alert">
-              Выпуск заблокирован: сначала исправьте отмеченные места. BOOK OS не выдаёт создание
-              файла за доказательство качества аудиотекста.
-            </div>
+            <>
+              <div className="alert inline-alert">
+                Выпуск заблокирован: сначала исправьте отмеченные места. BOOK OS не выдаёт создание
+                файла за доказательство качества аудиотекста.
+              </div>
+              {audioScript && (
+                <AudioScriptRevisionEditor
+                  key={audioScript.audio_script_id}
+                  script={audioScript}
+                  busy={autoBusy}
+                  onSave={reviseAutoAudioScript}
+                />
+              )}
+            </>
           ) : (
             <>
               <label className="paid-approval required-approval">

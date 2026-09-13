@@ -18,7 +18,12 @@ from .auto_book import (
 )
 from .auto_book_finalizer import AutoBookFinalizer
 from .auto_book_runtime import AutoBookRuntimeError
-from .audio_script import AudioScriptError, AudioScriptGateError, AudioScriptService
+from .audio_script import (
+    AudioScriptContent,
+    AudioScriptError,
+    AudioScriptGateError,
+    AudioScriptService,
+)
 from .book_context import BookContextService
 from .model_gateway import ModelGateway
 from .research_adapters import ResearchGateway
@@ -32,6 +37,12 @@ class AutoBookChangeRequest(BaseModel):
 class AudioScriptApprovalRequest(BaseModel):
     human_actor: str = Field(min_length=1, max_length=300)
     accepted_attention_codes: list[str] = Field(default_factory=list, max_length=100)
+
+
+class AutoBookAudioRevisionRequest(BaseModel):
+    content: AudioScriptContent
+    human_actor: str = Field(min_length=1, max_length=300)
+    change_summary: str = Field(min_length=3, max_length=4000)
 
 
 def build_auto_book_router(
@@ -356,5 +367,30 @@ def build_auto_book_router(
         current.error = None
         current.last_action = "AudioScript утверждён человеком; аудиофайлы и handoff готовы"
         return service._write(current).model_dump(mode="json")
+
+    @router.put("/api/projects/{book_id}/auto-book/audio-script")
+    def revise_auto_book_audio_script(
+        book_id: str,
+        payload: AutoBookAudioRevisionRequest,
+    ) -> dict[str, object]:
+        current = service.get(book_id)
+        if current is None or current.audio_script_id is None:
+            raise HTTPException(status_code=404, detail="AudioScript has not been prepared")
+        if current.status != "AWAITING_AUDIO_APPROVAL":
+            raise HTTPException(status_code=409, detail="Auto Book is not awaiting audio revision")
+        try:
+            revised = audio_scripts.revise_by_human(
+                book_id,
+                current.audio_script_id,
+                content=payload.content,
+                human_actor=payload.human_actor,
+                change_summary=payload.change_summary,
+            )
+        except AudioScriptError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        current.audio_script_id = revised.audio_script_id
+        current.last_action = "AudioScript исправлен как новая версия и повторно проверен"
+        service._write(current)
+        return revised.model_dump(mode="json")
 
     return router

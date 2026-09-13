@@ -866,6 +866,100 @@ class AudioScriptService:
             self.get(book_id, str(item), current_source_hash=current_source_hash) for item in ids
         ]
 
+    def revise_by_human(
+        self,
+        book_id: str,
+        audio_script_id: str,
+        *,
+        content: AudioScriptContent,
+        human_actor: str,
+        change_summary: str,
+    ) -> AudioScriptView:
+        current = self.get(book_id, audio_script_id)
+        if current.status != "PROPOSED":
+            raise AudioScriptGateError("only a proposed AudioScript can be revised")
+        if not human_actor.strip():
+            raise AudioScriptGateError("human revision requires an identified human actor")
+        if not change_summary.strip():
+            raise AudioScriptGateError("human revision requires a change summary")
+        if (
+            content.title != current.content.title
+            or content.author != current.content.author
+            or content.language != current.content.language
+        ):
+            raise AudioScriptGateError(
+                "audio revision cannot silently change title, author, or language"
+            )
+
+        def structure(value: AudioScriptContent) -> list[tuple[str, list[tuple[object, ...]]]]:
+            return [
+                (
+                    section.source_chapter_id,
+                    [
+                        (
+                            visual.object_id,
+                            visual.kind,
+                            visual.title,
+                            visual.significant,
+                            visual.placement_after_paragraph,
+                            tuple(visual.source_facts),
+                        )
+                        for visual in section.visual_decisions
+                    ],
+                )
+                for section in value.sections
+            ]
+
+        current_sections = structure(current.content)
+        revised_sections = structure(content)
+        if revised_sections != current_sections:
+            raise AudioScriptGateError(
+                "audio revision must preserve source section order and immutable visual metadata"
+            )
+        revised = self.create_proposal(
+            book_id,
+            source_kind=current.source_kind,
+            source_identity=current.source_identity,
+            source_hash=current.source_hash,
+            adaptation_mode=current.adaptation_mode,
+            content=content,
+            transformations=[
+                AudioTransformation(
+                    source_unit_id=section.source_chapter_id,
+                    outcome="REWRITTEN",
+                    summary=change_summary.strip(),
+                    material=True,
+                    human_review_required=True,
+                )
+                for section in content.sections
+            ],
+            provenance={
+                **current.provenance,
+                "revision_operation": "HUMAN_AUDIO_SCRIPT_REVISION",
+                "parent_audio_script_id": current.audio_script_id,
+                "parent_audio_script_hash": current.content_hash,
+                "revision_actor": human_actor.strip(),
+                "revision_actor_kind": "HUMAN",
+                "change_summary": change_summary.strip(),
+            },
+        )
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE audio_scripts SET status='SUPERSEDED',updated_at=:updated_at "
+                        "WHERE audio_script_id=:audio_script_id AND status='PROPOSED'"
+                    ),
+                    {
+                        "audio_script_id": current.audio_script_id,
+                        "updated_at": utc_now(),
+                    },
+                )
+        finally:
+            engine.dispose()
+        return revised
+
     def approve(
         self,
         book_id: str,

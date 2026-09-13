@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from pypdf.errors import PdfReadError
 
 from .audio_script import (
+    AudioScriptContent,
     AudioScriptError,
     AudioScriptGateError,
     AudioScriptService,
@@ -68,6 +69,12 @@ class ExistingAudioApprovalRequest(BaseModel):
     reading_docx: bool = True
     litres_docx: bool = False
     pronunciation_dictionary: bool = True
+
+
+class AudioScriptRevisionRequest(BaseModel):
+    content: AudioScriptContent
+    human_actor: str = Field(min_length=1, max_length=300)
+    change_summary: str = Field(min_length=3, max_length=4000)
 
 
 class ExistingAudioPrepareView(BaseModel):
@@ -592,6 +599,23 @@ def build_audio_script_router(
                 "output_directory": bundle.output_directory,
             }
         except (AudioScriptError, AutoBookRuntimeError, AutoBookBudgetError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.put("/api/projects/{book_id}/audio-scripts/{audio_script_id}")
+    def revise_existing_audio(
+        book_id: str,
+        audio_script_id: str,
+        payload: AudioScriptRevisionRequest,
+    ) -> dict[str, Any]:
+        try:
+            return scripts.revise_by_human(
+                book_id,
+                audio_script_id,
+                content=payload.content,
+                human_actor=payload.human_actor,
+                change_summary=payload.change_summary,
+            ).model_dump(mode="json")
+        except AudioScriptError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return router

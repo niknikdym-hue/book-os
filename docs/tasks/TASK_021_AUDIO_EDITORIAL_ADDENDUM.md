@@ -53,6 +53,10 @@ AI output remains `PROPOSED`. It cannot write final `APPROVED`. Any blocking che
 approval. Every ATTENTION finding must be explicitly dispositioned by the human. A changed source
 makes a prior script stale without deleting its approved historical bytes or files.
 
+A blocking proposal is not a dead end: the Author Studio exposes section prose and each visual
+disposition/explanation for correction. Saving creates a new checked `PROPOSED` version, preserves
+the exact source linkage and prior version, and refuses attempts to alter immutable visual facts.
+
 ## Recording-text rules
 
 The audio editor must make the work understandable to a listener who cannot see the page and

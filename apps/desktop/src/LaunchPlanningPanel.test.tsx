@@ -159,6 +159,79 @@ it("shows the exact proposed AudioScript checks and requires explicit human appr
   expect(approve).toBeEnabled();
 });
 
+it("offers a versioned human correction instead of leaving a blocking AudioScript stuck", async () => {
+  const awaiting: RunningState = {
+    run_id: "01JRUN00000000000000000000",
+    status: "AWAITING_AUDIO_APPROVAL",
+    phase: "EXPORT",
+    requests_used: 8,
+    max_requests: 40,
+    authorized_cost_usd: 8,
+    max_total_cost_usd: 25,
+    current_chapter_ordinal: null,
+    last_action: "AudioScript prepared",
+    output_path: null,
+    error: null,
+    audio_script_id: "01JAUDIO00000000000000000",
+  };
+  const script = {
+    audio_script_id: awaiting.audio_script_id,
+    version: 1,
+    status: "PROPOSED",
+    source_identity: "master-1",
+    source_hash: "a".repeat(64),
+    content_hash: "b".repeat(64),
+    adaptation_mode: "SOURCE_FAITHFUL",
+    content: {
+      title: "Книга",
+      author: "Елена Дилон",
+      language: "ru",
+      sections: [
+        {
+          source_chapter_id: "chapter-1",
+          title: "Глава 1",
+          paragraphs: ["Смотрите выше: важный вывод."],
+          visual_decisions: [],
+        },
+      ],
+    },
+    quality_checks: [
+      {
+        check_kind: "PAGE_DEPENDENT_LANGUAGE",
+        state: "BLOCKING",
+        findings: [
+          {
+            code: "PAGE_DEPENDENT_REFERENCE",
+            location: "chapter-1:1",
+            detail: "Фраза требует страницы.",
+            severity: "BLOCKING",
+          },
+        ],
+      },
+    ],
+  };
+  render(
+    <LaunchPlanningPanel
+      project={project}
+      chapter={null}
+      onProject={() => undefined}
+      api={fakeApi(awaiting, script)}
+    />,
+  );
+
+  expect(
+    await screen.findByText("Исправить отмеченные места в новой версии AudioScript"),
+  ).toBeInTheDocument();
+  const save = screen.getByRole("button", {
+    name: "Сохранить исправленную версию и повторить проверки",
+  });
+  expect(save).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Что исправлено"), {
+    target: { value: "Убрана ссылка на страницу." },
+  });
+  expect(save).toBeEnabled();
+});
+
 it("keeps launch disabled until the required idea and authorization are present, then turns it ready", async () => {
   render(
     <LaunchPlanningPanel
