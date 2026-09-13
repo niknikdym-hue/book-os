@@ -56,7 +56,6 @@ afterEach(() => {
 
 function commonGet(request: { method: string; path: string }) {
   if (request.method === "GET" && request.path === "/api/anti-junk") return [];
-  if (request.method === "GET" && request.path === "/api/library") return [];
   if (request.method === "GET" && request.path.endsWith("/auto-book")) return null;
   if (request.method === "GET" && request.path.endsWith("/context")) {
     return { author_profile: null, target_characters: null, ready_for_planning: false };
@@ -74,11 +73,12 @@ function commonGet(request: { method: string; path: string }) {
   return undefined;
 }
 
-it("показывает простой старт книги и выводит Auto Book как главный экран проекта", async () => {
+it("показывает новый первичный экран книги и запускает создание проекта", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "core_health") return { status: "healthy", version: "0.1.0" };
     if (command === "core_api") {
       const request = (args as { request: { method: string; path: string } }).request;
+      if (request.method === "GET" && request.path === "/api/library") return [];
       const common = commonGet(request);
       if (common !== undefined) return common;
       if (request.method === "GET" && request.path === "/api/projects") return [];
@@ -89,7 +89,7 @@ it("показывает простой старт книги и выводит 
 
   render(<App />);
   expect(await screen.findByText("Локальное ядро: работает")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Создать новую книгу" }));
+  fireEvent.click(screen.getByRole("button", { name: "Новая книга" }));
 
   expect(screen.getByRole("heading", { name: "Создайте проект книги" })).toBeInTheDocument();
   const continueButton = screen.getByRole("button", { name: "Заполните обязательные поля" });
@@ -111,10 +111,6 @@ it("показывает простой старт книги и выводит 
   fireEvent.click(readyButton);
 
   expect(await screen.findByRole("heading", { name: "Operating Book" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Создать книгу" })).toBeInTheDocument();
-  expect(
-    screen.getByText("Ручная работа и контроль — необязательно для Auto Book"),
-  ).toBeInTheDocument();
   expect(invokeMock).toHaveBeenCalledWith(
     "core_api",
     expect.objectContaining({
@@ -127,7 +123,7 @@ it("показывает простой старт книги и выводит 
   );
 });
 
-it("сохраняет ручной human gate, но держит его в необязательном разделе", async () => {
+it("показывает вкладку Библиотеки и восстановление проекта из неё", async () => {
   const summary = {
     book_id: project().book_id,
     working_title: project().working_title,
@@ -141,42 +137,39 @@ it("сохраняет ручной human gate, но держит его в не
       const request = (args as { request: { method: string; path: string } }).request;
       const common = commonGet(request);
       if (common !== undefined) return common;
-      if (request.method === "GET" && request.path === "/api/projects") return [summary];
-      if (request.method === "GET" && request.path === `/api/projects/${summary.book_id}`)
-        return project("DRAFT");
-      if (request.method === "PUT" && request.path.endsWith("/book-contract/draft"))
-        return project("DRAFT");
-      if (request.method === "POST" && request.path.endsWith("/book-contract/approve"))
-        return project("APPROVED");
+      if (request.method === "GET" && request.path === "/api/projects") return [];
+      if (request.method === "GET" && request.path === "/api/library") return [summary];
+      if (request.method === "POST" && request.path === `/api/library/${summary.book_id}/restore`) {
+        return null;
+      }
+      if (request.method === "PUT" && request.path.endsWith("/book-contract/draft")) return project("DRAFT");
+      if (request.method === "POST" && request.path.endsWith("/book-contract/approve")) return project("APPROVED");
     }
     throw new Error(`unexpected invoke: ${command}`);
   });
 
   render(<App />);
   await screen.findByText("Локальное ядро: работает");
-  const activeBooks = screen.getByRole("navigation", { name: "Активные книги" });
-  fireEvent.click(within(activeBooks).getByRole("button", { name: /^Operating Book/ }));
+  const topLevel = screen.getByRole("navigation", { name: "Главная навигация" });
+  fireEvent.click(within(topLevel).getByRole("button", { name: "Библиотека" }));
 
-  expect(await screen.findByRole("heading", { name: "Создать книгу" })).toBeInTheDocument();
-  const manual = screen.getByText("Ручная работа и контроль — необязательно для Auto Book");
-  fireEvent.click(manual);
+  const librarySection = await screen.findByRole("region", { name: "Библиотека" });
+  expect(within(librarySection).getByRole("heading", { name: "Завершённые и архивные книги" })).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getAllByRole("heading", { name: "Operating Book" }).length).toBeGreaterThanOrEqual(1),
+  );
 
-  expect(await screen.findByText("ЧЕРНОВИК")).toBeInTheDocument();
-  expect(screen.getByText("Проверьте контракт книги")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Вернуть в книги" }));
 
-  fireEvent.click(screen.getAllByRole("button", { name: "Сохранить черновик" })[0]);
   await waitFor(() =>
     expect(invokeMock).toHaveBeenCalledWith(
       "core_api",
       expect.objectContaining({
         request: expect.objectContaining({
-          method: "PUT",
-          path: expect.stringContaining("book-contract/draft"),
+          method: "POST",
+          path: `/api/library/${summary.book_id}/restore`,
         }),
       }),
     ),
   );
-
-  fireEvent.click(screen.getAllByRole("button", { name: "Утвердить контракт книги" })[0]);
-  expect(await screen.findByText("УТВЕРЖДЕНО")).toBeInTheDocument();
 });

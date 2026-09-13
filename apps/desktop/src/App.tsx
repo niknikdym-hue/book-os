@@ -3,6 +3,7 @@ import { coreApi, coreHealth } from "./api";
 import { AntiJunkPanel } from "./AntiJunkPanel";
 import { ArchitectureEditor } from "./ArchitectureEditor";
 import { BookBenchPanel } from "./BookBenchPanel";
+import { BookContextPanel } from "./BookContextPanel";
 import { BookJourney } from "./BookJourney";
 import { BookMemoryPanel } from "./BookMemoryPanel";
 import { BookSidebar } from "./BookSidebar";
@@ -13,6 +14,7 @@ import { LaunchPlanningPanel } from "./LaunchPlanningPanel";
 import { LiteraryMasterPanel } from "./LiteraryMasterPanel";
 import { OpenAIWorkLevelPanel } from "./OpenAIWorkLevelPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import { SeriesStudio } from "./SeriesStudio";
 import {
   BUSINESS_SUBTYPES,
   subtypeLabel,
@@ -58,6 +60,17 @@ function stageLabel(value: string) {
 function approved(value?: string | null) {
   return value === "APPROVED" || value === "LOCKED";
 }
+
+type TopLevelSection = "books" | "series" | "library" | "settings";
+
+type WorkspaceTab =
+  | "overview"
+  | "research"
+  | "structure"
+  | "manuscript"
+  | "editorial"
+  | "audio"
+  | "publish";
 
 const emptyBookContract: BookContractPayload = {
   reader: "",
@@ -148,7 +161,10 @@ export function App() {
   const [health, setHealth] = useState<CoreHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [topSection, setTopSection] = useState<TopLevelSection>("books");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("overview");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [libraryProjects, setLibraryProjects] = useState<ProjectSummary[]>([]);
   const [project, setProject] = useState<ProjectView | null>(null);
   const [showNewBook, setShowNewBook] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -165,9 +181,24 @@ export function App() {
     () => project?.chapters.find((chapter) => chapter.chapter_id === selectedChapterId) ?? null,
     [project, selectedChapterId],
   );
+  const chapterChoices = project?.chapters ?? [];
+  const hasChapters = chapterChoices.length > 0;
+
+  const workspaceTabs: ReadonlyArray<{ id: WorkspaceTab; title: string; hint: string }> = [
+    { id: "overview", title: "Обзор", hint: "Что сделано и какой следующий шаг" },
+    { id: "research", title: "Исследование", hint: "Источники и утверждения" },
+    { id: "structure", title: "Структура", hint: "Контекст, архитектура, главы" },
+    { id: "manuscript", title: "Рукопись", hint: "Текст и редактируемые правки" },
+    { id: "editorial", title: "Редактура", hint: "Замечания и доработка" },
+    { id: "audio", title: "Аудио", hint: "Подготовка и утверждение аудиоверсии" },
+    { id: "publish", title: "Выпуск", hint: "Готовые файлы и публикационный статус" },
+  ];
 
   function hydrate(next: ProjectView) {
     setProject(next);
+    setTopSection("books");
+    setWorkspaceTab("overview");
+    setShowNewBook(false);
     setBookContract(documentContent<BookContractPayload>(next.book_contract) ?? clone(emptyBookContract));
     setArchitecture(
       documentContent<BookArchitecturePayload>(next.architecture) ?? clone(emptyArchitecture),
@@ -189,6 +220,14 @@ export function App() {
     setProjects(await coreApi<ProjectSummary[]>("GET", "/api/projects"));
   }
 
+  async function refreshLibraryProjects() {
+    try {
+      setLibraryProjects(await coreApi<ProjectSummary[]>("GET", "/api/library"));
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   async function handleProjectListChanged(removedBookId?: string) {
     if (removedBookId && project?.book_id === removedBookId) {
       setProject(null);
@@ -198,12 +237,15 @@ export function App() {
       setChapterContract(clone(emptyChapterContract));
     }
     await refreshProjects();
+    await refreshLibraryProjects();
   }
 
   async function openProject(bookId: string) {
     setBusy(true);
     setError(null);
     try {
+      setTopSection("books");
+      setWorkspaceTab("overview");
       hydrate(await coreApi<ProjectView>("GET", `/api/projects/${bookId}`));
     } catch (reason) {
       setError(String(reason));
@@ -217,6 +259,7 @@ export function App() {
       .then(async (value) => {
         setHealth(value);
         await refreshProjects();
+        await refreshLibraryProjects();
       })
       .catch((reason: unknown) => setError(String(reason)));
   }, []);
@@ -301,6 +344,20 @@ export function App() {
     );
   }
 
+  async function restoreFromLibrary(bookId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", `/api/library/${bookId}/restore`);
+      await refreshLibraryProjects();
+      await refreshProjects();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function approveChapterContract() {
     if (!project || !selectedChapterId) return;
     await runProjectMutation(
@@ -317,20 +374,57 @@ export function App() {
 
   const contractApproved = approved(project?.book_contract?.authority_status);
   const architectureApproved = approved(project?.architecture?.authority_status);
-  const chapterReady = approved(selectedChapter?.chapter_contract?.authority_status);
+
+  const chapterHint = hasChapters ? `Выберите главу из ${chapterChoices.length} доступных` : "";
+
+  const workspaceHeaderLabel = project
+    ? `${subtypeLabel(project.primary_subtype)}${project.secondary_subtype ? ` · ${subtypeLabel(project.secondary_subtype)}` : ""}`
+    : "";
 
   return (
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">ЛОКАЛЬНАЯ РЕДАКЦИОННО-АВТОРСКАЯ СИСТЕМА</p>
+          <p className="eyebrow">ИЗДАТЕЛЬСКАЯ ПЛАТФОРМА</p>
           <h1>BOOK OS</h1>
+          <small>Публикация нон-фикшн в одном редакционном контуре</small>
         </div>
         <div className="health-block">
           <span className={health ? "health" : "health error"}>{healthLabel}</span>
           {health && <small>Версия ядра {health.version}</small>}
         </div>
       </header>
+
+      <nav className="top-level-nav" aria-label="Главная навигация">
+        <button
+          className={topSection === "books" ? "top-level-nav-item active" : "top-level-nav-item"}
+          onClick={() => setTopSection("books")}
+          type="button"
+        >
+          Книги
+        </button>
+        <button
+          className={topSection === "series" ? "top-level-nav-item active" : "top-level-nav-item"}
+          onClick={() => setTopSection("series")}
+          type="button"
+        >
+          Серии
+        </button>
+        <button
+          className={topSection === "library" ? "top-level-nav-item active" : "top-level-nav-item"}
+          onClick={() => setTopSection("library")}
+          type="button"
+        >
+          Библиотека
+        </button>
+        <button
+          className={topSection === "settings" ? "top-level-nav-item active" : "top-level-nav-item"}
+          onClick={() => setTopSection("settings")}
+          type="button"
+        >
+          Настройки
+        </button>
+      </nav>
 
       {error && <div className="alert">{error}</div>}
 
@@ -339,14 +433,94 @@ export function App() {
           projects={projects}
           activeBookId={project?.book_id ?? null}
           busy={busy}
-          onNew={() => setShowNewBook(true)}
-          onOpen={(bookId) => void openProject(bookId)}
+          onNew={() => {
+            setTopSection("books");
+            setWorkspaceTab("overview");
+            setShowNewBook(true);
+          }}
+          onOpen={(bookId) => {
+            setTopSection("books");
+            setWorkspaceTab("overview");
+            void openProject(bookId);
+          }}
           onProjectListChanged={(removedBookId) => void handleProjectListChanged(removedBookId)}
           stageLabel={stageLabel}
         />
 
         <section className="content">
-          {showNewBook && (
+          {topSection === "series" && (
+            <>
+              <section className="project-header panel" aria-label="Серия">
+                <div>
+                  <p className="eyebrow">СЕРИИ</p>
+                  <h2>Серийная работа</h2>
+                  <p className="muted">Управляйте авторскими сериями и производите связанный выпуск.</p>
+                </div>
+              </section>
+              <SeriesStudio />
+            </>
+          )}
+
+          {topSection === "library" && (
+            <>
+              <section className="project-header panel" aria-label="Библиотека">
+                <div>
+                  <p className="eyebrow">БИБЛИОТЕКА</p>
+                  <h2>Завершённые и архивные книги</h2>
+                  <p className="muted">
+                    Книги в библиотеке не участвуют в текущей работе, но остаются доступными для возврата.
+                  </p>
+                </div>
+              </section>
+
+              <section className="panel">
+                {libraryProjects.length === 0 ? (
+                  <p className="muted">
+                    Библиотека пока пуста. Перенесите книгу со вкладки «Книги» через меню книги.
+                  </p>
+                ) : (
+                  <div className="library-grid">
+                    {libraryProjects.map((item) => (
+                      <article key={item.book_id} className="library-card">
+                        <p className="eyebrow">АРХИВ</p>
+                        <h3>{item.working_title}</h3>
+                        <small>{subtypeLabel(item.primary_subtype)}</small>
+                        <p className="muted">{stageLabel(item.workflow_stage)}</p>
+                        <div className="actions">
+                          <button className="secondary" type="button" onClick={() => void restoreFromLibrary(item.book_id)}>
+                            Вернуть в книги
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
+          {topSection === "settings" && (
+            <>
+              <section className="project-header panel" aria-label="Настройки приложения">
+                <div>
+                  <p className="eyebrow">НАСТРОЙКИ</p>
+                  <h2>Параметры среды</h2>
+                  <p className="muted">Техническая конфигурация скрыта за экраном Advanced.</p>
+                </div>
+              </section>
+              <OpenAIWorkLevelPanel />
+              <details className="utility-drawer" open>
+                <summary>Настройки текста и словарь мусора</summary>
+                <AntiJunkPanel />
+              </details>
+              <details className="utility-drawer">
+                <summary>Диагностика и внутренние артефакты</summary>
+                <BookMemoryPanel project={project} chapter={selectedChapter} />
+              </details>
+            </>
+          )}
+
+          {topSection === "books" && showNewBook && (
             <BookStartPanel
               newTitle={newTitle}
               setNewTitle={setNewTitle}
@@ -360,266 +534,313 @@ export function App() {
             />
           )}
 
-          {!project && !showNewBook && (
+          {topSection === "books" && !project && !showNewBook && (
             <section className="hero panel">
-              <p className="eyebrow">BOOK OS</p>
-              <h2>Создайте книгу</h2>
+              <p className="eyebrow">НОН-ФИКШН ИЗДАТЕЛЬСКИЙ РАБОЧЕЙ ПЛОЩАДКЕ</p>
+              <h2>Создайте первую книгу</h2>
               <p>
-                Создайте проект, заполните обязательные поля и запустите Auto Book. Дальше BOOK OS
-                покажет прогресс от основы книги до Literary Master.
+                Откройте проект, опишите замысел и в пару шагов получите понятную редакторскую
+                конвейерную работу до готового выпуска.
               </p>
               <button className="primary" onClick={() => setShowNewBook(true)}>
-                Создать новую книгу
+                Новая книга
               </button>
             </section>
           )}
 
-          {project && (
+          {topSection === "books" && project && (
             <>
               <section className="project-header panel">
                 <div>
                   <p className="eyebrow">КНИГА</p>
                   <h2>{project.working_title}</h2>
-                  <p className="muted">
-                    Бизнес → {subtypeLabel(project.primary_subtype)}
-                    {project.secondary_subtype ? ` · ${subtypeLabel(project.secondary_subtype)}` : ""}
-                  </p>
+                  <p className="muted">{workspaceHeaderLabel}</p>
                 </div>
-                <div className="stage">
+                <div className="stage" aria-live="polite">
                   <small>Текущий этап</small>
                   <strong>{stageLabel(project.workflow_stage)}</strong>
                 </div>
               </section>
+              <nav className="project-tabs" aria-label="Рабочие вкладки книги">
+                {workspaceTabs.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={workspaceTab === item.id ? "active" : ""}
+                    onClick={() => setWorkspaceTab(item.id)}
+                    disabled={!project}
+                    title={item.hint}
+                  >
+                    {item.title}
+                  </button>
+                ))}
+              </nav>
 
-              <LaunchPlanningPanel
-                project={project}
-                chapter={selectedChapter}
-                onProject={hydrate}
-                coreReady={health?.status === "healthy"}
-              />
-
-              <details className="workflow-drawer manual-workflow-drawer">
-                <summary>Ручная работа и контроль — необязательно для Auto Book</summary>
-                <BookJourney project={project} chapter={selectedChapter} />
-
-                {project.book_contract && (
-                  <section className="panel" id="book-contract">
-                    <div className="panel-heading">
-                      <div>
-                        <p className="eyebrow">РУЧНОЙ КОНТРОЛЬ</p>
-                        <h3>Контракт книги</h3>
-                      </div>
-                      <StatusBadge status={project.book_contract.status} />
-                    </div>
-                    <p className="muted">
-                      Этот раздел нужен только если вы хотите вручную править и утверждать контракт.
-                    </p>
-                    <div className="form-grid">
-                      {(
-                        [
-                          ["reader", "Читатель"],
-                          ["reader_problem", "Проблема читателя"],
-                          ["central_promise", "Главное обещание книги"],
-                          ["central_thesis", "Центральный тезис"],
-                          ["unique_angle", "Уникальный угол"],
-                          ["reader_trajectory", "Траектория читателя"],
-                          ["evidence_policy", "Правила доказательности"],
-                          ["voice_genre_constraints", "Голос и жанровые ограничения"],
-                        ] as const
-                      ).map(([key, label]) => (
-                        <Field
-                          key={key}
-                          label={label}
-                          value={bookContract[key]}
-                          onChange={(value) =>
-                            setBookContract((current) => ({ ...current, [key]: value }))
-                          }
-                        />
-                      ))}
-                      <Field
-                        label="Что книга сознательно не делает"
-                        hint="Один пункт на строку"
-                        value={bookContract.explicit_exclusions.join("\n")}
-                        onChange={(value) =>
-                          setBookContract((current) => ({
-                            ...current,
-                            explicit_exclusions: lines(value),
-                          }))
-                        }
-                      />
-                      <Field
-                        label="Критерии готовности"
-                        hint="Один пункт на строку"
-                        value={bookContract.readiness_criteria.join("\n")}
-                        onChange={(value) =>
-                          setBookContract((current) => ({
-                            ...current,
-                            readiness_criteria: lines(value),
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="actions">
-                      <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
-                        Сохранить черновик
-                      </button>
-                      <button
-                        className={`primary ${contractApproved ? "ready" : ""}`}
-                        onClick={() => void approveBookContract()}
-                        disabled={busy || contractApproved}
-                      >
-                        {contractApproved ? "Утверждено ✓" : "Утвердить контракт книги"}
-                      </button>
-                    </div>
-                  </section>
-                )}
-
-                {(contractApproved || project.architecture) && (
-                  <div id="architecture">
-                    <ArchitectureEditor
-                      architecture={architecture}
-                      setArchitecture={setArchitecture}
-                      statusBadge={<StatusBadge status={project.architecture?.status} />}
-                      busy={busy}
-                      onSave={() => void saveArchitecture()}
-                      onApprove={() => void approveArchitecture()}
+              {workspaceTab === "overview" && (
+                <>
+                  <BookJourney project={project} chapter={selectedChapter} />
+                  <section className="panel">
+                    <LaunchPlanningPanel
+                      project={project}
+                      chapter={selectedChapter}
+                      onProject={hydrate}
+                      coreReady={health?.status === "healthy"}
                     />
-                  </div>
-                )}
-
-                {architectureApproved && project.chapters.length > 0 && (
-                  <section className="panel" id="chapter-contract">
-                    <div className="panel-heading">
-                      <div>
-                        <p className="eyebrow">РУЧНОЙ КОНТРОЛЬ</p>
-                        <h3>Контракт главы</h3>
-                      </div>
-                      <StatusBadge status={selectedChapter?.chapter_contract?.status} />
-                    </div>
-                    <label className="field">
-                      <span>Глава</span>
-                      <select
-                        value={selectedChapterId ?? ""}
-                        onChange={(event) => setSelectedChapterId(event.target.value)}
-                      >
-                        {project.chapters.map((chapter) => (
-                          <option key={chapter.chapter_id} value={chapter.chapter_id}>
-                            {chapter.ordinal}. {chapter.working_title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="form-grid">
-                      {(
-                        [
-                          ["chapter_purpose", "Функция главы"],
-                          ["new_contribution", "Новый вклад"],
-                          ["reader_prior_state", "Что читатель понимает до главы"],
-                          ["reader_after_state", "Что читатель понимает после главы"],
-                          ["opening_requirements", "Требования к началу"],
-                          ["ending_requirements", "Требования к финалу"],
-                          ["transition_requirements", "Требования к переходу"],
-                        ] as const
-                      ).map(([key, label]) => (
-                        <Field
-                          key={key}
-                          label={label}
-                          value={chapterContract[key]}
-                          onChange={(value) =>
-                            setChapterContract((current) => ({ ...current, [key]: value }))
-                          }
-                        />
-                      ))}
-                      {(
-                        [
-                          ["required_claims", "Обязательные утверждения"],
-                          ["required_or_permitted_research", "Нужное/разрешённое исследование"],
-                          ["required_scenes_examples", "Нужные сцены и примеры"],
-                          ["reserved_elsewhere", "Что должно остаться в других главах"],
-                        ] as const
-                      ).map(([key, label]) => (
-                        <Field
-                          key={key}
-                          label={label}
-                          hint="Один пункт на строку"
-                          value={chapterContract[key].join("\n")}
-                          onChange={(value) =>
-                            setChapterContract((current) => ({ ...current, [key]: lines(value) }))
-                          }
-                        />
-                      ))}
-                    </div>
-                    <div className="actions">
-                      <button
-                        className="secondary"
-                        onClick={() => void saveChapterContract()}
-                        disabled={busy || !selectedChapter}
-                      >
-                        Сохранить черновик
-                      </button>
-                      <button
-                        className="primary"
-                        onClick={() => void approveChapterContract()}
-                        disabled={busy || !selectedChapter}
-                      >
-                        Утвердить контракт главы
-                      </button>
-                    </div>
                   </section>
-                )}
+                </>
+              )}
 
-                {chapterReady && <DraftingPanel project={project} chapter={selectedChapter} />}
+              {workspaceTab === "structure" && (
+                <>
+                  <BookContextPanel project={project} />
+                  {project.book_contract && (
+                    <section className="panel" id="book-contract">
+                      <div className="panel-heading">
+                        <div>
+                          <p className="eyebrow">РУЧНОЙ КОНТРОЛЬ</p>
+                          <h3>Контракт книги</h3>
+                        </div>
+                        <StatusBadge status={project.book_contract.status} />
+                      </div>
+                      <p className="muted">Этот раздел нужен, если нужно вручную зафиксировать намерение книги.</p>
+                      <div className="form-grid">
+                        {(
+                          [
+                            ["reader", "Читатель"],
+                            ["reader_problem", "Проблема читателя"],
+                            ["central_promise", "Главное обещание книги"],
+                            ["central_thesis", "Центральный тезис"],
+                            ["unique_angle", "Уникальный угол"],
+                            ["reader_trajectory", "Траектория читателя"],
+                            ["evidence_policy", "Правила доказательности"],
+                            ["voice_genre_constraints", "Голос и жанровые ограничения"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <Field
+                            key={key}
+                            label={label}
+                            value={bookContract[key]}
+                            onChange={(value) => setBookContract((current) => ({ ...current, [key]: value }))}
+                          />
+                        ))}
+                        <Field
+                          label="Что книга сознательно не делает"
+                          hint="Один пункт на строку"
+                          value={bookContract.explicit_exclusions.join("\n")}
+                          onChange={(value) =>
+                            setBookContract((current) => ({
+                              ...current,
+                              explicit_exclusions: lines(value),
+                            }))
+                          }
+                        />
+                        <Field
+                          label="Критерии готовности"
+                          hint="Один пункт на строку"
+                          value={bookContract.readiness_criteria.join("\n")}
+                          onChange={(value) =>
+                            setBookContract((current) => ({
+                              ...current,
+                              readiness_criteria: lines(value),
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="actions">
+                        <button className="secondary" onClick={() => void saveBookContract()} disabled={busy}>
+                          Сохранить черновик
+                        </button>
+                        <button
+                          className={`primary ${contractApproved ? "ready" : ""}`}
+                          onClick={() => void approveBookContract()}
+                          disabled={busy || contractApproved}
+                        >
+                          {contractApproved ? "Утверждено ✓" : "Утвердить контракт книги"}
+                        </button>
+                      </div>
+                    </section>
+                  )}
 
-                {chapterReady && (
-                  <details className="workflow-drawer">
-                    <summary>Проверка фактов и источников</summary>
+                  {(contractApproved || project.architecture) && (
+                    <div id="architecture">
+                      <ArchitectureEditor
+                        architecture={architecture}
+                        setArchitecture={setArchitecture}
+                        statusBadge={<StatusBadge status={project.architecture?.status} />}
+                        busy={busy}
+                        onSave={() => void saveArchitecture()}
+                        onApprove={() => void approveArchitecture()}
+                      />
+                    </div>
+                  )}
+
+                  {architectureApproved && project.chapters.length > 0 && (
+                    <section className="panel" id="chapter-contract">
+                      <div className="panel-heading">
+                        <div>
+                          <p className="eyebrow">РУЧНОЙ КОНТРОЛЬ</p>
+                          <h3>Контракт главы</h3>
+                        </div>
+                        <StatusBadge status={selectedChapter?.chapter_contract?.status} />
+                      </div>
+                      <label className="field">
+                        <span>Глава</span>
+                        <select
+                          value={selectedChapterId ?? ""}
+                          onChange={(event) => setSelectedChapterId(event.target.value)}
+                        >
+                          {project.chapters.map((chapter) => (
+                            <option key={chapter.chapter_id} value={chapter.chapter_id}>
+                              {chapter.ordinal}. {chapter.working_title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="form-grid">
+                        {(
+                          [
+                            ["chapter_purpose", "Функция главы"],
+                            ["new_contribution", "Новый вклад"],
+                            ["reader_prior_state", "Что читатель понимает до главы"],
+                            ["reader_after_state", "Что читатель понимает после главы"],
+                            ["opening_requirements", "Требования к началу"],
+                            ["ending_requirements", "Требования к финалу"],
+                            ["transition_requirements", "Требования к переходу"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <Field
+                            key={key}
+                            label={label}
+                            value={chapterContract[key]}
+                            onChange={(value) => setChapterContract((current) => ({ ...current, [key]: value }))}
+                          />
+                        ))}
+                        {(
+                          [
+                            ["required_claims", "Обязательные утверждения"],
+                            ["required_or_permitted_research", "Нужное/разрешённое исследование"],
+                            ["required_scenes_examples", "Нужные сцены и примеры"],
+                            ["reserved_elsewhere", "Что должно остаться в других главах"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <Field
+                            key={key}
+                            label={label}
+                            hint="Один пункт на строку"
+                            value={chapterContract[key].join("\n")}
+                            onChange={(value) =>
+                              setChapterContract((current) => ({ ...current, [key]: lines(value) }))
+                            }
+                          />
+                        ))}
+                      </div>
+                      <div className="actions">
+                        <button
+                          className="secondary"
+                          onClick={() => void saveChapterContract()}
+                          disabled={busy || !selectedChapter}
+                        >
+                          Сохранить черновик
+                        </button>
+                        <button
+                          className="primary"
+                          onClick={() => void approveChapterContract()}
+                          disabled={busy || !selectedChapter}
+                        >
+                          Утвердить контракт главы
+                        </button>
+                      </div>
+                    </section>
+                  )}
+                </>
+              )}
+
+              {workspaceTab === "manuscript" && (
+                <>
+                  <p className="eyebrow muted">Раздел «Рукопись» для текущей главы</p>
+                  {selectedChapter ? (
+                    <DraftingPanel project={project} chapter={selectedChapter} />
+                  ) : (
+                    <div className="panel help-copy" role="status">
+                      <p>
+                        Для работы с рукописью сначала откройте любую из глав книги. У вас уже есть список
+                        глав во вкладке структуры или выше.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {workspaceTab === "research" && (
+                <>
+                  <p className="eyebrow muted">Раздел «Исследование» работает только с выбранной главой</p>
+                  {selectedChapter ? (
                     <ResearchPanel project={project} chapter={selectedChapter} />
-                  </details>
-                )}
+                  ) : (
+                    <div className="panel help-copy" role="status">
+                      <p>Выберите главу для запуска поиска источников и фиксации доказательности.</p>
+                    </div>
+                  )}
+                </>
+              )}
 
-                {chapterReady && (
-                  <details className="workflow-drawer">
-                    <summary>Редактура книги</summary>
-                    <EditorialPanel project={project} chapter={selectedChapter} />
-                  </details>
-                )}
+              {workspaceTab === "editorial" && (
+                <>
+                  {selectedChapter ? (
+                    <>
+                      <EditorialPanel project={project} chapter={selectedChapter} />
+                      <BookBenchPanel project={project} />
+                    </>
+                  ) : (
+                    <div className="panel help-copy" role="status">
+                      <p>Сначала выберите главу, чтобы видеть редакционные замечания по тексту.</p>
+                    </div>
+                  )}
+                </>
+              )}
 
-                {chapterReady && (
-                  <details className="workflow-drawer">
-                    <summary>BookBench · контроль качества</summary>
+              {workspaceTab === "audio" && (
+                <>
+                  <p className="eyebrow muted">Раздел «Аудио» — подготовка аудиоредакции и подтверждение результатов</p>
+                  <LaunchPlanningPanel
+                    project={project}
+                    chapter={selectedChapter}
+                    onProject={hydrate}
+                    coreReady={health?.status === "healthy"}
+                  />
+                </>
+              )}
+
+              {workspaceTab === "publish" && (
+                <>
+                  <p className="eyebrow muted">Раздел «Выпуск»</p>
+                  <LiteraryMasterPanel project={project} />
+                  <details className="utility-drawer">
+                    <summary>Критерии готовности и технические артефакты</summary>
                     <BookBenchPanel project={project} />
                   </details>
-                )}
+                </>
+              )}
 
-                {chapterReady && (
-                  <details className="workflow-drawer">
-                    <summary>Literary Master · финальная версия</summary>
-                    <LiteraryMasterPanel project={project} />
-                  </details>
-                )}
-              </details>
-
-              <OpenAIWorkLevelPanel />
-
-              <details className="utility-drawer">
-                <summary>Настройки текста · Словарь мусора</summary>
-                <AntiJunkPanel />
-              </details>
-
-              <details className="utility-drawer">
-                <summary>Дополнительные инструменты и диагностика</summary>
-                <BookMemoryPanel project={project} chapter={selectedChapter} />
-              </details>
-            </>
-          )}
-
-          {!project && (
-            <>
-              <OpenAIWorkLevelPanel />
-              <details className="utility-drawer global-settings">
-                <summary>Настройки текста · Словарь мусора</summary>
-                <AntiJunkPanel />
-              </details>
+              {hasChapters && (
+                <section className="panel panel-small muted" aria-label="Справка по главам">
+                  <p>{chapterHint}</p>
+                  <label className="field">
+                    <span>Текущая глава</span>
+                    <select
+                      value={selectedChapterId ?? ""}
+                      onChange={(event) => setSelectedChapterId(event.target.value)}
+                      disabled={busy}
+                    >
+                      {project.chapters.map((chapter) => (
+                        <option key={chapter.chapter_id} value={chapter.chapter_id}>
+                          {chapter.ordinal}. {chapter.working_title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </section>
+              )}
             </>
           )}
         </section>
