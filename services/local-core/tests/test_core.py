@@ -44,4 +44,6 @@ def test_fresh_database_runs_current_migrations_with_foreign_keys_and_wal(tmp_pa
             "0018",
             "0019",
             "0020",
+            "0021",
+            "0022",
         }

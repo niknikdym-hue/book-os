@@ -11,7 +11,7 @@ from docx.document import Document as DocumentObject
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 import ebooklib  # type: ignore[import-untyped]
-from ebooklib import epub  # type: ignore[import-untyped]
+from ebooklib import epub
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, Field, model_validator
 from reportlab.lib.enums import TA_CENTER  # type: ignore[import-untyped]
@@ -21,7 +21,7 @@ from reportlab.lib.units import mm  # type: ignore[import-untyped]
 from reportlab.pdfbase import pdfmetrics  # type: ignore[import-untyped]
 from reportlab.pdfbase.ttfonts import TTFont  # type: ignore[import-untyped]
 from reportlab.platypus import Image as PdfImage  # type: ignore[import-untyped]
-from reportlab.platypus import (  # type: ignore[import-untyped]
+from reportlab.platypus import (
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -175,7 +175,7 @@ class AutoBookExporter:
     def _add_bibliography(document: DocumentObject, bibliography: list[str]) -> None:
         if not bibliography:
             return
-        document.add_page_break()
+        document.add_page_break()  # type: ignore[no-untyped-call]
         document.add_heading("Библиография", level=1)
         for index, entry in enumerate(bibliography, start=1):
             document.add_paragraph(f"{index}. {entry}")

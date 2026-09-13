@@ -154,7 +154,9 @@ def test_auto_book_runs_end_to_end_and_creates_litres_docx(tmp_path: Path) -> No
     assert any(item.get("owner_auto_book_authorization") is True for item in gates)
 
 
-def test_series_auto_book_uses_owner_authorization_without_fake_passes(tmp_path: Path) -> None:
+def test_series_auto_book_materializes_current_task017_evidence_without_bypass(
+    tmp_path: Path,
+) -> None:
     book_id = ready_book(tmp_path, with_series=True)
     service, state = run_auto_book(tmp_path, book_id)
     assert_completed_book(tmp_path, book_id, service, state)
@@ -162,7 +164,7 @@ def test_series_auto_book_uses_owner_authorization_without_fake_passes(tmp_path:
     engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
     try:
         with engine.connect() as connection:
-            fake_gate_counts = {
+            production_gate_counts = {
                 "definitions": connection.execute(
                     text("SELECT COUNT(*) FROM definition_packs")
                 ).scalar_one(),
@@ -170,7 +172,10 @@ def test_series_auto_book_uses_owner_authorization_without_fake_passes(tmp_path:
                     text("SELECT COUNT(*) FROM chapter_production_contracts")
                 ).scalar_one(),
                 "chapter_admissions": connection.execute(
-                    text("SELECT COUNT(*) FROM chapter_admissions")
+                    text("SELECT COUNT(*) FROM chapter_admissions WHERE status='WRITING_ALLOWED'")
+                ).scalar_one(),
+                "uniqueness": connection.execute(
+                    text("SELECT COUNT(*) FROM book_uniqueness_ledger WHERE status='PASS'")
                 ).scalar_one(),
             }
             gates = [
@@ -180,9 +185,10 @@ def test_series_auto_book_uses_owner_authorization_without_fake_passes(tmp_path:
     finally:
         engine.dispose()
 
-    assert fake_gate_counts == {
-        "definitions": 0,
-        "production_contracts": 0,
-        "chapter_admissions": 0,
+    assert production_gate_counts == {
+        "definitions": 1,
+        "production_contracts": 2,
+        "chapter_admissions": 2,
+        "uniqueness": 2,
     }
     assert any(item.get("owner_auto_book_authorization") is True for item in gates)

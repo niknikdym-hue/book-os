@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 import platform
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
@@ -266,7 +266,7 @@ class LocalModelAdapter:
                 f"local model request {request.model} does not match manifest {self.manifest.model_id}"
             )
 
-        task_class = cast(ExecutableLocalTaskClass, request.task_type)
+        task_class: ExecutableLocalTaskClass = request.task_type
         if task_class not in self.manifest.supported_task_classes:
             raise ModelProviderError(
                 f"local model does not support task class: {request.task_type}"

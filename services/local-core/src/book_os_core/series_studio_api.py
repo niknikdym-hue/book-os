@@ -83,7 +83,7 @@ def build_series_studio_router(
     @router.post("/api/series/workspaces")
     def create_series_workspace(payload: SeriesCreateRequest) -> dict[str, object]:
         try:
-            return workspaces.create_series(payload).model_dump(mode="json")
+            return dict(workspaces.create_series(payload).model_dump(mode="json"))
         except (SeriesWorkspaceError, BookContextError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

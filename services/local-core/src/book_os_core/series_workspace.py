@@ -14,12 +14,14 @@ from docx import Document
 from pydantic import BaseModel, Field
 from pypdf.errors import PdfReadError
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 from .authority import canonical_json, new_ulid
 from .authority_types import JSONValue, utc_now
 from .book_context import (
     ProfileCreateRequest,
     ProfileRegistry,
+    ProfileView,
     SeriesProfileContent,
 )
 from .db import create_database
@@ -226,11 +228,11 @@ class SeriesWorkspaceService:
         self.projects = ProjectService(data_dir)
         self.profiles = ProfileRegistry(data_dir)
 
-    def _engine(self, book_id: str):
+    def _engine(self, book_id: str) -> Engine:
         self.projects.get_project(book_id)
         return create_database(self.projects.projects_dir / book_id / "project.sqlite")
 
-    def create_series(self, request: SeriesCreateRequest):
+    def create_series(self, request: SeriesCreateRequest) -> ProfileView:
         content = SeriesProfileContent(
             series_name=request.series_name.strip(),
             author_profile_id=request.author_profile_id,

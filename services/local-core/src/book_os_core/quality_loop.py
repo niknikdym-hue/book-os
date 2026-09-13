@@ -319,10 +319,9 @@ class QualityLoopStateMachine:
                 QualityLoopStage.DRAFT_CANDIDATE,
                 kind="DRAFT_CANDIDATE",
             )
-            if (
-                artifact.payload.get("source_revision_id") != draft.payload.get("revision_id")
-                or artifact.payload.get("source_revision_hash") != draft.payload.get("revision_hash")
-            ):
+            if artifact.payload.get("source_revision_id") != draft.payload.get(
+                "revision_id"
+            ) or artifact.payload.get("source_revision_hash") != draft.payload.get("revision_hash"):
                 raise QualityLoopGateError(
                     "TARGETED_REVISION_PROPOSAL must match the exact draft revision baseline"
                 )
@@ -374,9 +373,7 @@ class QualityLoopStateMachine:
             if evidence.get("material_status") != "PROPOSED":
                 raise QualityLoopGateError("HUMAN_REVIEW requires material_status=PROPOSED")
             if draft_artifact.status != "PROPOSED" or revision_artifact.status != "PROPOSED":
-                raise QualityLoopGateError(
-                    "HUMAN_REVIEW must receive undecided material proposals"
-                )
+                raise QualityLoopGateError("HUMAN_REVIEW must receive undecided material proposals")
             return
 
         if next_stage == QualityLoopStage.COMPLETE:

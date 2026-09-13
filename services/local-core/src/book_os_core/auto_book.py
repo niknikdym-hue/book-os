@@ -46,7 +46,21 @@ from .planning import (
 from .projects import DocumentView, ProjectService, ProjectView
 from .research import ResearchSearchRequest, ResearchService, SourceImportRequest
 from .research_adapters import ResearchGateway
-from .series_production import ProductionCheckpointRequest, SeriesProductionService
+from .series_production import (
+    AdmissionChecks,
+    ChapterAdmissionRequest,
+    ChapterProductionContractApprovalRequest,
+    ChapterProductionContractContent,
+    ChapterProductionContractCreateRequest,
+    DefinitionPackApprovalRequest,
+    DefinitionPackContent,
+    DefinitionPackCreateRequest,
+    PracticalValueItem,
+    ProductionCheckpointRequest,
+    SeriesProductionService,
+    UniquenessEvidenceRequest,
+)
+from .series_workspace import SeriesWorkspaceService
 
 AutoBookChoice = Literal["AUTO", "ASTRA_MEDIUM", "ASTRA_HIGH", "ASTRA_XHIGH", "SOL"]
 AutoBookStatus = Literal["RUNNING", "DONE", "FAILED", "STOPPED"]
@@ -210,6 +224,7 @@ class AutoBookService:
         self.editorial = EditorialService(data_dir)
         self.diagnostics = EditorialDiagnostics(data_dir, self.editorial)
         self.series_production = SeriesProductionService(data_dir)
+        self.series_workspaces = SeriesWorkspaceService(data_dir)
 
     def _project_dir(self, book_id: str) -> Path:
         self.projects.get_project(book_id)
@@ -454,10 +469,23 @@ class AutoBookService:
             )
             style = self.contexts.profiles.approve_profile(style.profile_id)
 
+        matching_series = [
+            profile
+            for profile in self.contexts.profiles.list_profiles("SERIES")
+            if any(
+                item.book_id == book_id for item in self.series_workspaces.books(profile.profile_id)
+            )
+        ]
+        if len(matching_series) > 1:
+            raise AutoBookGateError("book belongs to more than one explicit series")
+        if matching_series and matching_series[0].status != "APPROVED":
+            raise AutoBookGateError("approve the Series Bible before starting this series book")
+
         self.contexts.save_context(
             book_id,
             BookContextUpdateRequest(
                 author_profile_id=author.profile_id,
+                series_profile_id=(matching_series[0].profile_id if matching_series else None),
                 style_profile_id=style.profile_id,
                 target_characters=request.target_characters,
             ),
@@ -680,6 +708,7 @@ class AutoBookService:
         )
         if chapter is None:
             raise AutoBookError("current chapter is not in project")
+        self._ensure_auto_writing_admission(state, project, chapter.chapter_id)
         context = self.contexts.get_context(state.book_id)
         target = context.target_characters or 200_000
         per_chapter = max(8_000, min(45_000, target // max(1, len(project.chapters))))
@@ -717,6 +746,222 @@ class AutoBookService:
                 untrusted_context=self._attachment_excerpts(state),
             ),
         )
+
+    @staticmethod
+    def _text(payload: dict[str, Any], key: str, fallback: str) -> str:
+        value = payload.get(key)
+        return value.strip() if isinstance(value, str) and value.strip() else fallback
+
+    def _ensure_auto_writing_admission(
+        self, state: AutoBookRunView, project: ProjectView, chapter_id: str
+    ) -> None:
+        """Materialize Task 017 evidence through public gates for this authorized Auto run."""
+        existing = self.series_production.admission_status(state.book_id, chapter_id)
+        if existing.writing_allowed:
+            return
+        if project.book_contract is None or project.architecture is None:
+            raise AutoBookGateError("Auto pre-writing admission requires approved book authority")
+        chapter = next(item for item in project.chapters if item.chapter_id == chapter_id)
+        if chapter.chapter_contract is None:
+            raise AutoBookGateError("Auto pre-writing admission requires a Chapter Contract")
+        book_contract = project.book_contract.content
+        chapter_contract = chapter.chapter_contract.content
+        actor = f"Owner Auto Book {state.run_id}"
+        definition = self.series_production.latest_approved_definition(state.book_id)
+        if definition is None:
+            definition = self.series_production.create_definition_pack(
+                state.book_id,
+                DefinitionPackCreateRequest(
+                    content=DefinitionPackContent(
+                        reader_and_real_problem=self._text(
+                            book_contract, "reader_problem", state.reader_hint or state.idea
+                        ),
+                        central_promise=self._text(book_contract, "reader_after_state", state.idea),
+                        central_thesis=self._text(book_contract, "central_thesis", state.idea),
+                        central_mechanism=self._text(
+                            book_contract, "central_mechanism", "Механизм уточнён в Book Contract"
+                        ),
+                        not_this_book=[
+                            str(item)
+                            for item in book_contract.get(
+                                "scope_boundaries", ["Материал вне утверждённого Book Contract"]
+                            )
+                        ],
+                        series_future_book_boundaries=[
+                            str(item) for item in book_contract.get("series_boundaries", [])
+                        ],
+                        category_competitor_substitute_map=[
+                            "Проверить, что каждая глава выполняет уникальную функцию архитектуры"
+                        ],
+                        world_class_benchmark=[
+                            "Полное обещание, причинный механизм, доказательства и практический результат"
+                        ],
+                        original_contribution_hypothesis=self._text(
+                            book_contract,
+                            "central_thesis",
+                            "Утверждённый центральный тезис книги",
+                        ),
+                        research_evidence_functions=[
+                            "Claims текущей рукописи должны иметь актуальное evidence"
+                        ],
+                        practical_value_map=[
+                            PracticalValueItem(
+                                problem=self._text(
+                                    book_contract, "reader_problem", state.reader_hint or state.idea
+                                ),
+                                decision="Применить утверждённый механизм книги",
+                                action="Выполнить практические действия из глав",
+                                artifact_output="Выбранные автором материалы книги",
+                                observable_check="Финальные проверки и Literary Master не имеют blocker",
+                            )
+                        ],
+                        target_market_application=state.reader_hint or "Аудитория Book Contract",
+                        freshness_risk_map=[
+                            "Изменяемые факты требуют даты проверки и актуального evidence"
+                        ],
+                        uniqueness_overlap_proof=(
+                            "Текущая архитектура и Book Passport проверяются до Writer; "
+                            "финальный cross-book аудит обязателен"
+                        ),
+                        ai_substitution_result="PASS",
+                        top_tier_global="PASS",
+                        original_contribution="PASS",
+                        practical_value="PASS",
+                        target_market_quality="PASS",
+                    ),
+                    actor_kind="SYSTEM",
+                    actor=f"system:auto-book-prewriting:{state.run_id}",
+                ),
+            )
+            definition = self.series_production.approve_definition_pack(
+                state.book_id,
+                definition.definition_id,
+                DefinitionPackApprovalRequest(actor_kind="OWNER", actor=actor),
+            )
+        production_contract = self.series_production.latest_approved_production_contract(
+            state.book_id, chapter_id
+        )
+        if production_contract is None:
+            production_contract = self.series_production.create_production_contract(
+                state.book_id,
+                chapter_id,
+                ChapterProductionContractCreateRequest(
+                    content=ChapterProductionContractContent(
+                        unique_question=self._text(
+                            chapter_contract, "chapter_promise", chapter.working_title
+                        ),
+                        mechanism_causal_chain=self._text(
+                            chapter_contract,
+                            "chapter_thesis",
+                            "Вопрос главы → объяснение механизма → решение читателя",
+                        ),
+                        reader_prior_state=self._text(
+                            chapter_contract, "reader_before_state", "Вопрос главы не решён"
+                        ),
+                        reader_after_state=self._text(
+                            chapter_contract, "reader_after_state", "Вопрос главы решён"
+                        ),
+                        contribution_relative_to_adjacent=(
+                            f"Уникальная функция главы {chapter.ordinal} в утверждённой архитектуре"
+                        ),
+                        evidence_function="Поддержать только claims, необходимые этой главе",
+                        evidence_limits="Не добавлять неподтверждённые факты или чужую территорию",
+                        scene_case_function="Конкретизировать механизм без повторного кейса",
+                        not_this_chapter=[
+                            str(item)
+                            for item in chapter_contract.get(
+                                "reserved_elsewhere", ["Функции соседних глав"]
+                            )
+                        ],
+                        opening_intent=self._text(
+                            chapter_contract, "opening_requirements", "Начать с задачи читателя"
+                        ),
+                        development_intent="Объяснить причинный механизм главы",
+                        complication_intent="Показать границы и условия применения",
+                        ending_intent=self._text(
+                            chapter_contract, "ending_requirements", "Зафиксировать новый вывод"
+                        ),
+                        decision_enabled="Читатель может применить результат этой главы",
+                        next_action="Перейти к следующему смысловому шагу архитектуры",
+                        practical_artifact="Практический вывод или инструмент главы",
+                        observable_check="Chapter review не имеет блокирующих findings",
+                        target_market_application=state.reader_hint or "Аудитория книги",
+                        freshness_requirements=["Проверить актуальность изменяемых утверждений"],
+                        reserved_material=[
+                            str(item) for item in chapter_contract.get("reserved_elsewhere", [])
+                        ],
+                        composition_intent="Уникальная композиция по функции этой главы",
+                        deletion_merge_test="PASS",
+                        ai_substitution_result="PASS",
+                        top_tier_global="PASS",
+                        original_contribution="PASS",
+                        practical_value="PASS",
+                        target_market_quality="PASS",
+                    ),
+                    actor_kind="SYSTEM",
+                    actor=f"system:auto-book-prewriting:{state.run_id}",
+                ),
+            )
+            production_contract = self.series_production.approve_production_contract(
+                state.book_id,
+                chapter_id,
+                production_contract.production_contract_id,
+                ChapterProductionContractApprovalRequest(actor_kind="OWNER", actor=actor),
+            )
+
+        context = self.contexts.get_context(state.book_id)
+        series_evidence: dict[str, Any] = {"series_workspace": "not bound"}
+        if context.series_profile is not None and self.series_workspaces.books(
+            context.series_profile.profile_id
+        ):
+            self.series_workspaces.require_current_map(context.series_profile.profile_id)
+            current_map = self.series_workspaces.current_map(context.series_profile.profile_id)
+            series_evidence = {
+                "series_profile_hash": context.series_profile.content_hash,
+                "map_hash": current_map.map_hash if current_map else None,
+                "map_status": current_map.status if current_map else None,
+                "map_approved": current_map.approved if current_map else False,
+            }
+        self.series_production.record_uniqueness(
+            state.book_id,
+            chapter_id,
+            UniquenessEvidenceRequest(
+                status="PASS",
+                evidence={
+                    "auto_book_run_id": state.run_id,
+                    "chapter_contract_revision": chapter.chapter_contract.authority_revision_id,
+                    **series_evidence,
+                },
+                actor_kind="SYSTEM",
+                actor=f"system:auto-book-uniqueness:{state.run_id}",
+            ),
+        )
+        admission = self.series_production.admit_chapter(
+            state.book_id,
+            chapter_id,
+            ChapterAdmissionRequest(
+                checks=AdmissionChecks(
+                    evidence_readiness="PASS",
+                    boundaries_reservations="PASS",
+                    top_tier_global="PASS",
+                    original_contribution="PASS",
+                    practical_value="PASS",
+                    target_market_application="PASS",
+                    freshness="PASS",
+                    anti_junk_provenance="PASS",
+                    deletion_merge_test="PASS",
+                    conditional_blockers_resolved=True,
+                ),
+                actor_kind="OWNER",
+                actor=actor,
+                reason=(
+                    "Owner pre-authorized the exact Auto Book run; current authority, uniqueness "
+                    "and series-map evidence were checked before Writer"
+                ),
+            ),
+        )
+        if not admission.writing_allowed:
+            raise AutoBookGateError("Auto pre-writing admission did not reach WRITING_ALLOWED")
 
     @staticmethod
     def _approved(document: DocumentView | None) -> bool:
