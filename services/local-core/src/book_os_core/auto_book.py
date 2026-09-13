@@ -12,6 +12,15 @@ from sqlalchemy.engine import Engine
 
 from .authority import AuthorityService, InvalidAuthorityOperation, new_ulid
 from .authority_types import JSONValue, utc_now
+from .auto_book_runtime import (
+    AutoBookAttachment,
+    AutoBookIntent,
+    AutoBookOutputSelection,
+    AutoBookRuntimeError,
+    AutoBookStage,
+    AutoBookVisualPolicy,
+    DurableAutoBookRuntime,
+)
 from .book_context import (
     BookContextService,
     BookContextUpdateRequest,
@@ -61,11 +70,15 @@ class AutoBookStartRequest(BaseModel):
     reader_hint: str = Field(default="", max_length=4000)
     author_name: str = Field(default="", max_length=300)
     target_characters: int = Field(default=180_000, ge=4_000, le=2_000_000)
-    model_choice: AutoBookChoice = "ASTRA_HIGH"
+    series_name: str | None = Field(default=None, max_length=500)
+    model_choice: AutoBookChoice = "AUTO"
     max_cost_usd_per_request: float = Field(default=1.0, gt=0, le=20)
     max_total_cost_usd: float = Field(default=25.0, gt=0, le=500)
     max_requests: int = Field(default=40, ge=1, le=200)
     prepare_litres_docx: bool = True
+    outputs: AutoBookOutputSelection | None = None
+    visuals: AutoBookVisualPolicy = Field(default_factory=AutoBookVisualPolicy)
+    attachments: list[AutoBookAttachment] = Field(default_factory=list, max_length=40)
     owner_authorizes_auto_progress: Literal[True]
 
 
@@ -83,6 +96,12 @@ class AutoBookRunView(BaseModel):
     prepare_litres_docx: bool
     requests_used: int = 0
     authorized_cost_usd: float = 0.0
+    estimated_cost_usd: float = 0.0
+    reserved_cost_usd: float = 0.0
+    confirmed_cost_usd: float = 0.0
+    unknown_cost_usd: float = 0.0
+    selected_outputs: list[str] = Field(default_factory=list)
+    output_files: list[dict[str, Any]] = Field(default_factory=list)
     current_chapter_id: str | None = None
     current_chapter_ordinal: int | None = None
     last_action: str = ""
@@ -162,6 +181,7 @@ class AutoBookService:
         self.planning = ContextAwarePlanningService(data_dir, gateway)
         self.drafting = DraftingService(data_dir, gateway)
         self.routing = ModelRoutingService(data_dir)
+        self.runtime = DurableAutoBookRuntime(data_dir)
 
     def _project_dir(self, book_id: str) -> Path:
         self.projects.get_project(book_id)
@@ -180,6 +200,41 @@ class AutoBookService:
             encoding="utf-8",
         )
         temporary.replace(path)
+        phase_stage = {
+            "BOOK_CONTRACT": AutoBookStage.DEFINITION,
+            "APPROVE_BOOK_CONTRACT": AutoBookStage.DEFINITION,
+            "ARCHITECTURE": AutoBookStage.ARCHITECTURE,
+            "APPROVE_ARCHITECTURE": AutoBookStage.ARCHITECTURE,
+            "CHAPTER_CONTRACT": AutoBookStage.CHAPTER_CONTEXT,
+            "APPROVE_CHAPTER": AutoBookStage.CHAPTER_CONTEXT,
+            "CHAPTER_DRAFT": AutoBookStage.WRITING,
+            "EXPORT": AutoBookStage.MASTER_AND_EXPORTS,
+            "DONE": AutoBookStage.MASTER_AND_EXPORTS,
+        }
+        runtime_status = (
+            "PACKAGE_READY"
+            if state.status == "DONE"
+            else "PAUSED"
+            if state.status == "STOPPED"
+            else "FAILED"
+            if state.status == "FAILED"
+            else "RUNNING"
+        )
+        try:
+            runtime = self.runtime.set_stage(
+                state.book_id,
+                state.run_id,
+                phase_stage[state.phase],
+                message=state.last_action or "BOOK OS продолжает Auto Book",
+                status=cast(Any, runtime_status),
+            )
+            state.estimated_cost_usd = runtime.estimated_cost_usd
+            state.reserved_cost_usd = runtime.reserved_cost_usd
+            state.confirmed_cost_usd = runtime.confirmed_cost_usd
+            state.unknown_cost_usd = runtime.unknown_cost_usd
+        except AutoBookRuntimeError:
+            # Existing pre-0021 runs remain readable and resumable without rewriting user data.
+            pass
         return state
 
     def get(self, book_id: str) -> AutoBookRunView | None:
@@ -280,8 +335,37 @@ class AutoBookService:
                 "total Auto Book budget must be at least one per-request budget"
             )
         now = utc_now()
+        run_id = new_ulid()
+        output_selection = request.outputs or AutoBookOutputSelection(
+            full_manuscript_docx=True,
+            litres_ebook_docx=request.prepare_litres_docx,
+        )
+        context = self.contexts.get_context(book_id)
+        resolved_author = (
+            context.author_profile.name
+            if context.author_profile is not None
+            else request.author_name.strip()
+        )
+        runtime = self.runtime.create_run(
+            book_id,
+            AutoBookIntent(
+                idea=request.idea.strip(),
+                reader_hint=request.reader_hint.strip(),
+                author_name=resolved_author,
+                series_name=request.series_name,
+                target_characters=request.target_characters,
+                model_choice=request.model_choice,
+                outputs=output_selection,
+                visuals=request.visuals,
+                attachments=request.attachments,
+                max_cost_usd_per_request=request.max_cost_usd_per_request,
+                max_total_cost_usd=request.max_total_cost_usd,
+                max_requests=request.max_requests,
+            ),
+            run_id=run_id,
+        )
         state = AutoBookRunView(
-            run_id=new_ulid(),
+            run_id=run_id,
             book_id=book_id,
             status="RUNNING",
             phase="BOOK_CONTRACT",
@@ -292,6 +376,11 @@ class AutoBookService:
             max_total_cost_usd=request.max_total_cost_usd,
             max_requests=request.max_requests,
             prepare_litres_docx=request.prepare_litres_docx,
+            estimated_cost_usd=runtime.estimated_cost_usd,
+            reserved_cost_usd=runtime.reserved_cost_usd,
+            confirmed_cost_usd=runtime.confirmed_cost_usd,
+            unknown_cost_usd=runtime.unknown_cost_usd,
+            selected_outputs=list(runtime.intent.outputs.selected()),
             started_at=now,
             updated_at=now,
             last_action="Auto Book authorized by owner",
@@ -378,7 +467,8 @@ class AutoBookService:
             selection_scope="OPERATION" if mode == "MANUAL" else None,
             model=model,
         )
-        return choice, effort if choice.model == "gpt-6-astra" else None
+        resolved_effort = effort if effort is not None else choice.reasoning_effort
+        return choice, resolved_effort if choice.model == "gpt-6-astra" else None
 
     def _book_contract(self, state: AutoBookRunView, cap: float) -> PlanningProposalView:
         choice, effort = self._planning_choice(state, "BOOK_CONTRACT_PROPOSAL")
@@ -449,6 +539,17 @@ class AutoBookService:
         target = context.target_characters or 200_000
         per_chapter = max(8_000, min(45_000, target // max(1, len(project.chapters))))
         model, effort, mode = self._choice(state.model_choice)
+        if mode == "AUTO":
+            choice = self.routing.resolve(
+                state.book_id,
+                "SECTION_DRAFT",
+                provider="openai",
+                selection_mode="AUTO",
+                selection_scope=None,
+                model=None,
+            )
+            model = choice.model
+            effort = choice.reasoning_effort
         self.drafting.generate_section_draft(
             state.book_id,
             chapter.chapter_id,

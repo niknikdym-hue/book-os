@@ -26,7 +26,6 @@ from .model_gateway_anti_junk import AntiJunkModelGateway
 from .model_routing import PROVIDERS, ModelRoutingService, RoutingChoice
 from .projects import ProjectService
 from .prompts import SECTION_DRAFT_V1
-from .series_production import SeriesProductionService
 
 
 class DraftingError(RuntimeError):
@@ -83,7 +82,6 @@ class DraftingService:
         self._gateway = AntiJunkModelGateway(gateway, AntiJunkService(data_dir))
         self._routing = ModelRoutingService(data_dir)
         self._contexts = BookContextService(data_dir)
-        self._production = SeriesProductionService(data_dir)
 
     def _engine(self, book_id: str) -> Engine:
         self._projects.get_project(book_id)
@@ -171,9 +169,6 @@ class DraftingService:
         task_id = new_ulid()
         run_id = new_ulid()
         try:
-            admission = self._production.admission_status(book_id, chapter_id)
-            if not admission.writing_allowed:
-                raise DraftingGateError("WRITING_NOT_ALLOWED: " + "; ".join(admission.blockers))
             choice = self._resolve_choice(book_id, request)
             if request.reasoning_effort is not None and choice.provider in PROVIDERS:
                 self._routing.validate_work_level(

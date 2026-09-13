@@ -152,7 +152,9 @@ class AutoBookFinalizer:
         )
         return (
             choice.model,
-            effort if choice.model == "gpt-6-astra" else None,
+            (effort if effort is not None else choice.reasoning_effort)
+            if choice.model == "gpt-6-astra"
+            else None,
             choice.selection_mode,
             choice.selection_scope,
             choice.rationale,
