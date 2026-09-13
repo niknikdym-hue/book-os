@@ -31,6 +31,22 @@ vi.mock("./api", () => ({
               unique_idea: "Отдельный результат читателю",
               status: "DEFINITION",
               source_kind: "BOOK_OS",
+              passport_hash: "passport-hash",
+              passport_approved: true,
+              imported_sources: [
+                {
+                  source_id: "01JSOURCE0000000000000000",
+                  filename: "original.docx",
+                  format: "DOCX",
+                  analysis_status: "COMPLETE",
+                  analysis: {
+                    characters: 1200,
+                    headings: ["Глава 1"],
+                    tables: 1,
+                    visuals: 0,
+                  },
+                },
+              ],
             },
           ],
           map: null,
@@ -64,5 +80,9 @@ it("offers three persisted series scenarios and keeps Auto as the default", asyn
   expect(screen.getByText(/Карта различий: не построена/)).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Загрузить «Секреты продвижения услуг»" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Архивировать книгу" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Удалить сохранённый оригинал" }),
   ).toBeInTheDocument();
 });

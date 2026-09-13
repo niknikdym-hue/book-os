@@ -371,6 +371,44 @@ export function SeriesStudio() {
     }
   }
 
+  async function archiveSeriesBook(seriesProfileId: string, bookId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", `/api/series/${seriesProfileId}/books/${bookId}/archive`);
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteImportedSource(
+    seriesProfileId: string,
+    bookId: string,
+    sourceId: string,
+    filename: string,
+  ) {
+    const confirmed = window.confirm(
+      `Удалить локально сохранённый оригинал «${filename}»? Это действие нельзя отменить.`,
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi(
+        "DELETE",
+        `/api/series/${seriesProfileId}/books/${bookId}/imports/${sourceId}`,
+      );
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function approveWorkspaceSeries(seriesProfileId: string) {
     setBusy(true);
     setError(null);
@@ -781,11 +819,39 @@ export function SeriesStudio() {
                             </button>
                           )}
                           {book.imported_sources?.map((source) => (
-                            <small key={source.source_id} className="muted">
-                              {source.filename} · {source.format} · {source.analysis_status} · {source.analysis.characters ?? 0} знаков · {source.analysis.headings?.length ?? 0} глав · {source.analysis.tables ?? 0} таблиц · {source.analysis.visuals ?? 0} визуалов
-                              {(source.analysis.warnings?.length ?? 0) > 0 ? ` · предупреждения: ${source.analysis.warnings!.join("; ")}` : ""}
-                            </small>
+                            <span key={source.source_id} className="series-import-source">
+                              <small className="muted">
+                                {source.filename} · {source.format} · {source.analysis_status} · {source.analysis.characters ?? 0} знаков · {source.analysis.headings?.length ?? 0} глав · {source.analysis.tables ?? 0} таблиц · {source.analysis.visuals ?? 0} визуалов
+                                {(source.analysis.warnings?.length ?? 0) > 0 ? ` · предупреждения: ${source.analysis.warnings!.join("; ")}` : ""}
+                              </small>
+                              <button
+                                type="button"
+                                className="ghost danger"
+                                disabled={busy}
+                                onClick={() => void deleteImportedSource(
+                                  workspace.series_profile_id,
+                                  book.book_id,
+                                  source.source_id,
+                                  source.filename,
+                                )}
+                              >
+                                Удалить сохранённый оригинал
+                              </button>
+                            </span>
                           ))}
+                          {book.status !== "ARCHIVED" && (
+                            <button
+                              type="button"
+                              className="ghost"
+                              disabled={busy}
+                              onClick={() => void archiveSeriesBook(
+                                workspace.series_profile_id,
+                                book.book_id,
+                              )}
+                            >
+                              Архивировать книгу
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ol>
