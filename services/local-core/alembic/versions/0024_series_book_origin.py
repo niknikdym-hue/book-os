@@ -46,9 +46,7 @@ def upgrade() -> None:
         "WHEN 'READY' THEN 'COMPLETED' WHEN 'ARCHIVED' THEN 'ARCHIVED' "
         "ELSE 'PLANNED' END"
     )
-    op.execute(
-        "UPDATE series_books SET legacy_content_allowed=1 WHERE origin_kind='IMPORTED'"
-    )
+    op.execute("UPDATE series_books SET legacy_content_allowed=1 WHERE origin_kind='IMPORTED'")
     op.execute("INSERT INTO schema_metadata (version) VALUES ('0024')")
 
 
