@@ -194,7 +194,8 @@ def ready_book(tmp_path: Path) -> str:
 
 def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> None:
     book_id = ready_book(tmp_path)
-    gateway = ModelGateway({"openai": PublishingAdapter()})
+    adapter = PublishingAdapter()
+    gateway = ModelGateway({"openai": adapter})
     auto = AutoBookService(tmp_path, gateway)
     state = auto.start(
         book_id,
@@ -222,7 +223,15 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
         prepare_litres_docx=True,
     )
 
-    assert final.requests_used == 8
+    # Six planning/writing calls, two final edits and one independent exact-snapshot critique.
+    assert final.requests_used == 9
+    assert adapter.last_request is not None
+    assert adapter.last_request.role == "EVALUATOR"
+    assert adapter.last_request.task_type == "BOOKBENCH_JUDGE"
+    assert adapter.last_request.task_payload["independent_context"] is True
+    exact_book = adapter.last_request.authoritative_context["complete_book"]
+    assert len(exact_book["chapters"]) == 2
+    assert adapter.last_request.authoritative_context["master_hash"]
     assert final.output_path is not None
     output = Path(final.output_path)
     assert output.is_file()
@@ -232,6 +241,8 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
     assert "Книга после финальной редактуры" in document
     assert "Завершение первой главы" in document
     assert "Завершение второй главы" in document
+    runtime = AutoBookService(tmp_path, gateway).runtime.get(book_id, state.run_id)
+    assert runtime.progress_percent == 100
 
     engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
     try:

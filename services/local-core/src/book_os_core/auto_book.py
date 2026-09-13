@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 from html import escape as html_escape
 import json
+import hashlib
 from pathlib import Path
 from typing import Any, Literal, cast
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -103,6 +105,9 @@ class AutoBookRunView(BaseModel):
     unknown_cost_usd: float = 0.0
     selected_outputs: list[str] = Field(default_factory=list)
     output_files: list[dict[str, Any]] = Field(default_factory=list)
+    current_stage: AutoBookStage = AutoBookStage.DEFINITION
+    progress_completed: int = 0
+    progress_total: int = 0
     current_chapter_id: str | None = None
     current_chapter_ordinal: int | None = None
     last_action: str = ""
@@ -191,6 +196,45 @@ class AutoBookService:
     def _state_path(self, book_id: str) -> Path:
         return self._project_dir(book_id) / self._STATE_FILE
 
+    def _materialize_attachments(
+        self,
+        book_id: str,
+        run_id: str,
+        attachments: list[AutoBookAttachment],
+    ) -> list[AutoBookAttachment]:
+        """Persist browser uploads locally and keep bytes out of the durable intent JSON."""
+        destination = self._project_dir(book_id) / "inputs" / run_id
+        result: list[AutoBookAttachment] = []
+        for index, attachment in enumerate(attachments, start=1):
+            if attachment.content_base64 is None:
+                result.append(attachment)
+                continue
+            try:
+                payload = base64.b64decode(attachment.content_base64, validate=True)
+            except ValueError as exc:
+                raise AutoBookGateError("attachment is not valid base64") from exc
+            if not payload:
+                raise AutoBookGateError("attachment must not be empty")
+            if len(payload) > 25_000_000:
+                raise AutoBookGateError("one attachment cannot exceed 25 MB")
+            source_name = Path(attachment.path).name
+            suffix = Path(source_name).suffix.casefold()
+            if suffix not in {".txt", ".md", ".docx", ".pdf", ".rtf"}:
+                raise AutoBookGateError("supported attachment types: TXT, MD, DOCX, PDF, RTF")
+            safe_name = f"{index:02d}-{hashlib.sha256(payload).hexdigest()[:12]}{suffix}"
+            destination.mkdir(parents=True, exist_ok=True)
+            output = destination / safe_name
+            output.write_bytes(payload)
+            result.append(
+                AutoBookAttachment(
+                    path=str(output.relative_to(self._project_dir(book_id))),
+                    role=attachment.role,
+                    intent=attachment.intent,
+                    content_hash=hashlib.sha256(payload).hexdigest(),
+                )
+            )
+        return result
+
     def _write(self, state: AutoBookRunView) -> AutoBookRunView:
         state.updated_at = utc_now()
         path = self._state_path(state.book_id)
@@ -233,6 +277,9 @@ class AutoBookService:
             state.reserved_cost_usd = runtime.reserved_cost_usd
             state.confirmed_cost_usd = runtime.confirmed_cost_usd
             state.unknown_cost_usd = runtime.unknown_cost_usd
+            state.current_stage = runtime.current_stage
+            state.progress_completed = runtime.progress_completed
+            state.progress_total = runtime.progress_total
         except AutoBookRuntimeError:
             # Existing pre-0021 runs remain readable and resumable without rewriting user data.
             pass
@@ -243,7 +290,19 @@ class AutoBookService:
         if not path.exists():
             return None
         try:
-            return AutoBookRunView.model_validate_json(path.read_text(encoding="utf-8"))
+            state = AutoBookRunView.model_validate_json(path.read_text(encoding="utf-8"))
+            try:
+                runtime = self.runtime.get(book_id, state.run_id)
+                state.current_stage = runtime.current_stage
+                state.progress_completed = runtime.progress_completed
+                state.progress_total = runtime.progress_total
+                state.estimated_cost_usd = runtime.estimated_cost_usd
+                state.reserved_cost_usd = runtime.reserved_cost_usd
+                state.confirmed_cost_usd = runtime.confirmed_cost_usd
+                state.unknown_cost_usd = max(state.unknown_cost_usd, runtime.unknown_cost_usd)
+            except AutoBookRuntimeError:
+                pass
+            return state
         except (OSError, ValueError) as exc:
             raise AutoBookError("Auto Book state is unreadable") from exc
 
@@ -347,6 +406,7 @@ class AutoBookService:
             if context.author_profile is not None
             else request.author_name.strip()
         )
+        persisted_attachments = self._materialize_attachments(book_id, run_id, request.attachments)
         runtime = self.runtime.create_run(
             book_id,
             AutoBookIntent(
@@ -358,7 +418,7 @@ class AutoBookService:
                 model_choice=request.model_choice,
                 outputs=output_selection,
                 visuals=request.visuals,
-                attachments=request.attachments,
+                attachments=persisted_attachments,
                 max_cost_usd_per_request=request.max_cost_usd_per_request,
                 max_total_cost_usd=request.max_total_cost_usd,
                 max_requests=request.max_requests,

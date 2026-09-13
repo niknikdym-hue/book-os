@@ -1,3 +1,4 @@
+import base64
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,9 @@ from book_os_core.auto_book_runtime import (
     AutoBookStage,
     DurableAutoBookRuntime,
 )
+from book_os_core.auto_book import AutoBookService, AutoBookStartRequest
 from book_os_core.db import create_database
+from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway
 from book_os_core.projects import NewBookRequest, ProjectService
 
 
@@ -189,3 +192,32 @@ def test_attachment_role_never_silently_guesses_legacy_intent() -> None:
         intent="WRITE_FROM_ZERO",
     )
     assert attachment.intent == "WRITE_FROM_ZERO"
+
+
+def test_browser_attachment_is_persisted_without_base64_in_runtime(tmp_path: Path) -> None:
+    book_id = project(tmp_path)
+    payload = "Исходный материал автора".encode()
+    state = AutoBookService(
+        tmp_path,
+        ModelGateway({"openai": DeterministicFakeAdapter()}),
+    ).start(
+        book_id,
+        AutoBookStartRequest(
+            idea="Новая книга из явно приложенного материала",
+            author_name="Автор",
+            attachments=[
+                AutoBookAttachment(
+                    path="source.txt",
+                    role="SOURCE",
+                    content_base64=base64.b64encode(payload).decode(),
+                )
+            ],
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    runtime = DurableAutoBookRuntime(tmp_path).get(book_id, state.run_id)
+    attachment = runtime.intent.attachments[0]
+    assert attachment.content_base64 is None
+    assert attachment.content_hash is not None
+    assert attachment.path.startswith(f"inputs/{state.run_id}/")
+    assert (tmp_path / "projects" / book_id / attachment.path).read_bytes() == payload

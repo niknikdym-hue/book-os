@@ -79,6 +79,8 @@ it("keeps launch disabled until the required idea and authorization are present,
   expect(screen.getByRole("checkbox", { name: "Полная рукопись DOCX" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "Электронная книга EPUB" })).not.toBeChecked();
   expect(screen.getByRole("checkbox", { name: "Визуальные материалы — по необходимости" })).toBeChecked();
+  expect(screen.getByText("Добавить материалы — необязательно")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "GPT-6 Astra Extra High" })).toBeInTheDocument();
   const launch = screen.getByRole("button", {
     name: "Запуск станет доступен после заполнения обязательных полей",
   });

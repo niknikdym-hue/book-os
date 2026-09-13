@@ -48,6 +48,9 @@ type AutoBookState = {
     relative_path: string;
     status: "READY" | "FAILED" | "STALE";
   }>;
+  current_stage?: string;
+  progress_completed?: number;
+  progress_total?: number;
   started_at?: string | null;
   updated_at?: string | null;
 };
@@ -68,10 +71,13 @@ const PLANNING_CHOICES: readonly PlanningChoice[] = [
 ];
 
 const PROGRESS_STAGES = [
-  { label: "Основа книги", threshold: 18 },
-  { label: "Архитектура", threshold: 34 },
-  { label: "Главы", threshold: 82 },
-  { label: "Финальная проверка", threshold: 96 },
+  { label: "Замысел", threshold: 10 },
+  { label: "Исследование", threshold: 20 },
+  { label: "Архитектура", threshold: 32 },
+  { label: "Главы", threshold: 58 },
+  { label: "Редактура", threshold: 72 },
+  { label: "Факты", threshold: 82 },
+  { label: "Независимая критика", threshold: 92 },
   { label: "Готово", threshold: 100 },
 ] as const;
 
@@ -115,6 +121,9 @@ type Props = {
 function progressPercent(state: AutoBookState | null): number {
   if (!state) return 0;
   if (state.status === "DONE" || state.phase === "DONE") return 100;
+  if (state.progress_total && state.progress_total > 0) {
+    return Math.min(99, Math.round(((state.progress_completed ?? 0) * 100) / state.progress_total));
+  }
   if (state.phase === "BOOK_CONTRACT") return 8;
   if (state.phase === "APPROVE_BOOK_CONTRACT") return 18;
   if (state.phase === "ARCHITECTURE") return 25;
@@ -133,6 +142,21 @@ function progressPercent(state: AutoBookState | null): number {
 function progressMessage(state: AutoBookState | null): string {
   if (!state) return "Подготовка запуска";
   if (state.status === "DONE") return "Книга создана и финальная проверка завершена";
+  const runtimeMessages: Record<string, string> = {
+    RESEARCH: "Исследую тему и собираю доказательную основу",
+    CHAPTER_REVIEW: "Проверяю и дорабатываю главы",
+    MIDBOOK_AUDIT: "Проверяю середину книги и сквозную логику",
+    WHOLE_BOOK_EDIT: "Редактирую всю книгу как единое целое",
+    FACT_CHECK: "Проверяю факты и актуальность источников",
+    LITERARY_EDIT: "Делаю литературную редактуру",
+    VISUALS: "Готовлю полезные таблицы, схемы и иллюстрации",
+    INDEPENDENT_CRITIQUE: "Провожу независимую критику всей книги",
+    CORRECTION: "Исправляю замечания и повторяю проверки",
+    MASTER_AND_EXPORTS: "Собираю master и выбранные файлы",
+  };
+  if (state.current_stage && runtimeMessages[state.current_stage]) {
+    return runtimeMessages[state.current_stage];
+  }
   if (state.phase === "BOOK_CONTRACT" || state.phase === "APPROVE_BOOK_CONTRACT") {
     return "Формирую основу и контракт книги";
   }
@@ -148,6 +172,29 @@ function progressMessage(state: AutoBookState | null): string {
     return "Финальная редактура → BookBench → Literary Master → файл";
   }
   return "BOOK OS продолжает создание книги";
+}
+
+type AttachmentRole = "SOURCE" | "LEGACY_BOOK" | "VOICE_REFERENCE";
+type LegacyIntent = "WRITE_FROM_ZERO" | "DEEP_REWRITE" | "CONTINUE";
+
+type PendingAttachment = {
+  file: File;
+  role: AttachmentRole;
+  intent?: LegacyIntent;
+};
+
+async function encodeAttachment(item: PendingAttachment) {
+  const bytes = new Uint8Array(await item.file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return {
+    path: item.file.name,
+    role: item.role,
+    intent: item.intent ?? null,
+    content_base64: window.btoa(binary),
+  };
 }
 
 export function LaunchPlanningPanel({
@@ -178,6 +225,8 @@ export function LaunchPlanningPanel({
   const [error, setError] = useState<string | null>(null);
   const [changeRequest, setChangeRequest] = useState("");
   const [changeSaved, setChangeSaved] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [legacyIntent, setLegacyIntent] = useState<LegacyIntent>("WRITE_FROM_ZERO");
 
   const credentialAvailable = readiness?.openai_credential_state === "AVAILABLE";
   const contractApproved =
@@ -280,6 +329,7 @@ export function LaunchPlanningPanel({
     setAutoBusy(true);
     setError(null);
     try {
+      const encodedAttachments = await Promise.all(attachments.map(encodeAttachment));
       const started = await api<AutoBookState>(
         "POST",
         `/api/projects/${project.book_id}/auto-book/start`,
@@ -300,6 +350,7 @@ export function LaunchPlanningPanel({
             allow_generative_illustrations: allowGenerativeVisuals,
             include_optional_illustrations: includeOptionalVisuals,
           },
+          attachments: encodedAttachments,
           owner_authorizes_auto_progress: true,
         },
       );
@@ -446,6 +497,80 @@ export function LaunchPlanningPanel({
                 <small>Оставьте пустым для отдельной книги.</small>
               </label>
             </div>
+            <details className="advanced-settings attachment-settings">
+              <summary>Добавить материалы — необязательно</summary>
+              <p className="muted">
+                Укажите роль файла: источник подтверждает факты, старая книга задаёт исходный
+                материал, а эталон подачи помогает сохранить голос без копирования содержания.
+              </p>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Источники</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".txt,.md,.docx,.pdf,.rtf"
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      setAttachments((current) => [
+                        ...current.filter((item) => item.role !== "SOURCE"),
+                        ...files.map((file) => ({ file, role: "SOURCE" as const })),
+                      ]);
+                    }}
+                  />
+                  <small>Для исследования и проверки фактов. Файл не считается доказательством сам по себе.</small>
+                </label>
+                <label className="field">
+                  <span>Старая книга или рукопись</span>
+                  <input
+                    type="file"
+                    accept=".txt,.md,.docx,.pdf,.rtf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      setAttachments((current) => [
+                        ...current.filter((item) => item.role !== "LEGACY_BOOK"),
+                        ...(file ? [{ file, role: "LEGACY_BOOK" as const, intent: legacyIntent }] : []),
+                      ]);
+                    }}
+                  />
+                  <select
+                    aria-label="Что сделать со старой книгой"
+                    value={legacyIntent}
+                    onChange={(event) => {
+                      const intent = event.target.value as LegacyIntent;
+                      setLegacyIntent(intent);
+                      setAttachments((current) =>
+                        current.map((item) =>
+                          item.role === "LEGACY_BOOK" ? { ...item, intent } : item,
+                        ),
+                      );
+                    }}
+                  >
+                    <option value="WRITE_FROM_ZERO">Написать с нуля</option>
+                    <option value="DEEP_REWRITE">Глубоко переработать</option>
+                    <option value="CONTINUE">Продолжить рукопись</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Эталон подачи</span>
+                  <input
+                    type="file"
+                    accept=".txt,.md,.docx,.pdf,.rtf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      setAttachments((current) => [
+                        ...current.filter((item) => item.role !== "VOICE_REFERENCE"),
+                        ...(file ? [{ file, role: "VOICE_REFERENCE" as const }] : []),
+                      ]);
+                    }}
+                  />
+                  <small>Только манера и голос; кейсы, механизмы и композиция не копируются.</small>
+                </label>
+              </div>
+              {attachments.length > 0 && (
+                <p className="launch-summary">Добавлено файлов: {attachments.length}</p>
+              )}
+            </details>
           </section>
 
           <section className="planning-step primary-planning-step" aria-label="Что подготовить">

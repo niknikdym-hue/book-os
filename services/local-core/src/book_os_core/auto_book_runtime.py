@@ -80,6 +80,7 @@ class AutoBookAttachment(BaseModel):
     role: AttachmentRole
     intent: Literal["WRITE_FROM_ZERO", "DEEP_REWRITE", "CONTINUE"] | None = None
     content_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    content_base64: str | None = Field(default=None, max_length=40_000_000, repr=False)
 
     @model_validator(mode="after")
     def legacy_requires_intent(self) -> AutoBookAttachment:
@@ -665,6 +666,43 @@ class DurableAutoBookRuntime:
             engine.dispose()
         return self.get(book_id, run_id)
 
+    def complete_stage(
+        self,
+        book_id: str,
+        run_id: str,
+        stage: AutoBookStage,
+        *,
+        evidence: dict[str, Any] | None = None,
+        message: str | None = None,
+    ) -> AutoBookRuntimeView:
+        """Record one durable, idempotent zero-cost stage checkpoint.
+
+        A stage checkpoint is separate from a provider request: it proves that the stage's
+        repository-backed gate ran, while provider calls keep their own operation records.
+        """
+        ordinal = AUTO_BOOK_STAGES.index(stage)
+        operation = self.ensure_operation(
+            book_id,
+            run_id,
+            ordinal=ordinal,
+            stage=stage,
+            operation=f"STAGE_GATE:{stage.value}",
+            input_payload=evidence or {"stage": stage.value},
+        )
+        if operation.state != "SUCCEEDED":
+            self.complete_operation(
+                book_id,
+                run_id,
+                operation.operation_id,
+                output=evidence or {"passed": True},
+            )
+        return self.set_stage(
+            book_id,
+            run_id,
+            stage,
+            message=message or f"Этап завершён: {stage.value}",
+        )
+
     def mark_unknown(
         self,
         book_id: str,
@@ -808,6 +846,38 @@ class DurableAutoBookRuntime:
         content_hash = hashlib.sha256(payload).hexdigest()
         try:
             with engine.begin() as connection:
+                existing = (
+                    connection.execute(
+                        text(
+                            "SELECT * FROM auto_book_output_artifacts WHERE run_id=:run_id "
+                            "AND output_kind=:output_kind AND master_hash=:master_hash "
+                            "AND status='READY' ORDER BY created_at DESC,artifact_id DESC LIMIT 1"
+                        ),
+                        {
+                            "run_id": run_id,
+                            "output_kind": output_kind,
+                            "master_hash": master_hash,
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+                if existing is not None:
+                    row = existing
+                    return AutoBookArtifactView(
+                        artifact_id=str(row["artifact_id"]),
+                        run_id=str(row["run_id"]),
+                        output_kind=cast(AutoBookOutputKind, str(row["output_kind"])),
+                        master_hash=str(row["master_hash"]),
+                        profile_version=str(row["profile_version"]),
+                        exporter_version=str(row["exporter_version"]),
+                        relative_path=str(row["relative_path"]),
+                        content_hash=str(row["content_hash"]),
+                        byte_length=int(row["byte_length"]),
+                        status=cast(Any, str(row["status"])),
+                        qa=cast(dict[str, Any], json.loads(str(row["qa_json"]))),
+                        created_at=str(row["created_at"]),
+                    )
                 connection.execute(
                     text(
                         "UPDATE auto_book_output_artifacts SET status='STALE' WHERE run_id=:run_id "
@@ -850,6 +920,14 @@ class DurableAutoBookRuntime:
                     )
                     .mappings()
                     .one()
+                )
+                connection.execute(
+                    text(
+                        "UPDATE auto_book_runtime_runs SET progress_completed="
+                        "MIN(progress_total,progress_completed+1),updated_at=:updated_at "
+                        "WHERE run_id=:run_id"
+                    ),
+                    {"run_id": run_id, "updated_at": now},
                 )
         finally:
             engine.dispose()
