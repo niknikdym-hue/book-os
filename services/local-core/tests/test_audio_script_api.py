@@ -96,7 +96,7 @@ def test_authenticated_existing_book_audio_flow_keeps_source_and_requires_human_
     assert script["status"] == "PROPOSED"
     assert script["adaptation_mode"] == "SOURCE_FAITHFUL"
     assert script["source_hash"] != script["content_hash"]
-    source_path = tmp_path / "projects" / book_id / script["source_identity"]
+    source_path = tmp_path / "projects" / book_id / script["provenance"]["source_relative_path"]
     original = source_path.read_bytes()
 
     denied = client.post(

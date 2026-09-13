@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from html import escape
 import json
 from pathlib import Path
@@ -567,11 +568,39 @@ class AutoBookExporter:
                     text_relative_path=voice_relative_path,
                     text_payload=voice_payload,
                 )
-                output.write_bytes(
+                handoff_payload = (
+                    json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+                ).encode("utf-8")
+                handoff_hash = hashlib.sha256(handoff_payload).hexdigest()
+                existing_handoff = next(
                     (
-                        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-                    ).encode("utf-8")
+                        item
+                        for item in self.runtime.list_artifacts(book_id, run_id)
+                        if item.output_kind == "AUDIO_PRODUCTION_HANDOFF"
+                        and item.master_hash == audio_script.content_hash
+                        and item.status == "READY"
+                    ),
+                    None,
                 )
+                if existing_handoff is not None:
+                    expected_relative_path = str(
+                        output.relative_to(self.runtime.projects.projects_dir / book_id)
+                    )
+                    if (
+                        existing_handoff.relative_path != expected_relative_path
+                        or existing_handoff.content_hash != handoff_hash
+                    ):
+                        raise AudioScriptGateError(
+                            "the immutable handoff payload conflicts with its registered artifact"
+                        )
+                    if output.exists() and output.read_bytes() != handoff_payload:
+                        raise AudioScriptGateError(
+                            "the immutable handoff file differs from its registered artifact"
+                        )
+                if not output.exists():
+                    output.write_bytes(handoff_payload)
+                elif existing_handoff is None:
+                    output.write_bytes(handoff_payload)
                 qa = {
                     "passed": True,
                     "schema": "book-os-audiobook-handoff.v2",

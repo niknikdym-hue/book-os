@@ -876,6 +876,13 @@ class DurableAutoBookRuntime:
                 )
                 if existing is not None:
                     row = existing
+                    if output_kind == "AUDIO_PRODUCTION_HANDOFF" and (
+                        str(row["relative_path"]) != relative_path
+                        or str(row["content_hash"]) != content_hash
+                    ):
+                        raise AutoBookRuntimeError(
+                            "an immutable handoff artifact cannot be replaced with different bytes"
+                        )
                     return AutoBookArtifactView(
                         artifact_id=str(row["artifact_id"]),
                         run_id=str(row["run_id"]),

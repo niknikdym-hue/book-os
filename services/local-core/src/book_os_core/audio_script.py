@@ -811,9 +811,13 @@ class AudioScriptService:
                         text(
                             "SELECT source_hash FROM audio_scripts WHERE book_id=:book_id "
                             "AND source_kind='IMPORTED_SOURCE' "
+                            "AND source_identity=:source_identity "
                             "ORDER BY version DESC LIMIT 1"
                         ),
-                        {"book_id": book_id},
+                        {
+                            "book_id": book_id,
+                            "source_identity": str(row["source_identity"]),
+                        },
                     ).scalar_one_or_none()
                     resolved_source_hash = (
                         str(latest_import_hash) if latest_import_hash is not None else None
@@ -1049,52 +1053,83 @@ class AudioScriptService:
                 "only a current human-approved AudioScript may be handed off"
             )
         text_hash = hashlib.sha256(text_payload).hexdigest()
-        manifest = {
-            "handoff_version": "book-os-audiobook-handoff.v2",
-            "book_id": book_id,
-            "audio_script_id": script.audio_script_id,
-            "audio_script_version": script.version,
-            "audio_script_hash": script.content_hash,
-            "source_kind": script.source_kind,
-            "source_identity": script.source_identity,
-            "source_hash": script.source_hash,
-            "adaptation_mode": script.adaptation_mode,
-            "authority_status": script.status,
-            "approval": script.approval,
-            "quality_checks": [item.model_dump(mode="json") for item in script.quality_checks],
-            "transformation_map": [item.model_dump(mode="json") for item in script.transformations],
-            "pronunciation_ledger": [
-                item.model_dump(mode="json") for item in script.pronunciation_entries
-            ],
-            "recording_text": {
-                "encoding": "UTF-8",
-                "relative_path": text_relative_path,
-                "content_hash": text_hash,
-            },
-            "created_at": utc_now(),
-            "source_system": "BOOK OS",
-        }
         engine = self._engine(book_id)
         try:
             with engine.begin() as connection:
+                existing = (
+                    connection.execute(
+                        text(
+                            "SELECT * FROM audio_production_handoffs "
+                            "WHERE audio_script_id=:audio_script_id AND script_hash=:script_hash"
+                        ),
+                        {
+                            "audio_script_id": script.audio_script_id,
+                            "script_hash": script.content_hash,
+                        },
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is not None:
+                    if (
+                        str(existing["text_relative_path"]) != text_relative_path
+                        or str(existing["text_content_hash"]) != text_hash
+                    ):
+                        raise AudioScriptGateError(
+                            "an immutable handoff already exists with different recording text"
+                        )
+                    return cast(dict[str, Any], json.loads(str(existing["manifest_json"])))
+
+                handoff_id = new_ulid()
+                created_at = utc_now()
+                manifest = {
+                    "handoff_id": handoff_id,
+                    "handoff_version": "book-os-audiobook-handoff.v2",
+                    "book_id": book_id,
+                    "audio_script_id": script.audio_script_id,
+                    "audio_script_version": script.version,
+                    "audio_script_hash": script.content_hash,
+                    "source_kind": script.source_kind,
+                    "source_identity": script.source_identity,
+                    "source_hash": script.source_hash,
+                    "adaptation_mode": script.adaptation_mode,
+                    "authority_status": script.status,
+                    "approval": script.approval,
+                    "quality_checks": [
+                        item.model_dump(mode="json") for item in script.quality_checks
+                    ],
+                    "transformation_map": [
+                        item.model_dump(mode="json") for item in script.transformations
+                    ],
+                    "pronunciation_ledger": [
+                        item.model_dump(mode="json") for item in script.pronunciation_entries
+                    ],
+                    "recording_text": {
+                        "encoding": "UTF-8",
+                        "relative_path": text_relative_path,
+                        "content_hash": text_hash,
+                    },
+                    "created_at": created_at,
+                    "source_system": "BOOK OS",
+                }
                 connection.execute(
                     text(
-                        "INSERT OR REPLACE INTO audio_production_handoffs(handoff_id,"
+                        "INSERT INTO audio_production_handoffs(handoff_id,"
                         "audio_script_id,script_hash,manifest_json,text_relative_path,"
                         "text_content_hash,created_at) VALUES (:handoff_id,:audio_script_id,"
                         ":script_hash,:manifest_json,:text_relative_path,:text_content_hash,"
                         ":created_at)"
                     ),
                     {
-                        "handoff_id": new_ulid(),
+                        "handoff_id": handoff_id,
                         "audio_script_id": script.audio_script_id,
                         "script_hash": script.content_hash,
                         "manifest_json": canonical_json(cast(Any, manifest)),
                         "text_relative_path": text_relative_path,
                         "text_content_hash": text_hash,
-                        "created_at": manifest["created_at"],
+                        "created_at": created_at,
                     },
                 )
+                return manifest
         finally:
             engine.dispose()
-        return manifest

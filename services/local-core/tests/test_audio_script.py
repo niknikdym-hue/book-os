@@ -118,7 +118,7 @@ def test_audio_script_is_separate_versioned_human_approved_and_stale_without_des
     assert service.get(book_id, approved.audio_script_id).content_hash == approved.content_hash
 
 
-def test_new_imported_source_marks_prior_audio_script_stale_without_deleting_it(
+def test_imported_source_staleness_is_scoped_to_the_same_source_identity(
     tmp_path: Path,
 ) -> None:
     book_id = setup_book(tmp_path)
@@ -133,7 +133,7 @@ def test_new_imported_source_marks_prior_audio_script_stale_without_deleting_it(
         transformations=transformations(),
         provenance={"workflow": "EXISTING_TEXT_TO_AUDIO", "provider_calls": 0},
     )
-    second = service.create_proposal(
+    independent = service.create_proposal(
         book_id,
         source_kind="IMPORTED_SOURCE",
         source_identity="audio-sources/second.txt",
@@ -144,9 +144,24 @@ def test_new_imported_source_marks_prior_audio_script_stale_without_deleting_it(
         provenance={"workflow": "EXISTING_TEXT_TO_AUDIO", "provider_calls": 0},
     )
 
+    assert service.get(book_id, first.audio_script_id).stale_against_source is False
+    assert service.get(book_id, independent.audio_script_id).stale_against_source is False
+
+    first_v2 = service.create_proposal(
+        book_id,
+        source_kind="IMPORTED_SOURCE",
+        source_identity="audio-sources/first.txt",
+        source_hash="3" * 64,
+        adaptation_mode="SOURCE_FAITHFUL",
+        content=clean_content(),
+        transformations=transformations(),
+        provenance={"workflow": "EXISTING_TEXT_TO_AUDIO", "provider_calls": 0},
+    )
+
     assert service.get(book_id, first.audio_script_id).stale_against_source is True
-    assert service.get(book_id, second.audio_script_id).stale_against_source is False
-    assert len(service.list_scripts(book_id)) == 2
+    assert service.get(book_id, independent.audio_script_id).stale_against_source is False
+    assert service.get(book_id, first_v2.audio_script_id).stale_against_source is False
+    assert len(service.list_scripts(book_id)) == 3
     with pytest.raises(AudioScriptGateError, match="stale AudioScript"):
         service.approve(book_id, first.audio_script_id, human_actor="Owner")
 

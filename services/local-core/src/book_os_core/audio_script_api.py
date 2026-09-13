@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 import re
 from typing import Any, Callable, Literal, cast
+import unicodedata
 from zipfile import BadZipFile, ZipFile
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -81,6 +82,13 @@ class ExistingAudioPrepareView(BaseModel):
     run_id: str
     audio_script: AudioScriptView
     artifacts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+def _import_source_identity(filename: str) -> str:
+    normalized = unicodedata.normalize("NFKC", Path(filename).name).strip().casefold()
+    if not normalized:
+        raise AudioScriptGateError("source filename cannot resolve to an imported-source identity")
+    return f"imported-file:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
 
 
 def _extract_source(filename: str, payload: bytes) -> str:
@@ -211,6 +219,7 @@ def build_audio_script_router(
         try:
             source_text = _extract_source(payload.source_filename, raw)
             source_hash = hashlib.sha256(raw).hexdigest()
+            source_identity = _import_source_identity(payload.source_filename)
             safe_suffix = Path(payload.source_filename).suffix.casefold()
             source_dir = runtime.projects.projects_dir / book_id / "audio-sources"
             source_dir.mkdir(parents=True, exist_ok=True)
@@ -241,7 +250,8 @@ def build_audio_script_router(
                 (
                     item
                     for item in scripts.list_scripts(book_id)
-                    if item.source_hash == source_hash
+                    if item.source_identity == source_identity
+                    and item.source_hash == source_hash
                     and item.adaptation_mode == payload.adaptation_mode
                     and item.provenance.get("workflow") == "EXISTING_TEXT_TO_AUDIO"
                     and item.content.title == payload.title
@@ -290,7 +300,10 @@ def build_audio_script_router(
 
             intent = AutoBookIntent(
                 idea=f"Prepare existing source {payload.source_filename} for audio",
-                reader_hint=f"audio_adaptation_mode={payload.adaptation_mode}",
+                reader_hint=(
+                    f"audio_adaptation_mode={payload.adaptation_mode};"
+                    f"source_identity={source_identity}"
+                ),
                 author_name=payload.author,
                 outputs=AutoBookOutputSelection(
                     full_manuscript_docx=False,
@@ -320,7 +333,11 @@ def build_audio_script_router(
                     and item.path == source_relative_path
                     for item in latest.intent.attachments
                 )
-                and latest.intent.reader_hint == f"audio_adaptation_mode={payload.adaptation_mode}"
+                and latest.intent.reader_hint
+                == (
+                    f"audio_adaptation_mode={payload.adaptation_mode};"
+                    f"source_identity={source_identity}"
+                )
                 else None
             )
             if matching_run is not None and matching_run.status == "UNKNOWN_OUTCOME":
@@ -492,7 +509,7 @@ def build_audio_script_router(
             proposed = scripts.create_proposal(
                 book_id,
                 source_kind="IMPORTED_SOURCE",
-                source_identity=source_relative_path,
+                source_identity=source_identity,
                 source_hash=source_hash,
                 adaptation_mode=payload.adaptation_mode,
                 content=content,
@@ -501,6 +518,7 @@ def build_audio_script_router(
                     "workflow": "EXISTING_TEXT_TO_AUDIO",
                     "run_id": run.run_id,
                     "source_filename": Path(payload.source_filename).name,
+                    "source_relative_path": source_relative_path,
                     "source_hash": source_hash,
                     "model_runs": model_runs,
                 },

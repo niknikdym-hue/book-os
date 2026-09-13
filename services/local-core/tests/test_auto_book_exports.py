@@ -1,4 +1,7 @@
 from pathlib import Path
+import hashlib
+import json
+import sqlite3
 from zipfile import ZipFile
 
 from docx import Document
@@ -172,6 +175,38 @@ def test_selected_outputs_keep_sixteen_native_tables_and_audio_meaning(tmp_path:
     )
     assert approved.audio_script_id in handoff
     assert approved.source_hash in handoff
+    first_handoff_artifact = by_kind["AUDIO_PRODUCTION_HANDOFF"]
+    first_handoff_bytes = (project_dir / first_handoff_artifact.relative_path).read_bytes()
+
+    repeated = AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path)).export_selected(
+        book_id,
+        run_id,
+        master,
+        selection,
+        audio_script=approved,
+    )
+    repeated_handoff_artifact = next(
+        item for item in repeated.artifacts if item.output_kind == "AUDIO_PRODUCTION_HANDOFF"
+    )
+    repeated_handoff_bytes = (project_dir / repeated_handoff_artifact.relative_path).read_bytes()
+    first_manifest = json.loads(first_handoff_bytes)
+    repeated_manifest = json.loads(repeated_handoff_bytes)
+    assert repeated_handoff_artifact.artifact_id == first_handoff_artifact.artifact_id
+    assert repeated_handoff_artifact.content_hash == first_handoff_artifact.content_hash
+    assert repeated_handoff_bytes == first_handoff_bytes
+    assert repeated_manifest["handoff_id"] == first_manifest["handoff_id"]
+    assert (
+        hashlib.sha256(repeated_handoff_bytes).hexdigest() == repeated_handoff_artifact.content_hash
+    )
+    with sqlite3.connect(project_dir / "project.sqlite") as connection:
+        persisted = connection.execute(
+            "SELECT handoff_id,manifest_json FROM audio_production_handoffs "
+            "WHERE audio_script_id=? AND script_hash=?",
+            (approved.audio_script_id, approved.content_hash),
+        ).fetchall()
+    assert len(persisted) == 1
+    assert persisted[0][0] == first_manifest["handoff_id"]
+    assert json.loads(persisted[0][1]) == first_manifest
 
     pdf_payload = (project_dir / by_kind["READING_PDF"].relative_path).read_bytes()
     assert pdf_payload.startswith(b"%PDF-")
