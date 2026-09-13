@@ -72,7 +72,7 @@ def main() -> None:
 
     app.include_router(build_context_router(data_dir, require_token, gateway))
     app.include_router(build_launch_router(data_dir, require_token, gateway))
-    app.include_router(build_auto_book_router(data_dir, require_token, gateway))
+    app.include_router(build_auto_book_router(data_dir, require_token, gateway, research_gateway))
     app.include_router(build_series_studio_router(data_dir, require_token, gateway))
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

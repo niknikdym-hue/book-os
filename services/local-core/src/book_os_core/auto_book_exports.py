@@ -7,20 +7,29 @@ import re
 from typing import Any, Literal
 
 from docx import Document
+from docx.document import Document as DocumentObject
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 import ebooklib  # type: ignore[import-untyped]
 from ebooklib import epub  # type: ignore[import-untyped]
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, Field, model_validator
-from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Image as PdfImage
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER  # type: ignore[import-untyped]
+from reportlab.lib.pagesizes import A4  # type: ignore[import-untyped]
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[import-untyped]
+from reportlab.lib.units import mm  # type: ignore[import-untyped]
+from reportlab.pdfbase import pdfmetrics  # type: ignore[import-untyped]
+from reportlab.pdfbase.ttfonts import TTFont  # type: ignore[import-untyped]
+from reportlab.platypus import Image as PdfImage  # type: ignore[import-untyped]
+from reportlab.platypus import (  # type: ignore[import-untyped]
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+from reportlab.lib import colors  # type: ignore[import-untyped]
 
 from .authority import canonical_json
 from .auto_book_runtime import (
@@ -153,7 +162,7 @@ class AutoBookExporter:
         return ImageFont.truetype(str(path), size=size)
 
     @staticmethod
-    def _apply_docx_styles(document: Document) -> None:
+    def _apply_docx_styles(document: DocumentObject) -> None:
         normal = document.styles["Normal"]
         normal.font.name = "Arial"
         normal.font.size = Pt(11)
@@ -163,7 +172,7 @@ class AutoBookExporter:
             style.font.size = Pt(size)
 
     @staticmethod
-    def _add_bibliography(document: Document, bibliography: list[str]) -> None:
+    def _add_bibliography(document: DocumentObject, bibliography: list[str]) -> None:
         if not bibliography:
             return
         document.add_page_break()
@@ -248,15 +257,15 @@ class AutoBookExporter:
                     continue
                 image_path = self._render_visual(visual, visual_dir)
                 document.add_picture(str(image_path), width=Inches(6.2))
-                paragraph = document.paragraphs[-1]
-                paragraph.alignment = 1
+                picture_paragraph = document.paragraphs[-1]
+                picture_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 document.add_paragraph(f"{visual.caption}\nАльтернативный текст: {visual.alt_text}")
                 expected_visuals += 1
         if not include_extras_only:
             self._add_bibliography(document, master.bibliography)
-        document.save(output)
+        document.save(str(output))
 
-        reopened = Document(output)
+        reopened = Document(str(output))
         qa = {
             "passed": len(reopened.tables) == expected_tables,
             "native_table_count": len(reopened.tables),

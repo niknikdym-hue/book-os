@@ -26,7 +26,7 @@ from .model_routing import ModelRoutingService
 from .prompts import PromptTemplate
 
 
-SeriesModelChoice = Literal["ASTRA_MEDIUM", "ASTRA_HIGH", "ASTRA_XHIGH", "SOL"]
+SeriesModelChoice = Literal["AUTO", "ASTRA_MEDIUM", "ASTRA_HIGH", "ASTRA_XHIGH", "SOL"]
 
 
 class SeriesStudioError(RuntimeError):
@@ -36,7 +36,7 @@ class SeriesStudioError(RuntimeError):
 class SeriesCreateWithAIRequest(BaseModel):
     author_profile_id: str = Field(min_length=26, max_length=26)
     brief: str = Field(min_length=20, max_length=8000)
-    model_choice: SeriesModelChoice = "ASTRA_HIGH"
+    model_choice: SeriesModelChoice = "AUTO"
     max_cost_usd: float = Field(default=1.5, gt=0, le=20)
     max_output_tokens: int = Field(default=5000, ge=1200, le=8000)
     owner_authorizes_paid_call: Literal[True]
@@ -44,6 +44,7 @@ class SeriesCreateWithAIRequest(BaseModel):
 
 class SeriesCreateWithAIView(BaseModel):
     profile: ProfileView
+    concepts: list[ProfileView] = Field(min_length=3, max_length=5)
     provider: Literal["openai"] = "openai"
     model: str
     reasoning_effort: ReasoningEffort | None
@@ -56,13 +57,15 @@ SERIES_PROFILE_PROPOSAL_V1 = PromptTemplate(
     version="1.0.0",
     developer_text=(
         "You are the bounded BOOK OS Series Planner. Propose one professional nonfiction Series "
-        "Profile from the user's brief and approved Author Profile. Every planned book must be a "
+        "Profile from the user's brief and approved Author Profile. Return 3 to 5 genuinely "
+        "different series concepts, not a random list of titles. Every planned book must be a "
         "genuinely unique book, not a clone or variant. The series may share quality, voice and "
         "positioning, but books must not repeat theses, mechanisms, arguments, research functions, "
         "examples, cases, scenes, metaphors, analogies, practical tools, composition patterns or "
         "distinctive wording. Reserve future-book material explicitly. Return outer JSON matching "
         "the SectionDraft schema; its `text` field must contain ONLY a valid JSON object with these "
-        "keys: series_name, purpose_positioning, planned_books, thematic_territories, "
+        "top-level key `concepts`; its value is an array of 3 to 5 objects. Every concept object "
+        "has these keys: series_name, purpose_positioning, planned_books, thematic_territories, "
         "shared_invariants, future_book_reservations, cross_book_uniqueness_rules, "
         "exclusion_dimensions, prewriting_overlap_requirements, whole_book_audit_requirements. "
         "Do not include author_profile_id; BOOK OS binds it deterministically. For Russian input, "
@@ -107,6 +110,10 @@ class SeriesStudioService:
 
     @staticmethod
     def _choice(choice: SeriesModelChoice) -> tuple[str, ReasoningEffort | None]:
+        if choice == "AUTO":
+            # Series architecture is a high-risk whole-system task; the deterministic policy
+            # starts at Astra High instead of paying for a weak throwaway attempt.
+            return "gpt-6-astra", "high"
         if choice == "ASTRA_MEDIUM":
             return "gpt-6-astra", "medium"
         if choice == "ASTRA_XHIGH":
@@ -227,19 +234,33 @@ class SeriesStudioService:
         try:
             outer = SectionDraftOutput.model_validate(result.output)
             raw = self._decode_inner_json(outer.text)
-            raw["author_profile_id"] = author.profile_id
-            proposed = SeriesProfileContent.model_validate(raw)
+            raw_concepts = raw.get("concepts")
+            if not isinstance(raw_concepts, list) or not 3 <= len(raw_concepts) <= 5:
+                raise ModelOutputError("series planner must return 3 to 5 concepts")
+            proposed: list[SeriesProfileContent] = []
+            for raw_concept in raw_concepts:
+                if not isinstance(raw_concept, dict):
+                    raise ModelOutputError("each series concept must be an object")
+                concept = dict(raw_concept)
+                concept["author_profile_id"] = author.profile_id
+                proposed.append(SeriesProfileContent.model_validate(concept))
         except ValidationError as exc:
             raise ModelOutputError(
                 "series planner output failed Series Profile validation"
             ) from exc
 
-        hardened = self._harden(proposed)
-        profile = self.profiles.create_profile(
-            ProfileCreateRequest(kind="SERIES", content=hardened.model_dump(mode="json"))
-        )
+        profiles = [
+            self.profiles.create_profile(
+                ProfileCreateRequest(
+                    kind="SERIES",
+                    content=self._harden(concept).model_dump(mode="json"),
+                )
+            )
+            for concept in proposed
+        ]
         return SeriesCreateWithAIView(
-            profile=profile,
+            profile=profiles[0],
+            concepts=profiles,
             model=model,
             reasoning_effort=effort,
             provider_run_id=result.provider_run_id,

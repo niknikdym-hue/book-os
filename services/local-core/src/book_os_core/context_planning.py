@@ -64,6 +64,7 @@ class ContextAwarePlanningService(PlanningService):
         max_output_tokens: int,
         max_cost_usd: float,
         reasoning_effort: ReasoningEffort | None = None,
+        untrusted_context: list[str] | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, Any], str | None]:
         book_context = self._book_context_payload(book_id)
         return super()._run(
@@ -110,4 +111,5 @@ class ContextAwarePlanningService(PlanningService):
             max_output_tokens=max_output_tokens,
             max_cost_usd=max_cost_usd,
             reasoning_effort=reasoning_effort,
+            untrusted_context=untrusted_context,
         )

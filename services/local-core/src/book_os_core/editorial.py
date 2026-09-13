@@ -643,6 +643,50 @@ class EditorialService:
             )
         return items
 
+    def supersede_stale_findings(
+        self,
+        book_id: str,
+        *,
+        actor: str = "system:auto-book-correction",
+    ) -> list[str]:
+        """Close only findings whose exact authority baseline has been replaced.
+
+        This is not a quality waiver: current-baseline diagnostics must run again before release.
+        """
+        stale_ids: list[str] = []
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                rows = list(
+                    connection.execute(
+                        text(
+                            "SELECT f.finding_id FROM editorial_findings f "
+                            "JOIN authority_heads h ON h.entity_id=f.target_entity_id "
+                            "WHERE f.book_id=:book AND f.status='OPEN' "
+                            "AND (h.revision_id!=f.base_revision_id "
+                            "OR h.revision_hash!=f.base_revision_hash)"
+                        ),
+                        {"book": book_id},
+                    ).scalars()
+                )
+            for finding_id in rows:
+                normalized = str(finding_id)
+                self._transition_finding(
+                    engine,
+                    normalized,
+                    new_state="SUPERSEDED",
+                    actor=actor,
+                    actor_kind="SYSTEM",
+                    reason=(
+                        "The exact manuscript baseline was replaced by an authorized correction; "
+                        "fresh diagnostics are required."
+                    ),
+                )
+                stale_ids.append(normalized)
+        finally:
+            engine.dispose()
+        return stale_ids
+
     def _transition_finding(
         self,
         engine: Engine,

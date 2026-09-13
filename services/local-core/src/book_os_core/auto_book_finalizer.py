@@ -14,7 +14,7 @@ from .authority import AuthorityService, new_ulid
 from .authority_types import JSONValue
 from .auto_book import AutoBookGateError, AutoBookRunView
 from .auto_book_exports import AutoBookExporter, MasterChapter, StructuredBookMaster
-from .auto_book_quality import AutoBookQualityEngine, AutoQualityFinding
+from .auto_book_quality import AutoBookQualityEngine, AutoQualityFinding, AutoQualityReport
 from .auto_book_runtime import AutoBookRuntimeError, AutoBookStage, DurableAutoBookRuntime
 from .book_context import BookContextService
 from .bookbench import BookBenchReport, BookBenchService
@@ -35,6 +35,7 @@ from .model_routing import ModelRoutingService
 from .projects import ProjectService
 from .prompts import PromptTemplate
 from .series_production import ProductionCheckpointRequest, SeriesProductionService
+from .series_workspace import SeriesWorkspaceGateError, SeriesWorkspaceService
 
 
 AUTO_BOOK_FINAL_EDIT_V1 = PromptTemplate(
@@ -95,6 +96,7 @@ class AutoBookFinalizer:
         self.bookbench = BookBenchService(data_dir)
         self.literary = LiteraryMasterService(data_dir)
         self.series = SeriesProductionService(data_dir)
+        self.series_workspaces = SeriesWorkspaceService(data_dir)
         self.runtime = DurableAutoBookRuntime(data_dir)
         self.exporter = AutoBookExporter(data_dir, self.runtime)
         self.quality = AutoBookQualityEngine()
@@ -211,13 +213,15 @@ class AutoBookFinalizer:
         state: AutoBookRunView,
         unit: dict[str, Any],
         book_context: dict[str, Any],
+        *,
+        correction_findings: list[dict[str, Any]] | None = None,
     ) -> None:
         engine = self._engine(book_id)
         authority = AuthorityService(engine)
         try:
             entity_id = str(unit["authority_entity_id"])
             head = authority.get_head(entity_id)
-            if head.status in {"APPROVED", "LOCKED"}:
+            if head.status == "LOCKED":
                 return
             revision = authority.get_revision(head.revision_id)
             content = cast(dict[str, Any], revision["content"])
@@ -256,7 +260,13 @@ class AutoBookFinalizer:
                     section_objective=(
                         f"Final publication edit of chapter {unit['chapter_ordinal']}: "
                         f"{unit['working_title']}. Preserve meaning and supported facts; make the "
-                        "approved chapter function explicit and produce only finished book prose."
+                        "approved chapter function explicit and produce only finished book prose. "
+                        + (
+                            "Resolve only the supplied verified correction findings and do not "
+                            "introduce unrelated changes."
+                            if correction_findings
+                            else ""
+                        )
                     ),
                     authority_inputs=[
                         AuthorityInputRef(
@@ -274,6 +284,7 @@ class AutoBookFinalizer:
                         "current_manuscript_text": current_text,
                         "chapter_contract": contract,
                         "book_context": book_context,
+                        "required_corrections": correction_findings or [],
                     },
                     task_payload={
                         "auto_book_run_id": state.run_id,
@@ -281,6 +292,7 @@ class AutoBookFinalizer:
                         "selection_scope": selection_scope,
                         "routing_rationale": rationale,
                         "final_editorial_pass": True,
+                        "targeted_correction": bool(correction_findings),
                     },
                     reasoning_effort=effort,
                     max_output_tokens=12_000,
@@ -336,7 +348,8 @@ class AutoBookFinalizer:
         finally:
             engine.dispose()
 
-    def _run_editorial_gates(self, book_id: str) -> None:
+    def _run_editorial_gates(self, book_id: str) -> list[Any]:
+        self.editorial.supersede_stale_findings(book_id)
         project = self.projects.get_project(book_id)
         for chapter in project.chapters:
             self.diagnostics.run_developmental(book_id, chapter.chapter_id)
@@ -347,12 +360,52 @@ class AutoBookFinalizer:
             for finding in self.editorial.list_findings(book_id, status="OPEN")
             if finding.severity in {"MAJOR", "CRITICAL"}
         ]
-        if blocking:
-            summary = "; ".join(
-                f"{item.role}/{item.category}: {item.diagnosis}" for item in blocking[:6]
-            )
-            raise AutoBookGateError(
-                "final editorial review requires rework before Literary Master: " + summary
+        return blocking
+
+    @staticmethod
+    def _finding_payload(findings: list[Any]) -> list[dict[str, Any]]:
+        return [
+            {
+                "finding_id": item.finding_id,
+                "role": item.role,
+                "category": item.category,
+                "severity": item.severity,
+                "location": (f"chapter:{item.chapter_id}" if item.chapter_id else item.target_kind),
+                "diagnosis": item.diagnosis,
+                "required_action": item.why,
+            }
+            for item in findings
+        ]
+
+    def _targeted_correction(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        units: list[dict[str, Any]],
+        book_context: dict[str, Any],
+        findings: list[dict[str, Any]],
+    ) -> None:
+        chapter_ids = {
+            value.split(":", 1)[1]
+            for item in findings
+            if (value := str(item.get("location", ""))).startswith("chapter:")
+        }
+        targets = [
+            unit for unit in units if not chapter_ids or str(unit.get("chapter_id")) in chapter_ids
+        ]
+        for unit in targets:
+            relevant = [
+                item
+                for item in findings
+                if not chapter_ids
+                or str(item.get("location", "")) in {f"chapter:{unit.get('chapter_id')}", "BOOK"}
+            ]
+            self._final_edit_unit(
+                book_id,
+                state,
+                unit,
+                book_context,
+                correction_findings=relevant or findings,
             )
 
     def _run_bookbench(self, book_id: str) -> BookBenchReport:
@@ -686,7 +739,7 @@ class AutoBookFinalizer:
         book_id: str,
         state: AutoBookRunView,
         snapshot: StructuredBookMaster,
-    ) -> None:
+    ) -> AutoQualityReport:
         cap = self._remaining_cap(state)
         manual_model, manual_effort, mode = self._choice(state)
         choice = self.routing.resolve(
@@ -776,10 +829,7 @@ class AutoBookFinalizer:
                 independent=True,
             ),
         )
-        if not self.quality.may_complete(quality_report):
-            raise AutoBookGateError(
-                "independent exact-snapshot review requires targeted rework before Literary Master"
-            )
+        return quality_report
 
     def finalize(
         self,
@@ -789,17 +839,22 @@ class AutoBookFinalizer:
         prepare_litres_docx: bool,
     ) -> AutoBookFinalizationView:
         book_context = self._book_context(book_id)
+        series_profile = book_context.get("series_profile")
+        if isinstance(series_profile, dict) and series_profile.get("profile_id"):
+            series_id = str(series_profile["profile_id"])
+            if self.series_workspaces.books(series_id):
+                try:
+                    self.series_workspaces.require_current_map(series_id)
+                except SeriesWorkspaceGateError as exc:
+                    raise AutoBookGateError(str(exc)) from exc
         units = self._current_units(book_id)
         if not units:
             raise AutoBookGateError("final editorial pass requires manuscript units")
         for stage in (
             AutoBookStage.DEFINITION,
-            AutoBookStage.RESEARCH,
             AutoBookStage.ARCHITECTURE,
             AutoBookStage.CHAPTER_CONTEXT,
             AutoBookStage.WRITING,
-            AutoBookStage.CHAPTER_REVIEW,
-            AutoBookStage.MIDBOOK_AUDIT,
         ):
             self.runtime.complete_stage(
                 book_id,
@@ -807,6 +862,25 @@ class AutoBookFinalizer:
                 stage,
                 evidence={"verified_from_current_authority": True, "stage": stage.value},
             )
+        self.runtime.complete_stage(
+            book_id,
+            state.run_id,
+            AutoBookStage.RESEARCH,
+            evidence={
+                "source_identities_imported": state.research_source_count,
+                "attached_sources_are_not_automatically_evidence": True,
+            },
+        )
+        self.runtime.complete_stage(
+            book_id,
+            state.run_id,
+            AutoBookStage.MIDBOOK_AUDIT,
+            evidence={
+                "completed_during_writing": state.midbook_audit_completed,
+                "not_applicable_single_chapter": len(self.projects.get_project(book_id).chapters)
+                == 1,
+            },
+        )
         self.runtime.set_stage(
             book_id,
             state.run_id,
@@ -820,11 +894,42 @@ class AutoBookFinalizer:
         self.runtime.set_stage(
             book_id,
             state.run_id,
+            AutoBookStage.CHAPTER_REVIEW,
+            message="Повторная проверка каждой главы после сквозной редактуры",
+        )
+        self.runtime.set_stage(
+            book_id,
+            state.run_id,
             AutoBookStage.FACT_CHECK,
             message="Проверка фактов и актуальности evidence",
         )
 
-        self._run_editorial_gates(book_id)
+        blocking = self._run_editorial_gates(book_id)
+        correction_passes = 0
+        if blocking:
+            self.runtime.set_stage(
+                book_id,
+                state.run_id,
+                AutoBookStage.CORRECTION,
+                message="Точечное исправление замечаний редакционной проверки",
+            )
+            self._targeted_correction(
+                book_id,
+                state,
+                units,
+                book_context,
+                self._finding_payload(blocking),
+            )
+            correction_passes += 1
+            blocking = self._run_editorial_gates(book_id)
+        if blocking:
+            summary = "; ".join(
+                f"{item.role}/{item.category}: {item.diagnosis}" for item in blocking[:6]
+            )
+            raise AutoBookGateError(
+                "bounded correction did not clear final editorial review: " + summary
+            )
+        self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.CHAPTER_REVIEW)
         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.FACT_CHECK)
         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.LITERARY_EDIT)
         self.runtime.complete_stage(
@@ -845,13 +950,43 @@ class AutoBookFinalizer:
             message="Независимый содержательный разбор exact snapshot",
         )
         snapshot = self._structured_current(book_id, book_context)
-        self._independent_critique(book_id, state, snapshot)
+        quality_report = self._independent_critique(book_id, state, snapshot)
+        if not self.quality.may_complete(quality_report):
+            self.runtime.set_stage(
+                book_id,
+                state.run_id,
+                AutoBookStage.CORRECTION,
+                message="Исправление замечаний независимого критика",
+            )
+            self._targeted_correction(
+                book_id,
+                state,
+                units,
+                book_context,
+                [item.model_dump(mode="json") for item in quality_report.findings],
+            )
+            correction_passes += 1
+            blocking = self._run_editorial_gates(book_id)
+            if blocking:
+                raise AutoBookGateError(
+                    "independent correction introduced unresolved editorial blockers"
+                )
+            report = self._run_bookbench(book_id)
+            self._record_adversarial_review(book_id, report)
+            snapshot = self._structured_current(book_id, book_context)
+            quality_report = self._independent_critique(book_id, state, snapshot)
+        if not self.quality.may_complete(quality_report):
+            raise AutoBookGateError("bounded independent correction did not clear release findings")
         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.INDEPENDENT_CRITIQUE)
         self.runtime.complete_stage(
             book_id,
             state.run_id,
             AutoBookStage.CORRECTION,
-            evidence={"blocking_findings_remaining": 0},
+            evidence={
+                "blocking_findings_remaining": 0,
+                "bounded_correction_passes": correction_passes,
+                "maximum_correction_passes": 2,
+            },
         )
 
         self.runtime.set_stage(

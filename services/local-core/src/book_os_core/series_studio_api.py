@@ -13,6 +13,16 @@ from .series_reference import (
     SeriesReferenceUploadRequest,
 )
 from .series_studio import SeriesCreateWithAIRequest, SeriesStudioError, SeriesStudioService
+from .series_workspace import (
+    SeriesBookCreateRequest,
+    SeriesCreateRequest,
+    SeriesExportSelection,
+    SeriesImportRequest,
+    SeriesPresetRequest,
+    SeriesWorkspaceError,
+    SeriesWorkspaceGateError,
+    SeriesWorkspaceService,
+)
 
 
 def build_series_studio_router(
@@ -22,6 +32,7 @@ def build_series_studio_router(
 ) -> APIRouter:
     studio = SeriesStudioService(data_dir, gateway)
     references = SeriesReferenceService(data_dir)
+    workspaces = SeriesWorkspaceService(data_dir)
     router = APIRouter(dependencies=[Depends(require_token)])
 
     @router.post("/api/series/create-with-ai")
@@ -63,6 +74,124 @@ def build_series_studio_router(
         except BookContextGateError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (SeriesReferenceError, BookContextError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/api/series/workspaces")
+    def list_series_workspaces() -> list[dict[str, object]]:
+        return [item.model_dump(mode="json") for item in workspaces.workspaces()]
+
+    @router.post("/api/series/workspaces")
+    def create_series_workspace(payload: SeriesCreateRequest) -> dict[str, object]:
+        try:
+            return workspaces.create_series(payload).model_dump(mode="json")
+        except (SeriesWorkspaceError, BookContextError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/presets/services-promotion")
+    def create_services_promotion_preset(payload: SeriesPresetRequest) -> dict[str, object]:
+        try:
+            return workspaces.create_services_promotion_preset(payload).model_dump(mode="json")
+        except ProfileNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/books")
+    def add_series_book(
+        series_profile_id: str,
+        payload: SeriesBookCreateRequest,
+    ) -> dict[str, object]:
+        try:
+            return workspaces.add_book(series_profile_id, payload).model_dump(mode="json")
+        except ProfileNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/books/{book_id}/passport/approve")
+    def approve_book_passport(
+        series_profile_id: str,
+        book_id: str,
+        payload: dict[str, str],
+    ) -> dict[str, object]:
+        try:
+            return workspaces.approve_book_passport(
+                series_profile_id,
+                book_id,
+                payload.get("passport_hash", ""),
+                payload.get("reason", ""),
+            ).model_dump(mode="json")
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/books/{book_id}/imports")
+    def import_series_book(
+        series_profile_id: str,
+        book_id: str,
+        payload: SeriesImportRequest,
+    ) -> dict[str, object]:
+        try:
+            return workspaces.import_source(series_profile_id, book_id, payload).model_dump(
+                mode="json"
+            )
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/analyze")
+    def analyze_series(series_profile_id: str) -> dict[str, object]:
+        try:
+            return workspaces.analyze(series_profile_id).model_dump(mode="json")
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/maps/{map_hash}/approve")
+    def approve_series_map(
+        series_profile_id: str,
+        map_hash: str,
+        payload: dict[str, str],
+    ) -> dict[str, object]:
+        try:
+            return workspaces.approve_map(
+                series_profile_id,
+                map_hash,
+                payload.get("reason", ""),
+            ).model_dump(mode="json")
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/books/{book_id}/archive")
+    def archive_series_book(series_profile_id: str, book_id: str) -> dict[str, object]:
+        try:
+            return workspaces.archive_book(series_profile_id, book_id).model_dump(mode="json")
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.delete("/api/series/{series_profile_id}/books/{book_id}/imports/{source_id}")
+    def delete_series_import(
+        series_profile_id: str, book_id: str, source_id: str
+    ) -> dict[str, object]:
+        try:
+            return workspaces.delete_import(series_profile_id, book_id, source_id).model_dump(
+                mode="json"
+            )
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/exports")
+    def export_series(series_profile_id: str, payload: SeriesExportSelection) -> dict[str, object]:
+        try:
+            return workspaces.export_series(series_profile_id, payload).model_dump(mode="json")
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return router

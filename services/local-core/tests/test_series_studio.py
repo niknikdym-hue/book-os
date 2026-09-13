@@ -42,9 +42,13 @@ class SeriesProposalAdapter:
             "prewriting_overlap_requirements": [],
             "whole_book_audit_requirements": [],
         }
+        concepts = [
+            {**proposal, "series_name": f"{proposal['series_name']} — концепция {index}"}
+            for index in range(1, 4)
+        ]
         return ModelAdapterResult(
             provider_run_id="series-proposal-run",
-            output={"text": json.dumps(proposal, ensure_ascii=False), "notes": []},
+            output={"text": json.dumps({"concepts": concepts}, ensure_ascii=False), "notes": []},
             usage={"input_tokens": 300, "output_tokens": 450},
         )
 
@@ -122,8 +126,9 @@ def test_ai_series_proposal_is_hardened_against_cross_book_cloning(tmp_path: Pat
     assert result.model == "gpt-5.6-sol"
     assert result.reasoning_effort is None
     assert result.profile.status == "DRAFT"
+    assert len(result.concepts) == 3
     content = result.profile.content
-    assert content["series_name"] == "Секреты продвижения услуг"
+    assert content["series_name"].startswith("Секреты продвижения услуг")
     assert (
         "Запрещён смысловой overlap с другими книгами серии."
         in content["cross_book_uniqueness_rules"]

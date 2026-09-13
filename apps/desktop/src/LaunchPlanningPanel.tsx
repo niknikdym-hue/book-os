@@ -48,6 +48,7 @@ type AutoBookState = {
     relative_path: string;
     status: "READY" | "FAILED" | "STALE";
   }>;
+  research_source_count?: number;
   current_stage?: string;
   progress_completed?: number;
   progress_total?: number;
@@ -160,6 +161,7 @@ function progressMessage(state: AutoBookState | null): string {
   if (state.phase === "BOOK_CONTRACT" || state.phase === "APPROVE_BOOK_CONTRACT") {
     return "Формирую основу и контракт книги";
   }
+  if (state.phase === "RESEARCH") return "Исследую тему и собираю карту источников";
   if (state.phase === "ARCHITECTURE" || state.phase === "APPROVE_ARCHITECTURE") {
     return "Строю архитектуру книги";
   }

@@ -365,7 +365,7 @@ class ModelRoutingService:
                 ) from exc
             effort: WorkLevel | None = "high" if auto_model == "gpt-6-astra" else None
             baseline_complexity: TaskComplexity = "COMPLEX"
-            escalation = "Escalate only after a recorded quality failure"
+            escalation: str | None = "Escalate only after a recorded quality failure"
         else:
             auto_model, effort, baseline_complexity, escalation = policy
         effective_complexity = complexity or baseline_complexity

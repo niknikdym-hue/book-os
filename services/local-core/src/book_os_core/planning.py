@@ -54,6 +54,7 @@ class BookContractPlanningRequest(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int = Field(default=2600, ge=500, le=8000)
     max_cost_usd: float = Field(gt=0)
+    untrusted_context: list[str] = Field(default_factory=list, max_length=40)
 
 
 class ArchitecturePlanningRequest(BaseModel):
@@ -63,6 +64,7 @@ class ArchitecturePlanningRequest(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int = Field(default=5000, ge=1000, le=12000)
     max_cost_usd: float = Field(gt=0)
+    untrusted_context: list[str] = Field(default_factory=list, max_length=40)
 
 
 class ChapterContractPlanningRequest(BaseModel):
@@ -72,6 +74,7 @@ class ChapterContractPlanningRequest(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int = Field(default=3200, ge=500, le=8000)
     max_cost_usd: float = Field(gt=0)
+    untrusted_context: list[str] = Field(default_factory=list, max_length=40)
 
 
 class PlanningProposalView(BaseModel):
@@ -197,6 +200,7 @@ class PlanningService:
         max_output_tokens: int,
         max_cost_usd: float,
         reasoning_effort: ReasoningEffort | None = None,
+        untrusted_context: list[str] | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, Any], str | None]:
         engine = self._engine(book_id)
         run_id = new_ulid()
@@ -227,6 +231,7 @@ class PlanningService:
                     section_objective=objective,
                     authority_inputs=authority_inputs,
                     authoritative_context=authoritative_context,
+                    untrusted_context=untrusted_context or [],
                     reasoning_effort=reasoning_effort,
                     max_output_tokens=max_output_tokens,
                     max_cost_usd=max_cost_usd,
@@ -284,6 +289,7 @@ class PlanningService:
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
             reasoning_effort=request.reasoning_effort,
+            untrusted_context=request.untrusted_context,
         )
         try:
             proposal = BookContractProposalOutput.model_validate(raw)
@@ -353,6 +359,7 @@ class PlanningService:
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
             reasoning_effort=request.reasoning_effort,
+            untrusted_context=request.untrusted_context,
         )
         try:
             proposal = BookArchitectureProposalOutput.model_validate(raw)
@@ -465,6 +472,7 @@ class PlanningService:
             max_output_tokens=request.max_output_tokens,
             max_cost_usd=request.max_cost_usd,
             reasoning_effort=request.reasoning_effort,
+            untrusted_context=request.untrusted_context,
         )
         try:
             proposal = ChapterContractProposalOutput.model_validate(raw)
