@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from book_os_core.book_context import ProfileCreateRequest, ProfileRegistry
 from book_os_core.db import create_database
+from book_os_core.projects import BookArchitecturePayload, BookContractPayload, ProjectService
 from book_os_core.series_workspace import (
     SeriesBookCreateRequest,
     SeriesCreateRequest,
@@ -118,6 +119,88 @@ def test_semantic_overlap_blocks_owner_map_approval(tmp_path: Path) -> None:
     assert result.status == "BLOCKING"
     with pytest.raises(SeriesWorkspaceGateError, match="blocking overlap"):
         service.approve_map(series_id, result.map_hash, "Одобряю")
+
+
+def test_current_architecture_clone_is_a_persisted_pre_writing_blocker(tmp_path: Path) -> None:
+    service, series_id = new_series(tmp_path)
+    first = service.add_book(
+        series_id,
+        book("Первая территория", 1, "Диагностировать отдельную проблему спроса"),
+    )
+    second = service.add_book(
+        series_id,
+        book("Вторая территория", 2, "Настроить отдельную систему удержания"),
+    )
+    projects = ProjectService(tmp_path)
+    contract = BookContractPayload(
+        reader="Владелец профессиональной практики",
+        reader_problem="Неясно, как устроен отдельный механизм книги",
+        central_promise="Получить проверяемую модель принятия решений",
+        central_thesis="Система становится управляемой через явные критерии",
+        unique_angle="Разобрать причинную конструкцию на наблюдаемых решениях",
+        reader_trajectory="От симптомов к самостоятельной диагностике",
+        explicit_exclusions=["Не каталог общих советов"],
+        evidence_policy="Материальные утверждения требуют evidence",
+        voice_genre_constraints="Точный практический нон-фикшн",
+        readiness_criteria=["Читатель может применить критерий"],
+    )
+    cloned_architecture = BookArchitecturePayload.model_validate(
+        {
+            "parts": [
+                {
+                    "title": "Причинная система",
+                    "purpose": "Собрать последовательность решений",
+                    "chapters": [
+                        {
+                            "title": "Диагностика ограничения",
+                            "purpose": "Найти наблюдаемую причину ограничения",
+                            "new_contribution": "Карта причин и проверяемых последствий",
+                        },
+                        {
+                            "title": "Перестройка решения",
+                            "purpose": "Перевести диагноз в новое правило действия",
+                            "new_contribution": "Контур внедрения и обратной связи",
+                            "dependencies": ["Диагностика ограничения"],
+                            "transition": "От причины к изменению системы",
+                        },
+                    ],
+                }
+            ],
+            "intellectual_progression": "Диагноз переходит в устройство решения",
+            "concept_allocation": "Главы владеют разными причинными функциями",
+            "promise_thesis_coverage": "Вся последовательность выполняет обещание",
+            "major_transitions": "Причина открывает способ изменения",
+        }
+    )
+    for entry in (first, second):
+        projects.save_book_contract(entry.book_id, contract)
+        projects.approve_book_contract(entry.book_id)
+        projects.save_architecture(entry.book_id, cloned_architecture)
+        projects.approve_architecture(entry.book_id)
+
+    result = service.analyze(series_id)
+    assert result.status == "BLOCKING"
+    architecture = [
+        item
+        for item in result.findings
+        if item["dimension"] == "ARCHITECTURE" and "identical_chapter_sequence" in item["evidence"]
+    ]
+    assert len(architecture) == 1
+    assert {architecture[0]["book_id"], architecture[0]["compared_book_id"]} == {
+        first.book_id,
+        second.book_id,
+    }
+    reloaded = service.current_map(series_id)
+    assert reloaded is not None
+    persisted = [
+        item
+        for item in reloaded.findings
+        if item["dimension"] == "ARCHITECTURE" and "identical_chapter_sequence" in item["evidence"]
+    ]
+    assert len(persisted) == 1
+    assert persisted[0]["evidence"]["comparison_basis"] == "CURRENT_BOOK_ARCHITECTURE"
+    with pytest.raises(SeriesWorkspaceGateError, match="blocking overlap"):
+        service.approve_map(series_id, result.map_hash, "Клон нельзя утвердить")
 
 
 def test_unapproved_book_passport_blocks_writing_gate(tmp_path: Path) -> None:

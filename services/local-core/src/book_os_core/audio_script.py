@@ -1101,6 +1101,7 @@ class AudioScriptService:
                     "transformation_map": [
                         item.model_dump(mode="json") for item in script.transformations
                     ],
+                    "source_attribution": script.provenance.get("source_attribution", []),
                     "pronunciation_ledger": [
                         item.model_dump(mode="json") for item in script.pronunciation_entries
                     ],

@@ -513,8 +513,12 @@ class LiteraryMasterService:
         return text_value.encode("utf-8")
 
     @staticmethod
-    def _manifest(state: _ReleaseState, canonical_content_hash: str) -> dict[str, Any]:
-        return {
+    def _manifest(
+        state: _ReleaseState,
+        canonical_content_hash: str,
+        bibliography_evidence: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        manifest = {
             "manifest_version": LiteraryMasterService.MANIFEST_VERSION,
             "book_id": state.book_id,
             "book_title": state.title,
@@ -553,8 +557,17 @@ class LiteraryMasterService:
             "editorial": {"material_waived_count": state.editorial_waived_count},
             "canonical_content_hash": canonical_content_hash,
         }
+        if bibliography_evidence is not None:
+            manifest["bibliography"] = bibliography_evidence
+        return manifest
 
-    def create_master(self, book_id: str, *, human_actor: str) -> LiteraryMasterView:
+    def create_master(
+        self,
+        book_id: str,
+        *,
+        human_actor: str,
+        bibliography_evidence: dict[str, Any] | None = None,
+    ) -> LiteraryMasterView:
         actor = human_actor.strip()
         if not actor:
             raise LiteraryMasterGateError(
@@ -569,7 +582,7 @@ class LiteraryMasterService:
                     raise LiteraryMasterGateError(f"release gate failed: {details}")
                 canonical_bytes = self._canonical_manuscript(state)
                 canonical_hash = _sha256_bytes(canonical_bytes)
-                manifest = self._manifest(state, canonical_hash)
+                manifest = self._manifest(state, canonical_hash, bibliography_evidence)
                 manifest_json = canonical_json(cast(Any, manifest))
                 manifest_hash = _sha256_bytes(manifest_json.encode("utf-8"))
                 master_id = manifest_hash[:32]

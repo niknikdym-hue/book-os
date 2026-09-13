@@ -65,6 +65,7 @@ class DefinitionPackContent(BaseModel):
     original_contribution: QualityResult
     practical_value: QualityResult
     target_market_quality: QualityResult
+    gate_evidence: dict[str, Any] = Field(default_factory=dict)
     density_rule: str = Field(
         default="NO PADDING: length may grow only through a new substantive function",
         min_length=1,
@@ -134,6 +135,7 @@ class ChapterProductionContractContent(BaseModel):
     original_contribution: QualityResult
     practical_value: QualityResult
     target_market_quality: QualityResult
+    gate_evidence: dict[str, Any] = Field(default_factory=dict)
 
     def blockers(self) -> list[str]:
         gates = {
@@ -888,8 +890,8 @@ class SeriesProductionService:
             rows = connection.execute(
                 text(
                     "SELECT r.content_json FROM manuscript_units u JOIN authority_heads h "
-                    "ON h.entity_id=u.authority_entity_id JOIN revisions r ON r.revision_id=h.revision_id "
-                    "WHERE u.book_id=:book_id"
+                    "ON h.entity_id=u.authority_entity_id JOIN revisions r "
+                    "ON r.revision_id=h.revision_id WHERE u.book_id=:book_id"
                 ),
                 {"book_id": book_id},
             ).all()
@@ -1061,6 +1063,37 @@ class SeriesProductionService:
                 executor_identity=request.executor_identity,
                 snapshot_hash=request.snapshot_hash,
                 created_at=now,
+            )
+        finally:
+            engine.dispose()
+
+    def latest_checkpoint(
+        self, book_id: str, kind: Literal["MID_BOOK", "ADVERSARIAL_REVIEW"]
+    ) -> ProductionCheckpointView | None:
+        engine = self._engine(book_id)
+        try:
+            row = self._row(
+                engine,
+                "SELECT * FROM production_checkpoints WHERE book_id=:book_id AND kind=:kind "
+                "ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
+                {"book_id": book_id, "kind": kind},
+            )
+            if row is None:
+                return None
+            payload = self._loads(row["findings_json"], {})
+            findings = payload.get("findings", []) if isinstance(payload, dict) else []
+            return ProductionCheckpointView(
+                checkpoint_id=str(row["checkpoint_id"]),
+                book_id=str(row["book_id"]),
+                kind=str(row["kind"]),
+                progress_percent=cast(float | None, row["progress_percent"]),
+                status=cast(GateResult, row["status"]),
+                findings=cast(list[dict[str, Any]], findings),
+                actor_kind=cast(EvidenceActorKind, row["actor_kind"]),
+                actor=str(row["actor"]),
+                executor_identity=cast(str | None, row["executor_identity"]),
+                snapshot_hash=cast(str | None, row["snapshot_hash"]),
+                created_at=str(row["created_at"]),
             )
         finally:
             engine.dispose()

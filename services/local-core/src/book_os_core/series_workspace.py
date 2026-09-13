@@ -460,7 +460,7 @@ class SeriesWorkspaceService:
         origin_kind = (
             request.origin_kind
             or {
-                "BOOK_OS": "CURRENT_REWRITTEN",
+                "BOOK_OS": "NEW",
                 "IMPORTED": "IMPORTED",
                 "PLANNED": "NEW",
             }[request.source_kind]
@@ -504,6 +504,132 @@ class SeriesWorkspaceService:
         return next(
             item for item in self.books(series_profile_id) if item.book_id == project.book_id
         )
+
+    def bind_existing_book(
+        self,
+        series_profile_id: str,
+        book_id: str,
+        *,
+        idea: str,
+    ) -> SeriesBookView:
+        """Idempotently bind a normal Create Book project to an exact existing series.
+
+        When its title matches a planned title-only/new placeholder, that placeholder is archived
+        and superseded without copying manuscript material. Otherwise a new final ordinal is used.
+        """
+        profile = self.profiles.get_profile(series_profile_id)
+        if profile.kind != "SERIES" or profile.status != "APPROVED":
+            raise SeriesWorkspaceGateError("Series Bible must be approved before binding a book")
+        project = self.projects.get_project(book_id)
+        memberships = [
+            item
+            for candidate in self.profiles.list_profiles("SERIES")
+            for item in self.books(candidate.profile_id)
+            if item.book_id == book_id
+        ]
+        if memberships:
+            if len(memberships) != 1 or memberships[0].series_profile_id != series_profile_id:
+                raise SeriesWorkspaceGateError("book already belongs to another explicit series")
+            return memberships[0]
+
+        books = self.books(series_profile_id)
+        title_matches = [
+            item
+            for item in books
+            if item.title.strip().casefold() == project.working_title.strip().casefold()
+        ]
+        if len(title_matches) > 1:
+            raise SeriesWorkspaceGateError(
+                "series title is ambiguous; choose the exact series book"
+            )
+        placeholder = title_matches[0] if title_matches else None
+        if placeholder is not None and (
+            placeholder.lifecycle != "PLANNED"
+            or placeholder.origin_kind not in {"LEGACY_TITLE_ONLY", "NEW"}
+        ):
+            raise SeriesWorkspaceGateError(
+                "an active series book already uses this title; choose it instead of creating a duplicate"
+            )
+
+        ordinal = (
+            placeholder.ordinal
+            if placeholder is not None
+            else max((item.ordinal for item in books), default=0) + 1
+        )
+        unique_idea = (
+            "BOOK OS разрабатывает новую концепцию с нуля по границам Series Bible"
+            if placeholder is not None and placeholder.origin_kind == "LEGACY_TITLE_ONLY"
+            else idea.strip()
+        )
+        reader_problem = (
+            "Определяется заново на этапе подтверждения концепции"
+            if placeholder is not None
+            else idea.strip()
+        )
+        reader_result = (
+            "Определяется заново на этапе Book Definition"
+            if placeholder is not None
+            else f"Практический результат по задаче: {idea.strip()}"
+        )
+        mechanism = (
+            "Определяется заново; материалы других книг не являются шаблоном"
+            if placeholder is not None
+            else "Будет определён подтверждённой концепцией и Book Definition"
+        )
+        excluded = placeholder.excluded_topics if placeholder is not None else []
+        origin = placeholder.origin_kind if placeholder is not None else "NEW"
+        now = utc_now()
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "INSERT INTO series_books(series_book_id,series_profile_id,book_id,ordinal,"
+                        "unique_idea,reader_problem,reader_result,unique_mechanism,excluded_topics_json,"
+                        "source_kind,status,origin_kind,lifecycle,legacy_content_allowed,"
+                        "created_at,updated_at) VALUES (:id,:series,:book,:ordinal,:idea,:problem,"
+                        ":result,:mechanism,:excluded,:source,'DEFINITION',:origin,'DEFINITION',0,"
+                        ":created,:updated)"
+                    ),
+                    {
+                        "id": new_ulid(),
+                        "series": series_profile_id,
+                        "book": book_id,
+                        "ordinal": ordinal,
+                        "idea": unique_idea,
+                        "problem": reader_problem,
+                        "result": reader_result,
+                        "mechanism": mechanism,
+                        "excluded": json.dumps(excluded, ensure_ascii=False),
+                        "source": "PLANNED" if placeholder is not None else "BOOK_OS",
+                        "origin": origin,
+                        "created": now,
+                        "updated": now,
+                    },
+                )
+        finally:
+            engine.dispose()
+
+        if placeholder is not None:
+            placeholder_engine = self._engine(placeholder.book_id)
+            try:
+                with placeholder_engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            "UPDATE series_books SET superseded_by_book_id=:fresh,lifecycle='ARCHIVED',"
+                            "status='ARCHIVED',updated_at=:updated WHERE series_book_id=:membership"
+                        ),
+                        {
+                            "fresh": book_id,
+                            "updated": now,
+                            "membership": placeholder.series_book_id,
+                        },
+                    )
+            finally:
+                placeholder_engine.dispose()
+            self.project_lifecycle.archive(placeholder.book_id)
+
+        return next(item for item in self.books(series_profile_id) if item.book_id == book_id)
 
     def books(self, series_profile_id: str) -> list[SeriesBookView]:
         result: list[SeriesBookView] = []
@@ -709,6 +835,17 @@ class SeriesWorkspaceService:
             for item in self.books(profile_id)
             if item.book_id != book_id and item.current_corpus_eligible
         ]
+        planned_boundaries = [
+            {
+                "book_id": item.book_id,
+                "title": item.title,
+                "reserved_territory": item.unique_idea,
+                "reader_problem": item.reader_problem,
+                "usage_policy": "BOUNDARY_ONLY_NOT_GENERATION_TEMPLATE",
+            }
+            for item in self.books(profile_id)
+            if item.book_id != book_id and item.lifecycle == "PLANNED"
+        ]
         return {
             "series_profile_id": profile_id,
             "origin_kind": target.origin_kind,
@@ -723,6 +860,7 @@ class SeriesWorkspaceService:
             "legacy_sources": None,
             "current_corpus": current_corpus,
             "current_corpus_usage": "ANTI_DUPLICATION_NOT_GENERATION_TEMPLATE",
+            "planned_book_boundaries": planned_boundaries,
         }
 
     def approve_book_passport(
@@ -933,11 +1071,30 @@ class SeriesWorkspaceService:
         finally:
             engine.dispose()
 
+    def _architecture_material(self, book_id: str) -> list[dict[str, str]]:
+        project = self.projects.get_project(book_id)
+        if project.architecture is None:
+            return []
+        return [
+            {
+                "title": str(chapter.get("title", "")),
+                "purpose": str(chapter.get("purpose", "")),
+                "new_contribution": str(chapter.get("new_contribution", "")),
+            }
+            for part in project.architecture.content.get("parts", [])
+            if isinstance(part, dict)
+            for chapter in part.get("chapters", [])
+            if isinstance(chapter, dict)
+        ]
+
     def _map_hash(self, series_profile_id: str, books: list[SeriesBookView]) -> str:
         profile = self.profiles.get_profile(series_profile_id)
         material = {
             "profile_hash": profile.content_hash,
             "books": [book.model_dump(mode="json") for book in books],
+            "architectures": {
+                book.book_id: self._architecture_material(book.book_id) for book in books
+            },
             "sources": {
                 book.book_id: sorted(
                     row["content_hash"]
@@ -1127,6 +1284,63 @@ class SeriesWorkspaceService:
                             "evidence": {"matching_paragraphs": repeated_language[:5]},
                         }
                     )
+
+                left_architecture = self._architecture_material(left.book_id)
+                right_architecture = self._architecture_material(right.book_id)
+                if left_architecture and right_architecture:
+                    left_sequence = [
+                        _normalized_text(str(item["title"])) for item in left_architecture
+                    ]
+                    right_sequence = [
+                        _normalized_text(str(item["title"])) for item in right_architecture
+                    ]
+                    if left_sequence == right_sequence:
+                        findings.append(
+                            {
+                                "finding_id": new_ulid(),
+                                "book_id": left.book_id,
+                                "compared_book_id": right.book_id,
+                                "dimension": "ARCHITECTURE",
+                                "severity": "BLOCKING",
+                                "evidence": {
+                                    "identical_chapter_sequence": left_sequence,
+                                    "comparison_basis": "CURRENT_BOOK_ARCHITECTURE",
+                                },
+                            }
+                        )
+                    left_functions = _tokens(
+                        " ".join(
+                            f"{item['purpose']} {item['new_contribution']}"
+                            for item in left_architecture
+                        )
+                    )
+                    right_functions = _tokens(
+                        " ".join(
+                            f"{item['purpose']} {item['new_contribution']}"
+                            for item in right_architecture
+                        )
+                    )
+                    function_union = left_functions | right_functions
+                    function_score = (
+                        len(left_functions & right_functions) / len(function_union)
+                        if function_union
+                        else 0.0
+                    )
+                    if function_score >= 0.65 and left_sequence != right_sequence:
+                        findings.append(
+                            {
+                                "finding_id": new_ulid(),
+                                "book_id": left.book_id,
+                                "compared_book_id": right.book_id,
+                                "dimension": "ARCHITECTURE",
+                                "severity": "BLOCKING" if function_score >= 0.8 else "ATTENTION",
+                                "evidence": {
+                                    "function_token_jaccard": round(function_score, 4),
+                                    "shared_terms": sorted(left_functions & right_functions)[:30],
+                                    "comparison_basis": "CURRENT_BOOK_ARCHITECTURE",
+                                },
+                            }
+                        )
         status = (
             "BLOCKING"
             if any(item["severity"] == "BLOCKING" for item in findings)
@@ -1140,6 +1354,11 @@ class SeriesWorkspaceService:
         try:
             with engine.begin() as connection:
                 for item in findings:
+                    persisted_evidence = {
+                        **item["evidence"],
+                        "subject_book_id": item["book_id"],
+                        "compared_book_id": item["compared_book_id"],
+                    }
                     connection.execute(
                         text(
                             "INSERT INTO series_similarity_findings(finding_id,series_profile_id,"
@@ -1150,11 +1369,14 @@ class SeriesWorkspaceService:
                         {
                             "id": item["finding_id"],
                             "series": series_profile_id,
-                            "book": item["book_id"],
+                            # The map is stored in the anchor project's database. Its local
+                            # book_projects FK cannot point at another project's database, so
+                            # exact pair identities are retained in evidence and restored below.
+                            "book": anchor,
                             "compared": item["compared_book_id"],
                             "dimension": item["dimension"],
                             "severity": item["severity"],
-                            "evidence": json.dumps(item["evidence"], ensure_ascii=False),
+                            "evidence": json.dumps(persisted_evidence, ensure_ascii=False),
                             "hash": map_hash,
                             "created": now,
                         },
@@ -1238,24 +1460,28 @@ class SeriesWorkspaceService:
                 )
                 if run is None:
                     return None
-                findings = [
-                    {
-                        "finding_id": str(row["finding_id"]),
-                        "book_id": str(row["book_id"]),
-                        "compared_book_id": str(row["compared_book_id"]),
-                        "dimension": str(row["dimension"]),
-                        "severity": str(row["severity"]),
-                        "status": str(row["status"]),
-                        "evidence": json.loads(str(row["evidence_json"])),
-                    }
-                    for row in connection.execute(
-                        text(
-                            "SELECT * FROM series_similarity_findings WHERE map_hash=:hash "
-                            "ORDER BY created_at,finding_id"
-                        ),
-                        {"hash": str(run["map_hash"])},
-                    ).mappings()
-                ]
+                findings = []
+                for row in connection.execute(
+                    text(
+                        "SELECT * FROM series_similarity_findings WHERE map_hash=:hash "
+                        "ORDER BY created_at,finding_id"
+                    ),
+                    {"hash": str(run["map_hash"])},
+                ).mappings():
+                    evidence = json.loads(str(row["evidence_json"]))
+                    findings.append(
+                        {
+                            "finding_id": str(row["finding_id"]),
+                            "book_id": str(evidence.get("subject_book_id", row["book_id"])),
+                            "compared_book_id": str(
+                                evidence.get("compared_book_id", row["compared_book_id"])
+                            ),
+                            "dimension": str(row["dimension"]),
+                            "severity": str(row["severity"]),
+                            "status": str(row["status"]),
+                            "evidence": evidence,
+                        }
+                    )
                 approved = (
                     connection.execute(
                         text(

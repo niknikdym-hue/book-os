@@ -272,8 +272,7 @@ class AutoBookExporter:
                 picture_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 document.add_paragraph(f"{visual.caption}\nАльтернативный текст: {visual.alt_text}")
                 expected_visuals += 1
-        if not include_extras_only:
-            self._add_bibliography(document, master.bibliography)
+        self._add_bibliography(document, master.bibliography)
         document.save(str(output))
 
         reopened = Document(str(output))
@@ -419,16 +418,36 @@ class AutoBookExporter:
             item.content = "".join(parts)
             book.add_item(item)
             chapters.append(item)
-        book.toc = tuple(chapters)
-        book.spine = ["nav", *chapters]
+        navigation: list[Any] = [*chapters]
+        if master.bibliography:
+            bibliography = epub.EpubHtml(
+                title="Библиография",
+                file_name="bibliography.xhtml",
+                lang=master.language,
+            )
+            bibliography.content = (
+                "<h1>Библиография</h1><ol>"
+                + "".join(f"<li>{escape(entry)}</li>" for entry in master.bibliography)
+                + "</ol>"
+            )
+            book.add_item(bibliography)
+            navigation.append(bibliography)
+        book.toc = tuple(navigation)
+        book.spine = ["nav", *navigation]
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
         epub.write_epub(str(output), book, {})
         reopened = epub.read_epub(str(output))
         document_count = len(list(reopened.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
-        if document_count < len(master.chapters):
+        expected_documents = len(master.chapters) + (1 if master.bibliography else 0)
+        if document_count < expected_documents:
             raise AutoBookExportError("EPUB structural QA failed")
-        return {"passed": True, "document_count": document_count, "viewer_review_required": True}
+        return {
+            "passed": True,
+            "document_count": document_count,
+            "bibliography_document": bool(master.bibliography),
+            "viewer_review_required": True,
+        }
 
     @staticmethod
     def _master_as_pronunciation_content(master: StructuredBookMaster) -> AudioScriptContent:
@@ -451,7 +470,12 @@ class AutoBookExporter:
         )
 
     @staticmethod
-    def _publisher_pack(master: StructuredBookMaster) -> bytes:
+    def _publisher_pack(
+        master: StructuredBookMaster,
+        *,
+        audit_bibliography: list[str],
+        public_bibliography_included: bool,
+    ) -> bytes:
         payload = {
             "title": master.title,
             "author": master.author,
@@ -459,6 +483,12 @@ class AutoBookExporter:
             "annotation": master.publisher_annotation,
             "chapter_count": len(master.chapters),
             "master_hash": master.manifest_hash,
+            "public_bibliography_included": public_bibliography_included,
+            "public_bibliography": master.bibliography,
+            "bibliographic_audit": {
+                "preserved_when_publicly_omitted": True,
+                "verified_used_sources": audit_bibliography,
+            },
         }
         return (json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
 
@@ -470,6 +500,8 @@ class AutoBookExporter:
         selection: AutoBookOutputSelection,
         *,
         audio_script: AudioScriptView | None = None,
+        audit_bibliography: list[str] | None = None,
+        public_bibliography_included: bool | None = None,
     ) -> ExportBundle:
         master_hash = master.manifest_hash
         output_dir = (
@@ -489,6 +521,14 @@ class AutoBookExporter:
             raise AudioScriptGateError("the selected AudioScript is not approved and current")
         voice_payload: bytes | None = None
         voice_relative_path: str | None = None
+        internal_bibliography = (
+            list(master.bibliography) if audit_bibliography is None else list(audit_bibliography)
+        )
+        public_included = (
+            bool(master.bibliography)
+            if public_bibliography_included is None
+            else public_bibliography_included
+        )
         for kind in selected:
             audio_bound = kind in {
                 "AUDIO_READING_DOCX",
@@ -612,8 +652,19 @@ class AutoBookExporter:
                     master, output, audio=False, include_extras_only=True, visual_dir=visual_dir
                 )
             else:
-                output.write_bytes(self._publisher_pack(master))
-                qa = {"passed": True, "schema": "publisher-pack.v1"}
+                output.write_bytes(
+                    self._publisher_pack(
+                        master,
+                        audit_bibliography=internal_bibliography,
+                        public_bibliography_included=public_included,
+                    )
+                )
+                qa = {
+                    "passed": True,
+                    "schema": "publisher-pack.v1",
+                    "public_bibliography_included": public_included,
+                    "bibliographic_audit_source_count": len(internal_bibliography),
+                }
             payload = output.read_bytes()
             relative_path = str(output.relative_to(self.runtime.projects.projects_dir / book_id))
             artifacts.append(

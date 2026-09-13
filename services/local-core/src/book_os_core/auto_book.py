@@ -30,7 +30,9 @@ from .book_context import (
     BookContextService,
     BookContextUpdateRequest,
     ProfileCreateRequest,
+    SeriesProfileContent,
 )
+from .auto_book_gates import AutoBookEvidenceGates
 from .context_planning import ContextAwarePlanningService
 from .drafting import DraftSectionRequest, DraftingService
 from .editorial import EditorialService
@@ -61,7 +63,7 @@ from .series_production import (
     SeriesProductionService,
     UniquenessEvidenceRequest,
 )
-from .series_workspace import SeriesWorkspaceService
+from .series_workspace import SeriesWorkspaceGateError, SeriesWorkspaceService
 
 AutoBookChoice = Literal["AUTO", "ASTRA_MEDIUM", "ASTRA_HIGH", "ASTRA_XHIGH", "SOL"]
 AutoBookStatus = Literal[
@@ -136,6 +138,8 @@ class AutoBookRunView(BaseModel):
     concept: BookConceptProposalOutput | None = None
     concept_revision: int = 0
     concept_feedback: str = ""
+    concept_gate_evidence: dict[str, Any] = Field(default_factory=dict)
+    quality_gate_evidence: dict[str, Any] = Field(default_factory=dict)
     requests_used: int = 0
     authorized_cost_usd: float = 0.0
     estimated_cost_usd: float = 0.0
@@ -423,27 +427,30 @@ class AutoBookService:
 
     def _ensure_context(self, book_id: str, request: AutoBookStartRequest) -> None:
         context = self.contexts.get_context(book_id)
-        if context.ready_for_planning:
-            return
-
         approved_authors = [
             item
             for item in self.contexts.profiles.list_profiles("AUTHOR")
             if item.status == "APPROVED"
         ]
         requested_name = request.author_name.strip()
-        author = (
-            next(
-                (
-                    item
-                    for item in approved_authors
-                    if item.name.casefold() == requested_name.casefold()
-                ),
-                None,
+        author = context.author_profile
+        if author is None:
+            author = (
+                next(
+                    (
+                        item
+                        for item in approved_authors
+                        if item.name.casefold() == requested_name.casefold()
+                    ),
+                    None,
+                )
+                if requested_name
+                else None
             )
-            if requested_name
-            else None
-        )
+        elif requested_name and author.name.casefold() != requested_name.casefold():
+            raise AutoBookGateError(
+                "selected author conflicts with the existing Book Context author"
+            )
         if author is None and not requested_name and len(approved_authors) == 1:
             author = approved_authors[0]
         if author is None and requested_name:
@@ -463,7 +470,9 @@ class AutoBookService:
             if item.status == "APPROVED"
             and item.content.get("author_profile_id") in {None, author.profile_id}
         ]
-        style = approved_styles[0] if len(approved_styles) == 1 else None
+        style = context.style_profile
+        if style is None:
+            style = approved_styles[0] if len(approved_styles) == 1 else None
         if style is None:
             style = self.contexts.profiles.create_profile(
                 ProfileCreateRequest(
@@ -488,25 +497,62 @@ class AutoBookService:
             )
             style = self.contexts.profiles.approve_profile(style.profile_id)
 
-        matching_series = [
-            profile
-            for profile in self.contexts.profiles.list_profiles("SERIES")
-            if any(
-                item.book_id == book_id for item in self.series_workspaces.books(profile.profile_id)
-            )
-        ]
-        if len(matching_series) > 1:
-            raise AutoBookGateError("book belongs to more than one explicit series")
-        if matching_series and matching_series[0].status != "APPROVED":
-            raise AutoBookGateError("approve the Series Bible before starting this series book")
+        requested_series_name = (request.series_name or "").strip()
+        series = context.series_profile
+        if requested_series_name:
+            named = [
+                profile
+                for profile in self.contexts.profiles.list_profiles("SERIES")
+                if profile.name.strip().casefold() == requested_series_name.casefold()
+            ]
+            if not named:
+                raise AutoBookGateError(
+                    "Series was not found. Create it in Series Studio before starting Auto Book"
+                )
+            owned = [
+                profile
+                for profile in named
+                if SeriesProfileContent.model_validate(profile.content).author_profile_id
+                == author.profile_id
+            ]
+            if not owned:
+                raise AutoBookGateError("selected Series Profile belongs to another author")
+            if len(owned) != 1:
+                raise AutoBookGateError("series name is ambiguous; select the exact Series Profile")
+            if (
+                context.series_profile is not None
+                and context.series_profile.profile_id != owned[0].profile_id
+            ):
+                raise AutoBookGateError(
+                    "selected series conflicts with the existing Book Context series"
+                )
+            series = owned[0]
+        if series is not None:
+            if series.status != "APPROVED":
+                raise AutoBookGateError("approve the Series Bible before starting this series book")
+            series_content = SeriesProfileContent.model_validate(series.content)
+            if series_content.author_profile_id != author.profile_id:
+                raise AutoBookGateError("selected Series Profile belongs to another author")
+            try:
+                self.series_workspaces.bind_existing_book(
+                    series.profile_id,
+                    book_id,
+                    idea=request.idea,
+                )
+            except SeriesWorkspaceGateError as exc:
+                raise AutoBookGateError(str(exc)) from exc
 
         self.contexts.save_context(
             book_id,
             BookContextUpdateRequest(
                 author_profile_id=author.profile_id,
-                series_profile_id=(matching_series[0].profile_id if matching_series else None),
+                series_profile_id=series.profile_id if series else None,
                 style_profile_id=style.profile_id,
                 target_characters=request.target_characters,
+                min_characters=context.min_characters,
+                max_characters=context.max_characters,
+                include_bibliography=context.include_bibliography,
+                plan_illustrations=context.plan_illustrations,
             ),
         )
 
@@ -590,8 +636,16 @@ class AutoBookService:
         if self._approved(project.architecture):
             pending = self._first_pending_chapter(project)
             if pending is None:
-                state.phase = "EXPORT"
-                state.last_action = "Existing planned chapters are ready for export"
+                checkpoint = self.series_production.latest_checkpoint(book_id, "MID_BOOK")
+                state.midbook_audit_completed = bool(
+                    checkpoint is not None and checkpoint.status != "BLOCKING"
+                )
+                state.phase = "EXPORT" if state.midbook_audit_completed else "MIDBOOK_AUDIT"
+                state.last_action = (
+                    "Existing planned chapters are ready for export"
+                    if state.midbook_audit_completed
+                    else "Existing manuscript requires its mandatory mid-book audit"
+                )
             else:
                 self._set_current_chapter(state, project, pending)
                 chapter = next(item for item in project.chapters if item.chapter_id == pending)
@@ -743,6 +797,13 @@ class AutoBookService:
             state.concept = concept
         if state.concept is None:
             raise AutoBookGateError("concept proposal is missing")
+        evidence = AutoBookEvidenceGates.concept(state.concept)
+        state.concept_gate_evidence = evidence.model_dump(mode="json")
+        if evidence.status == "BLOCKING":
+            self._write(state)
+            raise AutoBookGateError(
+                "Concept quality gate requires rework: " + ", ".join(evidence.blockers)
+            )
         state.status = "RUNNING"
         state.phase = "BOOK_CONTRACT"
         state.error = None
@@ -855,6 +916,68 @@ class AutoBookService:
         value = payload.get(key)
         return value.strip() if isinstance(value, str) and value.strip() else fallback
 
+    @staticmethod
+    def _quality_result(status: str) -> Literal["PASS", "REWORK"]:
+        return "PASS" if status == "PASS" else "REWORK"
+
+    def _series_gate_evidence(self, state: AutoBookRunView) -> dict[str, Any]:
+        context = self.contexts.get_context(state.book_id)
+        if context.series_profile is None:
+            return {
+                "status": "PASS",
+                "basis": "STANDALONE_BOOK",
+                "series_profile_id": None,
+            }
+        series_id = context.series_profile.profile_id
+        membership = next(
+            (
+                item
+                for item in self.series_workspaces.books(series_id)
+                if item.book_id == state.book_id
+            ),
+            None,
+        )
+        if membership is None:
+            raise AutoBookGateError("series-bound Book Context has no series_books membership")
+        if not membership.passport_approved:
+            membership = self.series_workspaces.approve_book_passport(
+                series_id,
+                state.book_id,
+                membership.passport_hash,
+                f"Owner pre-authorized Book Passport for Auto Book run {state.run_id}",
+            )
+        result = self.series_workspaces.analyze(series_id)
+        if result.status == "BLOCKING":
+            blocking_evidence: dict[str, Any] = {
+                "status": "BLOCKING",
+                "series_profile_id": series_id,
+                "map_hash": result.map_hash,
+                "findings": result.findings,
+                "comparison_basis": "CURRENT_SERIES_MAP_AND_ARCHITECTURES",
+            }
+            state.quality_gate_evidence["series_duplication"] = blocking_evidence
+            self._write(state)
+            raise AutoBookGateError("Series Duplication Gate found blocking overlap evidence")
+        approved = self.series_workspaces.approve_map(
+            series_id,
+            result.map_hash,
+            f"Owner pre-authorized current difference map for Auto Book run {state.run_id}",
+        )
+        self.series_workspaces.require_current_map(series_id)
+        evidence: dict[str, Any] = {
+            "status": "PASS",
+            "series_profile_id": series_id,
+            "book_passport_hash": membership.passport_hash,
+            "book_passport_approved": membership.passport_approved,
+            "map_hash": approved.map_hash,
+            "map_status": approved.status,
+            "map_approved": approved.approved,
+            "findings": approved.findings,
+            "comparison_basis": "CURRENT_SERIES_MAP_AND_ARCHITECTURES",
+        }
+        state.quality_gate_evidence["series_duplication"] = evidence
+        return evidence
+
     def _ensure_auto_writing_admission(
         self, state: AutoBookRunView, project: ProjectView, chapter_id: str
     ) -> None:
@@ -869,9 +992,13 @@ class AutoBookService:
             raise AutoBookGateError("Auto pre-writing admission requires a Chapter Contract")
         book_contract = project.book_contract.content
         chapter_contract = chapter.chapter_contract.content
+        if state.concept is None:
+            raise AutoBookGateError("Auto pre-writing admission requires accepted concept evidence")
+        definition_evidence = AutoBookEvidenceGates.definition(book_contract, state.concept)
+        state.quality_gate_evidence["definition"] = definition_evidence.model_dump(mode="json")
         actor = f"Owner Auto Book {state.run_id}"
         definition = self.series_production.latest_approved_definition(state.book_id)
-        if definition is None:
+        if definition is None or not definition.content.gate_evidence:
             definition = self.series_production.create_definition_pack(
                 state.book_id,
                 DefinitionPackCreateRequest(
@@ -918,7 +1045,9 @@ class AutoBookService:
                                 observable_check="Финальные проверки и Literary Master не имеют blocker",
                             )
                         ],
-                        target_market_application=state.reader_hint or "Аудитория Book Contract",
+                        target_market_application=self._text(
+                            book_contract, "reader", state.concept.reader_job
+                        ),
                         freshness_risk_map=[
                             "Изменяемые факты требуют даты проверки и актуального evidence"
                         ],
@@ -926,11 +1055,22 @@ class AutoBookService:
                             "Текущая архитектура и Book Passport проверяются до Writer; "
                             "финальный cross-book аудит обязателен"
                         ),
-                        ai_substitution_result="PASS",
-                        top_tier_global="PASS",
-                        original_contribution="PASS",
-                        practical_value="PASS",
-                        target_market_quality="PASS",
+                        ai_substitution_result=self._quality_result(
+                            definition_evidence.result_for("ai_substitution_result")
+                        ),
+                        top_tier_global=self._quality_result(
+                            definition_evidence.result_for("top_tier_global")
+                        ),
+                        original_contribution=self._quality_result(
+                            definition_evidence.result_for("original_contribution")
+                        ),
+                        practical_value=self._quality_result(
+                            definition_evidence.result_for("practical_value")
+                        ),
+                        target_market_quality=self._quality_result(
+                            definition_evidence.result_for("target_market_quality")
+                        ),
+                        gate_evidence=definition_evidence.model_dump(mode="json"),
                     ),
                     actor_kind="SYSTEM",
                     actor=f"system:auto-book-prewriting:{state.run_id}",
@@ -944,7 +1084,16 @@ class AutoBookService:
         production_contract = self.series_production.latest_approved_production_contract(
             state.book_id, chapter_id
         )
-        if production_contract is None:
+        chapter_evidence = AutoBookEvidenceGates.chapter(
+            chapter_contract,
+            architecture=project.architecture.content,
+            chapter_ordinal=chapter.ordinal,
+            reader=self._text(book_contract, "reader", state.concept.reader_job),
+        )
+        state.quality_gate_evidence[f"chapter:{chapter_id}"] = chapter_evidence.model_dump(
+            mode="json"
+        )
+        if production_contract is None or not production_contract.content.gate_evidence:
             production_contract = self.series_production.create_production_contract(
                 state.book_id,
                 chapter_id,
@@ -988,18 +1137,33 @@ class AutoBookService:
                         next_action="Перейти к следующему смысловому шагу архитектуры",
                         practical_artifact="Практический вывод или инструмент главы",
                         observable_check="Chapter review не имеет блокирующих findings",
-                        target_market_application=state.reader_hint or "Аудитория книги",
+                        target_market_application=self._text(
+                            book_contract, "reader", state.concept.reader_job
+                        ),
                         freshness_requirements=["Проверить актуальность изменяемых утверждений"],
                         reserved_material=[
                             str(item) for item in chapter_contract.get("reserved_elsewhere", [])
                         ],
                         composition_intent="Уникальная композиция по функции этой главы",
-                        deletion_merge_test="PASS",
-                        ai_substitution_result="PASS",
-                        top_tier_global="PASS",
-                        original_contribution="PASS",
-                        practical_value="PASS",
-                        target_market_quality="PASS",
+                        deletion_merge_test=self._quality_result(
+                            chapter_evidence.result_for("deletion_merge_test")
+                        ),
+                        ai_substitution_result=self._quality_result(
+                            chapter_evidence.result_for("ai_substitution_result")
+                        ),
+                        top_tier_global=self._quality_result(
+                            chapter_evidence.result_for("top_tier_global")
+                        ),
+                        original_contribution=self._quality_result(
+                            chapter_evidence.result_for("original_contribution")
+                        ),
+                        practical_value=self._quality_result(
+                            chapter_evidence.result_for("practical_value")
+                        ),
+                        target_market_quality=self._quality_result(
+                            chapter_evidence.result_for("target_market_quality")
+                        ),
+                        gate_evidence=chapter_evidence.model_dump(mode="json"),
                     ),
                     actor_kind="SYSTEM",
                     actor=f"system:auto-book-prewriting:{state.run_id}",
@@ -1012,27 +1176,21 @@ class AutoBookService:
                 ChapterProductionContractApprovalRequest(actor_kind="OWNER", actor=actor),
             )
 
-        context = self.contexts.get_context(state.book_id)
-        series_evidence: dict[str, Any] = {"series_workspace": "not bound"}
-        if context.series_profile is not None and self.series_workspaces.books(
-            context.series_profile.profile_id
-        ):
-            self.series_workspaces.require_current_map(context.series_profile.profile_id)
-            current_map = self.series_workspaces.current_map(context.series_profile.profile_id)
-            series_evidence = {
-                "series_profile_hash": context.series_profile.content_hash,
-                "map_hash": current_map.map_hash if current_map else None,
-                "map_status": current_map.status if current_map else None,
-                "map_approved": current_map.approved if current_map else False,
-            }
+        series_evidence = self._series_gate_evidence(state)
+        uniqueness_status = (
+            "PASS"
+            if chapter_evidence.status == "PASS" and series_evidence["status"] == "PASS"
+            else "BLOCKING"
+        )
         self.series_production.record_uniqueness(
             state.book_id,
             chapter_id,
             UniquenessEvidenceRequest(
-                status="PASS",
+                status=cast(Any, uniqueness_status),
                 evidence={
                     "auto_book_run_id": state.run_id,
                     "chapter_contract_revision": chapter.chapter_contract.authority_revision_id,
+                    "computed_chapter_gate": chapter_evidence.model_dump(mode="json"),
                     **series_evidence,
                 },
                 actor_kind="SYSTEM",
@@ -1044,16 +1202,30 @@ class AutoBookService:
             chapter_id,
             ChapterAdmissionRequest(
                 checks=AdmissionChecks(
-                    evidence_readiness="PASS",
-                    boundaries_reservations="PASS",
-                    top_tier_global="PASS",
-                    original_contribution="PASS",
-                    practical_value="PASS",
-                    target_market_application="PASS",
-                    freshness="PASS",
-                    anti_junk_provenance="PASS",
-                    deletion_merge_test="PASS",
-                    conditional_blockers_resolved=True,
+                    evidence_readiness=chapter_evidence.result_for("evidence_readiness"),
+                    boundaries_reservations=chapter_evidence.result_for("boundaries_reservations"),
+                    top_tier_global=self._quality_result(
+                        chapter_evidence.result_for("top_tier_global")
+                    ),
+                    original_contribution=self._quality_result(
+                        chapter_evidence.result_for("original_contribution")
+                    ),
+                    practical_value=self._quality_result(
+                        chapter_evidence.result_for("practical_value")
+                    ),
+                    target_market_application=self._quality_result(
+                        chapter_evidence.result_for("target_market_quality")
+                    ),
+                    freshness=self._quality_result(chapter_evidence.result_for("freshness")),
+                    anti_junk_provenance=chapter_evidence.result_for("anti_junk_provenance"),
+                    deletion_merge_test=self._quality_result(
+                        chapter_evidence.result_for("deletion_merge_test")
+                    ),
+                    conditional_blockers_resolved=(
+                        chapter_evidence.status == "PASS"
+                        and definition_evidence.status == "PASS"
+                        and series_evidence["status"] == "PASS"
+                    ),
                 ),
                 actor_kind="OWNER",
                 actor=actor,
@@ -1076,6 +1248,12 @@ class AutoBookService:
             if not self._approved(chapter.chapter_contract) or not drafts:
                 return chapter.chapter_id
         return None
+
+    @staticmethod
+    def _crossed_midpoint(total: int, completed_before: int, completed_after: int) -> bool:
+        if total <= 0:
+            return False
+        return completed_before * 2 < total <= completed_after * 2
 
     def _set_current_chapter(
         self, state: AutoBookRunView, project: ProjectView, chapter_id: str
@@ -1155,6 +1333,18 @@ class AutoBookService:
                 state.last_action = f"Architecture proposed by {result.model}"
 
             elif state.phase == "APPROVE_ARCHITECTURE":
+                proposed = self.projects.get_project(book_id).architecture
+                if proposed is None:
+                    raise AutoBookGateError("Architecture proposal is missing")
+                architecture_evidence = AutoBookEvidenceGates.architecture(proposed.content)
+                state.quality_gate_evidence["architecture"] = architecture_evidence.model_dump(
+                    mode="json"
+                )
+                if architecture_evidence.status == "BLOCKING":
+                    raise AutoBookGateError(
+                        "Architecture quality gate requires rework: "
+                        + ", ".join(architecture_evidence.blockers)
+                    )
                 project = delegated.approve_architecture(book_id)
                 if not project.chapters:
                     raise AutoBookGateError("approved architecture contains no chapters")
@@ -1205,29 +1395,46 @@ class AutoBookService:
             elif state.phase == "CHAPTER_DRAFT":
                 if state.current_chapter_id is None:
                     raise AutoBookError("current chapter is missing")
-                cap = self._remaining_call_cap(state)
-                self._draft_chapter(state, cap)
-                self._consume_call(state, cap)
-                project = self.projects.get_project(book_id)
-                current_ordinal = state.current_chapter_ordinal
-                pending = self._first_pending_chapter(project)
-                completed = sum(
-                    bool(self.drafting.list_drafts(book_id, chapter.chapter_id))
-                    for chapter in project.chapters
+                pre_draft_admission = self.series_production.admission_status(
+                    book_id, state.current_chapter_id
                 )
-                progress = completed * 100 / max(1, len(project.chapters))
-                if pending is None:
-                    state.current_chapter_id = None
-                    state.current_chapter_ordinal = None
-                    state.phase = "EXPORT"
+                admission_requires_midbook = any(
+                    blocker.startswith("MID_BOOK audit required")
+                    for blocker in pre_draft_admission.blockers
+                )
+                if not state.midbook_audit_completed and admission_requires_midbook:
+                    state.phase = "MIDBOOK_AUDIT"
+                    state.last_action = "Mandatory mid-book audit reached before next chapter"
                 else:
-                    self._set_current_chapter(state, project, pending)
-                    state.phase = (
-                        "MIDBOOK_AUDIT"
-                        if not state.midbook_audit_completed and 40 <= progress <= 60
-                        else "CHAPTER_CONTRACT"
+                    cap = self._remaining_call_cap(state)
+                    self._draft_chapter(state, cap)
+                    self._consume_call(state, cap)
+                    project = self.projects.get_project(book_id)
+                    current_ordinal = state.current_chapter_ordinal
+                    pending = self._first_pending_chapter(project)
+                    completed = sum(
+                        bool(self.drafting.list_drafts(book_id, chapter.chapter_id))
+                        for chapter in project.chapters
                     )
-                state.last_action = f"Chapter {current_ordinal or '?'} drafted"
+                    progress = completed * 100 / max(1, len(project.chapters))
+                    crossed_midpoint = self._crossed_midpoint(
+                        len(project.chapters), max(0, completed - 1), completed
+                    )
+                    if not state.midbook_audit_completed and crossed_midpoint:
+                        if pending is None:
+                            state.current_chapter_id = None
+                            state.current_chapter_ordinal = None
+                        else:
+                            self._set_current_chapter(state, project, pending)
+                        state.phase = "MIDBOOK_AUDIT"
+                    elif pending is None:
+                        state.current_chapter_id = None
+                        state.current_chapter_ordinal = None
+                        state.phase = "EXPORT"
+                    else:
+                        self._set_current_chapter(state, project, pending)
+                        state.phase = "CHAPTER_CONTRACT"
+                    state.last_action = f"Chapter {current_ordinal or '?'} drafted"
 
             elif state.phase == "MIDBOOK_AUDIT":
                 project = self.projects.get_project(book_id)
@@ -1236,39 +1443,53 @@ class AutoBookService:
                     for chapter in project.chapters
                 )
                 progress = completed * 100 / max(1, len(project.chapters))
-                self.diagnostics.run_cross_book(book_id)
-                open_findings = self.editorial.list_findings(book_id, status="OPEN")
-                findings = [
-                    {
-                        "finding_id": item.finding_id,
-                        "severity": item.severity,
-                        "category": item.category,
-                        "diagnosis": item.diagnosis,
-                    }
-                    for item in open_findings
-                    if item.severity in {"MAJOR", "CRITICAL"}
-                ]
-                self.series_production.record_checkpoint(
-                    book_id,
-                    ProductionCheckpointRequest(
-                        kind="MID_BOOK",
-                        progress_percent=max(40.0, min(60.0, progress)),
-                        status="ATTENTION" if findings else "PASS",
-                        findings=findings,
-                        actor_kind="SYSTEM",
-                        actor="system:auto-book-midbook-audit",
-                        executor_identity="deterministic-cross-book-audit-v1",
-                        independent=True,
-                    ),
-                )
+                existing_checkpoint = self.series_production.latest_checkpoint(book_id, "MID_BOOK")
+                if existing_checkpoint is None:
+                    self.diagnostics.run_cross_book(book_id)
+                    open_findings = self.editorial.list_findings(book_id, status="OPEN")
+                    findings = [
+                        {
+                            "finding_id": item.finding_id,
+                            "severity": item.severity,
+                            "category": item.category,
+                            "diagnosis": item.diagnosis,
+                        }
+                        for item in open_findings
+                        if item.severity in {"MAJOR", "CRITICAL"}
+                    ]
+                    existing_checkpoint = self.series_production.record_checkpoint(
+                        book_id,
+                        ProductionCheckpointRequest(
+                            kind="MID_BOOK",
+                            progress_percent=max(40.0, min(60.0, progress)),
+                            status="ATTENTION" if findings else "PASS",
+                            findings=findings,
+                            actor_kind="SYSTEM",
+                            actor="system:auto-book-midbook-audit",
+                            executor_identity="deterministic-cross-book-audit-v1",
+                            independent=True,
+                        ),
+                    )
+                if existing_checkpoint.status == "BLOCKING":
+                    raise AutoBookGateError("MID_BOOK audit has unresolved BLOCKING findings")
                 state.midbook_audit_completed = True
-                state.phase = "CHAPTER_CONTRACT"
+                pending = self._first_pending_chapter(project)
+                state.phase = "CHAPTER_CONTRACT" if pending is not None else "EXPORT"
                 state.last_action = (
                     f"Mid-book audit completed at {progress:.0f}%; "
-                    f"{len(findings)} findings scheduled for correction"
+                    f"{len(existing_checkpoint.findings)} findings scheduled for correction"
                 )
 
             elif state.phase == "EXPORT":
+                checkpoint = self.series_production.latest_checkpoint(book_id, "MID_BOOK")
+                if (
+                    not state.midbook_audit_completed
+                    or checkpoint is None
+                    or checkpoint.status == "BLOCKING"
+                ):
+                    raise AutoBookGateError(
+                        "mandatory MID_BOOK audit must complete before export/finalization"
+                    )
                 state.output_path = (
                     self._export(book_id, state) if state.prepare_litres_docx else None
                 )

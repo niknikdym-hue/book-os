@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from .authority import AuthorityService, new_ulid
-from .authority_types import JSONValue
+from .authority_types import JSONValue, utc_now
 from .audio_script import AudioScriptService, AudioScriptView
 from .auto_book import AutoBookGateError, AutoBookRunView
 from .auto_book_exports import AutoBookExporter, MasterChapter, StructuredBookMaster
@@ -387,6 +387,7 @@ class AutoBookFinalizer:
             "min_characters": context.min_characters,
             "max_characters": context.max_characters,
             "include_bibliography": context.include_bibliography,
+            "bibliography_preference": context.bibliography_preference,
             "plan_illustrations": context.plan_illustrations,
         }
 
@@ -538,13 +539,15 @@ class AutoBookFinalizer:
                 raise ModelOutputError(
                     "final editorial output failed SectionDraft schema validation"
                 ) from exc
+            content_unchanged = output.text.strip() == current_text.strip()
             latest = authority.get_head(entity_id)
             if latest.revision_id != head.revision_id or latest.revision_hash != head.revision_hash:
                 raise AutoBookGateError("manuscript authority changed during final editorial pass")
 
             proposed_payload = cast(dict[str, JSONValue], dict(content))
-            proposed_payload["text"] = output.text
-            proposed_payload["notes"] = cast(list[JSONValue], output.notes)
+            if not content_unchanged:
+                proposed_payload["text"] = output.text
+                proposed_payload["notes"] = cast(list[JSONValue], output.notes)
             proposal_id = authority.create_proposal(
                 entity_id=entity_id,
                 base_revision_id=head.revision_id,
@@ -561,7 +564,7 @@ class AutoBookFinalizer:
                 task_id=task_id,
                 input_revision_ids=(contract_head.revision_id,),
             )
-            authority.accept_proposal(
+            accepted = authority.accept_proposal(
                 proposal_id,
                 actor="OWNER",
                 actor_kind="HUMAN",
@@ -574,8 +577,39 @@ class AutoBookFinalizer:
                     "final_editorial_pass": True,
                     "model": model,
                     "prompt_hash": AUTO_BOOK_FINAL_EDIT_V1.prompt_hash,
+                    "content_unchanged": content_unchanged,
                 },
             )
+            if content_unchanged:
+                # The approval creates an authority revision even when the exact payload is
+                # unchanged. Evidence remains valid because the accepted content hash is
+                # byte-identical; rebind only claims tied to that exact prior revision/hash.
+                accepted_head = authority.get_head(entity_id)
+                if accepted_head.revision_id != accepted.revision_id:
+                    raise AutoBookGateError(
+                        "final editorial approval did not become authority head"
+                    )
+                if accepted_head.revision_hash != head.revision_hash:
+                    raise AutoBookGateError(
+                        "unchanged final editorial approval unexpectedly changed content hash"
+                    )
+                with engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            "UPDATE claims SET manuscript_revision_id=:new_revision_id,"
+                            "manuscript_revision_hash=:new_revision_hash,updated_at=:updated_at "
+                            "WHERE unit_id=:unit_id AND manuscript_revision_id=:old_revision_id "
+                            "AND manuscript_revision_hash=:old_revision_hash"
+                        ),
+                        {
+                            "new_revision_id": accepted_head.revision_id,
+                            "new_revision_hash": accepted_head.revision_hash,
+                            "updated_at": utc_now(),
+                            "unit_id": unit["unit_id"],
+                            "old_revision_id": head.revision_id,
+                            "old_revision_hash": head.revision_hash,
+                        },
+                    )
         finally:
             engine.dispose()
 
@@ -749,6 +783,16 @@ class AutoBookFinalizer:
     def _export_litres_docx(self, book_id: str, master_id: str) -> str:
         master = self.literary.get_master(book_id, master_id)
         canonical = self.literary._canonical_bytes_from_master(master).decode("utf-8")
+        bibliography_meta = master.manifest.get("bibliography", {})
+        public_entries = (
+            bibliography_meta.get("public_entries", [])
+            if isinstance(bibliography_meta, dict)
+            else []
+        )
+        if public_entries:
+            canonical += "\n## Библиография\n\n" + "\n\n".join(
+                f"{index}. {entry}" for index, entry in enumerate(public_entries, start=1)
+            )
         body_parts = self._docx_body(canonical)
         if not body_parts:
             raise AutoBookGateError("Literary Master contains no exportable manuscript text")
@@ -1089,6 +1133,15 @@ class AutoBookFinalizer:
         units = self._current_units(book_id)
         if not units:
             raise AutoBookGateError("final editorial pass requires manuscript units")
+        midbook_checkpoint = self.series.latest_checkpoint(book_id, "MID_BOOK")
+        if (
+            not state.midbook_audit_completed
+            or midbook_checkpoint is None
+            or midbook_checkpoint.status == "BLOCKING"
+        ):
+            raise AutoBookGateError(
+                "mandatory MID_BOOK audit must complete before export/finalization"
+            )
         for stage in (
             AutoBookStage.DEFINITION,
             AutoBookStage.ARCHITECTURE,
@@ -1116,8 +1169,9 @@ class AutoBookFinalizer:
             AutoBookStage.MIDBOOK_AUDIT,
             evidence={
                 "completed_during_writing": state.midbook_audit_completed,
-                "not_applicable_single_chapter": len(self.projects.get_project(book_id).chapters)
-                == 1,
+                "checkpoint_id": midbook_checkpoint.checkpoint_id,
+                "checkpoint_status": midbook_checkpoint.status,
+                "checkpoint_progress_percent": midbook_checkpoint.progress_percent,
             },
         )
         self.runtime.set_stage(
@@ -1234,9 +1288,41 @@ class AutoBookFinalizer:
             AutoBookStage.MASTER_AND_EXPORTS,
             message="Фиксация Literary Master и выбранные экспорты",
         )
+        verified_bibliography = self._verified_bibliography(book_id)
+        bibliography_integrity = {
+            "builder": "ACTIVE_EVIDENCE_FOR_SUPPORTED_CURRENT_CLAIMS_V1",
+            "verified_used_source_count": len(verified_bibliography),
+            "unique_entry_count": len(set(verified_bibliography)),
+            "duplicate_entries": sorted(
+                {entry for entry in verified_bibliography if verified_bibliography.count(entry) > 1}
+            ),
+        }
+        bibliography_integrity_status = (
+            "PASS"
+            if bibliography_integrity["verified_used_source_count"]
+            == bibliography_integrity["unique_entry_count"]
+            else "BLOCKING"
+        )
+        if bibliography_integrity_status == "BLOCKING":
+            raise AutoBookGateError("Bibliography Integrity Gate found duplicate source entries")
+        public_bibliography = (
+            verified_bibliography if bool(book_context.get("include_bibliography")) else []
+        )
         master = self.literary.create_master(
             book_id,
             human_actor=f"OWNER Auto Book {state.run_id}",
+            bibliography_evidence={
+                "preference": (
+                    "AUTO_INCLUDED"
+                    if bool(book_context.get("include_bibliography"))
+                    else "EXPLICITLY_OMITTED"
+                ),
+                "public_included": bool(book_context.get("include_bibliography")),
+                "public_entries": public_bibliography,
+                "verified_used_sources": verified_bibliography,
+                "integrity_gate": bibliography_integrity_status,
+                "integrity_evidence": bibliography_integrity,
+            },
         )
         output_path = (
             self._export_litres_docx(book_id, master.master_id) if prepare_litres_docx else None
@@ -1303,6 +1389,8 @@ class AutoBookFinalizer:
                 state.run_id,
                 structured,
                 text_selection,
+                audit_bibliography=verified_bibliography,
+                public_bibliography_included=bool(book_context.get("include_bibliography")),
             )
             output_files = [item.model_dump(mode="json") for item in bundle.artifacts]
             if audio_script is None:
@@ -1373,6 +1461,8 @@ class AutoBookFinalizer:
             structured,
             audio_selection,
             audio_script=script,
+            audit_bibliography=self._verified_bibliography(book_id),
+            public_bibliography_included=self.contexts.get_context(book_id).include_bibliography,
         )
         all_files = [
             item.model_dump(mode="json")

@@ -124,7 +124,11 @@ def test_selected_outputs_keep_sixteen_native_tables_and_audio_meaning(tmp_path:
         adaptation_mode="SOURCE_FAITHFUL",
         content=content,
         transformations=transformations,
-        provenance={"operation": "fixture audio edit", "provider_calls": 0},
+        provenance={
+            "operation": "fixture audio edit",
+            "provider_calls": 0,
+            "source_attribution": master.bibliography,
+        },
     )
     attention = sorted(
         {
@@ -175,6 +179,7 @@ def test_selected_outputs_keep_sixteen_native_tables_and_audio_meaning(tmp_path:
     )
     assert approved.audio_script_id in handoff
     assert approved.source_hash in handoff
+    assert master.bibliography[0] in handoff
     first_handoff_artifact = by_kind["AUDIO_PRODUCTION_HANDOFF"]
     first_handoff_bytes = (project_dir / first_handoff_artifact.relative_path).read_bytes()
 
@@ -212,11 +217,60 @@ def test_selected_outputs_keep_sixteen_native_tables_and_audio_meaning(tmp_path:
     assert pdf_payload.startswith(b"%PDF-")
     with ZipFile(project_dir / by_kind["EPUB"].relative_path) as archive:
         assert "mimetype" in archive.namelist()
+        bibliography_files = [name for name in archive.namelist() if "bibliography" in name]
+        assert len(bibliography_files) == 1
+        assert "Тестовый источник" in archive.read(bibliography_files[0]).decode("utf-8")
+
+    extras = Document(project_dir / by_kind["READER_EXTRAS"].relative_path)
+    assert "Библиография" in [paragraph.text for paragraph in extras.paragraphs]
+    publisher = json.loads(
+        (project_dir / by_kind["PUBLISHER_PACK"].relative_path).read_text(encoding="utf-8")
+    )
+    assert publisher["public_bibliography_included"] is True
+    assert publisher["public_bibliography"] == master.bibliography
+    assert publisher["bibliographic_audit"]["verified_used_sources"] == master.bibliography
 
     visual = Path(bundle.output_directory) / "visuals" / "chart-1.png"
     assert visual.is_file()
     assert visual.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     assert all(artifact.qa["passed"] is True for artifact in bundle.artifacts)
+
+
+def test_public_opt_out_hides_reader_bibliography_but_keeps_publisher_audit(
+    tmp_path: Path,
+) -> None:
+    selection = AutoBookOutputSelection(
+        full_manuscript_docx=True,
+        epub=True,
+        reader_extras=True,
+        publisher_pack=True,
+    )
+    book_id, run_id = setup_run(tmp_path, selection)
+    public_master = fixture_master()
+    internal_sources = list(public_master.bibliography)
+    omitted_master = public_master.model_copy(update={"bibliography": []})
+    bundle = AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path)).export_selected(
+        book_id,
+        run_id,
+        omitted_master,
+        selection,
+        audit_bibliography=internal_sources,
+        public_bibliography_included=False,
+    )
+    by_kind = {artifact.output_kind: artifact for artifact in bundle.artifacts}
+    project_dir = tmp_path / "projects" / book_id
+    manuscript = Document(project_dir / by_kind["FULL_MANUSCRIPT_DOCX"].relative_path)
+    extras = Document(project_dir / by_kind["READER_EXTRAS"].relative_path)
+    assert "Библиография" not in [paragraph.text for paragraph in manuscript.paragraphs]
+    assert "Библиография" not in [paragraph.text for paragraph in extras.paragraphs]
+    with ZipFile(project_dir / by_kind["EPUB"].relative_path) as archive:
+        assert not [name for name in archive.namelist() if "bibliography" in name]
+    publisher = json.loads(
+        (project_dir / by_kind["PUBLISHER_PACK"].relative_path).read_text(encoding="utf-8")
+    )
+    assert publisher["public_bibliography"] == []
+    assert publisher["public_bibliography_included"] is False
+    assert publisher["bibliographic_audit"]["verified_used_sources"] == internal_sources
 
 
 def test_late_output_selection_exports_only_missing_derivative_and_marks_old_stale(

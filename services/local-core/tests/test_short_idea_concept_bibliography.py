@@ -1,10 +1,11 @@
 from pathlib import Path
 
 from alembic import command
+import pytest
 from sqlalchemy import create_engine, text
 
 from book_os_core.audio_script import AudioScriptService
-from book_os_core.auto_book import AutoBookService, AutoBookStartRequest
+from book_os_core.auto_book import AutoBookGateError, AutoBookService, AutoBookStartRequest
 from book_os_core.auto_book_exports import MasterChapter, StructuredBookMaster
 from book_os_core.auto_book_finalizer import AutoBookFinalizer
 from book_os_core.book_context import (
@@ -20,7 +21,6 @@ from book_os_core.model_gateway import (
     ModelGateway,
 )
 from book_os_core.projects import NewBookRequest, ProjectService
-from book_os_core.prompts import BOOK_CONCEPT_PROPOSAL_V1
 from book_os_core.series_workspace import SeriesPresetRequest, SeriesWorkspaceService
 
 
@@ -216,10 +216,21 @@ def test_online_courses_acceptance_seed_receives_real_series_anti_dup_context(
     )
 
 
-def test_concept_prompt_rejects_generic_template_clone() -> None:
-    text_value = BOOK_CONCEPT_PROPOSAL_V1.developer_text
-    assert "never as a writing template" in text_value
-    assert "Reject generic template-clone logic" in text_value
+def test_generic_concept_is_behaviorally_blocked_before_book_definition(tmp_path: Path) -> None:
+    book_id, service, _ = ready_book(tmp_path)
+    proposed = service.advance(book_id) if start(service, book_id).status == "RUNNING" else None
+    assert proposed is not None and proposed.concept is not None
+    generic = proposed.concept.model_copy(
+        update={
+            "reader_job": "Для всех",
+            "reader_problem": "Книга о теме",
+            "reader_transformation": "Практический результат",
+            "differentiation": "Книга о теме",
+        }
+    )
+    with pytest.raises(AutoBookGateError, match="Concept quality gate"):
+        service.accept_concept(book_id, generic)
+    assert ProjectService(tmp_path).get_project(book_id).book_contract is None
 
 
 def test_nonfiction_context_defaults_to_public_bibliography(tmp_path: Path) -> None:
@@ -312,6 +323,158 @@ def test_legacy_false_default_migrates_to_auto_included(tmp_path: Path) -> None:
             text("SELECT include_bibliography,bibliography_preference FROM book_context_settings")
         ).one()
     assert row == (1, "AUTO_INCLUDED")
+
+
+def test_normal_create_book_binds_exact_existing_series_idempotently(tmp_path: Path) -> None:
+    registry = ProfileRegistry(tmp_path)
+    author = registry.approve_profile(
+        registry.create_profile(
+            ProfileCreateRequest(kind="AUTHOR", content={"author_name": "Елена Дым"})
+        ).profile_id
+    )
+    workspace = SeriesWorkspaceService(tmp_path)
+    series = workspace.create_services_promotion_preset(
+        SeriesPresetRequest(author_profile_id=author.profile_id)
+    )
+    registry.approve_profile(series.series_profile_id)
+    placeholder = next(item for item in series.books if item.title == "Как продать онлайн-курсы")
+    project = ProjectService(tmp_path).create_project(
+        NewBookRequest(working_title="Как продать онлайн-курсы", primary_subtype="Strategy")
+    )
+    style = registry.approve_profile(
+        registry.create_profile(
+            ProfileCreateRequest(
+                kind="STYLE",
+                content={
+                    "style_name": "Елена Дым — нон-фикшн",
+                    "author_profile_id": author.profile_id,
+                },
+            )
+        ).profile_id
+    )
+    BookContextService(tmp_path).save_context(
+        project.book_id,
+        BookContextUpdateRequest(
+            author_profile_id=author.profile_id,
+            style_profile_id=style.profile_id,
+            target_characters=300_000,
+        ),
+    )
+    adapter = DeterministicFakeAdapter()
+    service = AutoBookService(tmp_path, ModelGateway({"openai": adapter}))
+    start(
+        service,
+        project.book_id,
+        author_name="Елена Дым",
+        series_name="Секреты продвижения услуг",
+    )
+    context = BookContextService(tmp_path).get_context(project.book_id)
+    assert context.series_profile is not None
+    assert context.series_profile.profile_id == series.series_profile_id
+    membership = next(
+        item
+        for item in workspace.books(series.series_profile_id)
+        if item.book_id == project.book_id
+    )
+    assert membership.ordinal == placeholder.ordinal
+    assert membership.origin_kind == "LEGACY_TITLE_ONLY"
+    repeated = workspace.bind_existing_book(
+        series.series_profile_id,
+        project.book_id,
+        idea="Не про создание курсов, а про продажи и прибыльность",
+    )
+    assert repeated.series_book_id == membership.series_book_id
+    assert (
+        sum(item.book_id == project.book_id for item in workspace.books(series.series_profile_id))
+        == 1
+    )
+    state = service.advance(project.book_id)
+    assert state.concept is not None
+    assert adapter.last_request is not None
+    continuity = adapter.last_request.authoritative_context["book_context"]["series_continuity"]
+    assert continuity["current_corpus"][0]["title"] == "Как продавать услуги"
+    assert continuity["planned_book_boundaries"]
+    assert continuity["legacy_manuscript"] is None
+
+
+def test_missing_or_wrong_author_series_is_a_visible_blocker(tmp_path: Path) -> None:
+    book_id, service, _ = ready_book(tmp_path)
+    with pytest.raises(AutoBookGateError, match="Series was not found"):
+        start(service, book_id, series_name="Несуществующая серия")
+
+    registry = ProfileRegistry(tmp_path)
+    other_author = registry.approve_profile(
+        registry.create_profile(
+            ProfileCreateRequest(kind="AUTHOR", content={"author_name": "Другой автор"})
+        ).profile_id
+    )
+    other_series = SeriesWorkspaceService(tmp_path).create_services_promotion_preset(
+        SeriesPresetRequest(author_profile_id=other_author.profile_id)
+    )
+    registry.approve_profile(other_series.series_profile_id)
+    with pytest.raises(AutoBookGateError, match="belongs to another author"):
+        start(service, book_id, series_name="Секреты продвижения услуг")
+
+
+def test_corrective_0026_maps_historical_book_os_to_new_without_rewinding_lifecycle(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "legacy-series-0025.sqlite"
+    command.upgrade(alembic_config(database_path), "0025")
+    engine = create_engine(f"sqlite:///{database_path}")
+    now = "2026-09-14T00:00:00Z"
+    rows = [
+        ("B" * 26, "BOOK_OS", "WRITING", "CURRENT_REWRITTEN", "WRITING"),
+        ("I" * 26, "IMPORTED", "READY", "IMPORTED", "COMPLETED"),
+        ("P" * 26, "PLANNED", "IDEA", "NEW", "PLANNED"),
+    ]
+    with engine.begin() as connection:
+        for book_id, source, status, origin, lifecycle in rows:
+            connection.execute(
+                text(
+                    "INSERT INTO book_projects(book_id,working_title,mode,domain,primary_subtype,"
+                    "profile_version,workflow_stage,created_at,updated_at) VALUES "
+                    "(:book,:title,'BOOK_FROM_ZERO','BUSINESS_NONFICTION','Strategy','0.1',"
+                    "'BOOK_DEFINITION',:now,:now)"
+                ),
+                {"book": book_id, "title": f"Owner {source}", "now": now},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO series_books(series_book_id,series_profile_id,book_id,ordinal,"
+                    "unique_idea,reader_problem,reader_result,unique_mechanism,excluded_topics_json,"
+                    "source_kind,status,origin_kind,lifecycle,legacy_content_allowed,created_at,updated_at) "
+                    "VALUES (:membership,:series,:book,:ordinal,:owner,:owner,:owner,:owner,'[]',"
+                    ":source,:status,:origin,:lifecycle,0,:now,:now)"
+                ),
+                {
+                    "membership": book_id,
+                    "series": "S" * 26,
+                    "book": book_id,
+                    "ordinal": len(book_id),
+                    "owner": f"Owner-authored {source} material",
+                    "source": source,
+                    "status": status,
+                    "origin": origin,
+                    "lifecycle": lifecycle,
+                    "now": now,
+                },
+            )
+    engine.dispose()
+    command.upgrade(alembic_config(database_path), "0026")
+    upgraded = create_engine(f"sqlite:///{database_path}")
+    with upgraded.connect() as connection:
+        actual = connection.execute(
+            text(
+                "SELECT source_kind,origin_kind,lifecycle,unique_idea FROM series_books "
+                "ORDER BY source_kind"
+            )
+        ).all()
+    assert actual == [
+        ("BOOK_OS", "NEW", "WRITING", "Owner-authored BOOK_OS material"),
+        ("IMPORTED", "IMPORTED", "COMPLETED", "Owner-authored IMPORTED material"),
+        ("PLANNED", "NEW", "PLANNED", "Owner-authored PLANNED material"),
+    ]
 
 
 def test_concept_schema_requires_professional_core_fields() -> None:
