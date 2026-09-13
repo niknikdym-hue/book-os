@@ -163,6 +163,14 @@ type Props = {
   onProject: (project: ProjectView) => void;
   coreReady?: boolean;
   api?: LaunchApi;
+  surface?: "full" | "new-book" | "release";
+  initialSetup?: {
+    idea: string;
+    readerHint: string;
+    authorName: string;
+    seriesName: string;
+    targetCharacters: string;
+  };
 };
 
 function progressPercent(state: AutoBookState | null): number {
@@ -398,16 +406,20 @@ export function LaunchPlanningPanel({
   onProject,
   coreReady = true,
   api = coreApi,
+  surface = "full",
+  initialSetup,
 }: Props) {
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
   const [bookContext, setBookContext] = useState<BookContextView | null>(null);
   const [profiles, setProfiles] = useState<ContextProfile[]>([]);
   const [choiceId, setChoiceId] = useState<PlanningChoiceId>("AUTO");
-  const [idea, setIdea] = useState("");
-  const [readerHint, setReaderHint] = useState("");
-  const [authorName, setAuthorName] = useState("");
-  const [seriesName, setSeriesName] = useState("");
-  const [targetCharacters, setTargetCharacters] = useState("180000");
+  const [idea, setIdea] = useState(initialSetup?.idea ?? "");
+  const [readerHint, setReaderHint] = useState(initialSetup?.readerHint ?? "");
+  const [authorName, setAuthorName] = useState(initialSetup?.authorName ?? "");
+  const [seriesName, setSeriesName] = useState(initialSetup?.seriesName ?? "");
+  const [targetCharacters, setTargetCharacters] = useState(
+    initialSetup?.targetCharacters ?? "180000",
+  );
   const [autoTotalBudget, setAutoTotalBudget] = useState("25.00");
   const [autoPerRequestBudget, setAutoPerRequestBudget] = useState("1.00");
   const [autoMaxRequests, setAutoMaxRequests] = useState("40");
@@ -785,8 +797,9 @@ export function LaunchPlanningPanel({
         </span>
       </div>
 
+      {surface !== "new-book" && (
       <section className="planning-step primary-planning-step" aria-label="Что вы хотите сделать">
-        <h4>Что вы хотите сделать?</h4>
+        <h4>{surface === "release" ? "Что подготовить?" : "Что вы хотите сделать?"}</h4>
         <div className="writer-levels writer-astra-modes" role="group" aria-label="Сценарий работы">
           <button
             type="button"
@@ -794,7 +807,7 @@ export function LaunchPlanningPanel({
             aria-pressed={workflowMode === "NEW_BOOK"}
             onClick={() => setWorkflowMode("NEW_BOOK")}
           >
-            Создать книгу с нуля
+            {surface === "release" ? "Файлы этой книги" : "Создать книгу с нуля"}
           </button>
           <button
             type="button"
@@ -802,35 +815,45 @@ export function LaunchPlanningPanel({
             aria-pressed={workflowMode === "EXISTING_AUDIO"}
             onClick={() => setWorkflowMode("EXISTING_AUDIO")}
           >
-            Подготовить текст для аудиозаписи готовой книги
+            {surface === "release" ? "Аудиоверсия готовой книги" : "Подготовить текст для аудиозаписи готовой книги"}
           </button>
         </div>
       </section>
+      )}
 
       {workflowMode === "NEW_BOOK" && autoState?.status !== "RUNNING" && !autoBusy && autoState?.status !== "DONE" && autoState?.status !== "AWAITING_AUDIO_APPROVAL" && (
         <>
-          <section className="planning-step primary-planning-step" aria-label="Модель для книги">
-            <h4>1. Модель</h4>
-            <div className="writer-levels writer-astra-modes" role="group" aria-label="Модель Auto Book">
-              {PLANNING_CHOICES.map((choice) => (
-                <button
-                  key={choice.id}
-                  type="button"
-                  className={choiceId === choice.id ? "active" : ""}
-                  aria-pressed={choiceId === choice.id}
-                  onClick={() => {
-                    setChoiceId(choice.id);
-                    setAuthorizeAuto(false);
-                  }}
-                >
-                  {choice.label}
-                </button>
-              ))}
-            </div>
-          </section>
+          <details className="advanced-settings ai-project-settings">
+            <summary>
+              AI: {PLANNING_CHOICES.find((choice) => choice.id === choiceId)?.label ?? "Автоматически"}
+              {choiceId === "AUTO" ? " — рекомендуется" : ""}
+            </summary>
+            <section className="planning-step primary-planning-step" aria-label="Модель для книги">
+              <p className="muted">
+                В автоматическом режиме BOOK OS подбирает модель и глубину отдельно для каждой
+                редакционной операции. Ручной выбор действует только по вашему явному решению.
+              </p>
+              <div className="writer-levels writer-astra-modes" role="group" aria-label="Модель Auto Book">
+                {PLANNING_CHOICES.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className={choiceId === choice.id ? "active" : ""}
+                    aria-pressed={choiceId === choice.id}
+                    onClick={() => {
+                      setChoiceId(choice.id);
+                      setAuthorizeAuto(false);
+                    }}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </details>
 
           <section className="planning-step primary-planning-step" aria-label="Обязательные данные книги">
-            <h4>2. Данные книги</h4>
+            <h4>Книга</h4>
             {!contractApproved && (
               <div className="form-grid">
                 <label className="field required-field">
@@ -975,8 +998,10 @@ export function LaunchPlanningPanel({
             </details>
           </section>
 
+          <details className="advanced-settings delivery-project-settings">
+            <summary>Форматы результата · можно выбрать сейчас или на этапе «Выпуск»</summary>
           <section className="planning-step primary-planning-step" aria-label="Формат создаваемой книги">
-            <h4>3. Как будет использоваться книга?</h4>
+            <h4>Как будет использоваться книга?</h4>
             <div className="writer-levels writer-astra-modes" role="group" aria-label="Основной формат книги">
               {([
                 ["TEXT_FIRST", "Текст"],
@@ -1004,7 +1029,7 @@ export function LaunchPlanningPanel({
           </section>
 
           <section className="planning-step primary-planning-step" aria-label="Что подготовить">
-            <h4>4. Что подготовить</h4>
+            <h4>Что подготовить</h4>
             <p className="muted">
               Полная рукопись выбрана по умолчанию. Другие форматы создаются из того же проверенного master.
             </p>
@@ -1060,9 +1085,10 @@ export function LaunchPlanningPanel({
               )}
             </div>
           </section>
+          </details>
 
           <details className="advanced-settings planning-settings">
-            <summary>Расширенные настройки — обычно менять не нужно</summary>
+            <summary>AI и расходы · Advanced</summary>
             <div className="form-grid">
               <label className="field">
                 <span>Общий лимит, USD</span>
@@ -1097,14 +1123,10 @@ export function LaunchPlanningPanel({
           </details>
 
           <section className="launch-readiness" aria-label="Готовность к запуску">
-            <h4>5. Проверка перед запуском</h4>
+            <h4>Готовность к запуску</h4>
             <div className="readiness-grid">
-              <span className={coreReady ? "ready" : "missing"}>
-                {coreReady ? "✓" : "○"} Local Core {coreReady ? "готов" : "запускается"}
-              </span>
-              <span className={credentialAvailable ? "ready" : "missing"}>
-                {credentialAvailable ? "✓" : "○"} OpenAI {credentialAvailable ? "подключён" : "не подключён"}
-              </span>
+              {!coreReady && <span className="missing">○ BOOK OS ещё запускается</span>}
+              {!credentialAvailable && <span className="missing">○ AI не подключён</span>}
               <span className={ideaReady ? "ready" : "missing"}>
                 {ideaReady ? "✓" : "○"} Идея книги
               </span>
@@ -1114,15 +1136,11 @@ export function LaunchPlanningPanel({
               <span className={targetReady ? "ready" : "missing"}>
                 {targetReady ? "✓" : "○"} Объём книги
               </span>
-              <span className={budgetReady ? "ready" : "missing"}>
-                {budgetReady ? "✓" : "○"} Лимиты Auto Book
-              </span>
+              <span className={budgetReady ? "ready" : "missing"}>{budgetReady ? "✓" : "○"} Расходы ограничены</span>
             </div>
             <p className="launch-summary">
-              Выбрано результатов: {Object.values(outputs).filter(Boolean).length}. Ориентир до ${" "}
-              {Math.min(totalBudget, perRequestBudget * maxRequests).toFixed(2)}; твёрдый максимум ${" "}
-              {Number.isFinite(totalBudget) ? totalBudget.toFixed(2) : "—"}. Часть бюджета резервируется на
-              редактуру и выпуск.
+              AI-расходы ограничены настройками проекта ✓ · выбрано результатов: {Object.values(outputs).filter(Boolean).length}.
+              Максимальный бюджет этого запуска — ${Number.isFinite(totalBudget) ? totalBudget.toFixed(2) : "—"}.
             </p>
           </section>
 

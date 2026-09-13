@@ -115,9 +115,14 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-export function SeriesStudio() {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"NEW" | "IMPORT" | "BOOK_OS">("NEW");
+type Props = {
+  embedded?: boolean;
+  initialMode?: "NEW" | "IMPORT" | "BOOK_OS";
+};
+
+export function SeriesStudio({ embedded = false, initialMode = "NEW" }: Props = {}) {
+  const [open, setOpen] = useState(embedded);
+  const [mode, setMode] = useState<"NEW" | "IMPORT" | "BOOK_OS">(initialMode);
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +170,12 @@ export function SeriesStudio() {
     if (!open) return;
     void reloadProfiles().catch((reason: unknown) => setError(String(reason)));
   }, [open, reloadProfiles]);
+
+  useEffect(() => {
+    if (!embedded) return;
+    setOpen(true);
+    setMode(initialMode);
+  }, [embedded, initialMode]);
 
   const authors = useMemo(
     () =>
@@ -480,17 +491,21 @@ export function SeriesStudio() {
 
   return (
     <>
-      <button
+      {!embedded && <button
         type="button"
         className="series-studio-launcher"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         Серии
-      </button>
+      </button>}
 
       {open && (
-        <div className="series-studio-backdrop" role="presentation" onMouseDown={() => setOpen(false)}>
+        <div
+          className={`series-studio-backdrop ${embedded ? "embedded" : ""}`}
+          role={embedded ? undefined : "presentation"}
+          onMouseDown={() => { if (!embedded) setOpen(false); }}
+        >
           <aside
             className="series-studio-drawer"
             aria-label="Series Studio"
@@ -501,7 +516,7 @@ export function SeriesStudio() {
                 <p className="eyebrow">SERIES STUDIO</p>
                 <h2>Работа с серией</h2>
               </div>
-              <button type="button" className="ghost" onClick={() => setOpen(false)}>Закрыть</button>
+              {!embedded && <button type="button" className="ghost" onClick={() => setOpen(false)}>Закрыть</button>}
             </header>
 
             <p className="series-studio-rule">

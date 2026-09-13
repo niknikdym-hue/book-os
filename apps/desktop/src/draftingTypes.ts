@@ -39,4 +39,5 @@ export type DraftingPanelProps = {
   project: ProjectView;
   chapter: ChapterView | null;
   api?: DraftApi;
+  calmMode?: boolean;
 };

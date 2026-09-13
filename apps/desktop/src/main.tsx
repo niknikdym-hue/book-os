@@ -9,6 +9,7 @@ import "./authorStudio.css";
 import "./authorStudioCorrections.css";
 import "./bookSidebar.css";
 import "./seriesStudio.css";
+import "./authorExperience.css";
 
 const rootCandidate = document.getElementById("root");
 if (!rootCandidate) {
