@@ -5,6 +5,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
 import httpx
 
+from book_os_core.audio_attention import attention_finding_key
 from book_os_core.audio_script_api import build_audio_script_router
 from book_os_core.auto_book_runtime import DurableAutoBookRuntime
 from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway
@@ -104,14 +105,41 @@ def test_authenticated_existing_book_audio_flow_keeps_source_and_requires_human_
         json={"human_actor": "Елена Дым", "accepted_attention_codes": []},
     )
     assert denied.status_code == 409
+    assert "exact location" in denied.json()["detail"]
 
-    attention = sorted(
+    aggregate_codes = sorted(
         {
             finding["code"]
             for check in script["quality_checks"]
             for finding in check["findings"]
             if finding["severity"] == "ATTENTION"
         }
+    )
+    aggregate_denied = client.post(
+        f"/api/projects/{book_id}/audio-scripts/{script['audio_script_id']}/approve",
+        json={
+            "human_actor": "Елена Дым",
+            "accepted_attention_codes": aggregate_codes,
+        },
+    )
+    assert aggregate_denied.status_code == 409
+    assert "exact location" in aggregate_denied.json()["detail"]
+
+    attention = sorted(
+        attention_finding_key(
+            type(
+                "Finding",
+                (),
+                {
+                    "code": finding["code"],
+                    "location": finding["location"],
+                    "detail": finding["detail"],
+                },
+            )()
+        )
+        for check in script["quality_checks"]
+        for finding in check["findings"]
+        if finding["severity"] == "ATTENTION"
     )
     approved = client.post(
         f"/api/projects/{book_id}/audio-scripts/{script['audio_script_id']}/approve",
@@ -133,6 +161,8 @@ def test_authenticated_existing_book_audio_flow_keeps_source_and_requires_human_
         "PRONUNCIATION_DICTIONARY",
         "AUDIO_PRODUCTION_HANDOFF",
     }
+    exact_values = result["audio_script"]["approval"]["accepted_attention_codes"]
+    assert set(attention) <= set(exact_values)
     voice = next(item for item in result["artifacts"] if item["output_kind"] == "VOICE_TEXT_TXT")
     voice_text = (tmp_path / "projects" / book_id / voice["relative_path"]).read_text()
     assert "audio_script_id" not in voice_text
