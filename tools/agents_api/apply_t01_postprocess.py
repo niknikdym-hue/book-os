@@ -20,6 +20,7 @@ QUALITY = "services/local-core/src/book_os_core/auto_book_quality.py"
 FINALIZER = "services/local-core/src/book_os_core/auto_book_finalizer.py"
 GATEWAY = "services/local-core/src/book_os_core/model_gateway.py"
 QUALITY_TEST = "services/local-core/tests/test_auto_book_quality.py"
+FINALIZER_TEST = "services/local-core/tests/test_auto_book_finalizer.py"
 GATEWAY_TEST = "services/local-core/tests/test_model_gateway.py"
 
 replace_once(
@@ -64,10 +65,19 @@ replace_once(
     '''        runtime = self.runtime.get(book_id, state.run_id)\n        if (\n            runtime.intent.final_human_acceptance_required\n            or quality_report.finding_counts["ATTENTION"] > 0\n        ):\n            self.runtime.set_stage(\n''',
 )
 
+# Preserve the general deterministic fake as an ATTENTION fixture. The finalizer's happy-path
+# PublishingAdapter gets an explicit PASS response below so old happy-path tests do not accidentally
+# exercise the new ATTENTION-human-disposition path.
 replace_once(
     GATEWAY,
     '''                output={\n                    "verdict": "PASS",\n                    "findings": [],\n                    "confidence": 0.75,\n                    "rationale": "Deterministic fake judge found no unresolved findings.",\n                },\n''',
     '''                output={\n                    "verdict": "ATTENTION",\n                    "findings": [\n                        {\n                            "location": "candidate:1",\n                            "evidence": "bounded synthetic signal",\n                            "recommended_action": "Human review.",\n                        }\n                    ],\n                    "confidence": 0.75,\n                    "rationale": "Deterministic fake judge fixture.",\n                },\n''',
+)
+
+replace_once(
+    FINALIZER_TEST,
+    '''        if prompt.prompt_id == AUDIO_SCRIPT_EDITOR_V1.prompt_id:\n            self.audio_prompt_calls = getattr(self, "audio_prompt_calls", 0) + 1\n        if request.task_type != "SECTION_DRAFT":\n            return super().generate(request, prompt)\n''',
+    '''        if prompt.prompt_id == AUDIO_SCRIPT_EDITOR_V1.prompt_id:\n            self.audio_prompt_calls = getattr(self, "audio_prompt_calls", 0) + 1\n        if request.task_type == "BOOKBENCH_JUDGE":\n            return ModelAdapterResult(\n                provider_run_id="finalizer-happy-path-critic",\n                output={\n                    "verdict": "PASS",\n                    "findings": [],\n                    "confidence": 0.93,\n                    "rationale": "Finalizer happy-path fixture has no unresolved findings.",\n                },\n                usage={"input_tokens": 40, "output_tokens": 20},\n            )\n        if request.task_type != "SECTION_DRAFT":\n            return super().generate(request, prompt)\n''',
 )
 
 replace_once(
