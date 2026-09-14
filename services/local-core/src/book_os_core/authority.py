@@ -257,8 +257,17 @@ class AuthorityService(AuthorityStore):
         gates: Mapping[str, JSONValue],
         fault_injector: Callable[[str], None] | None = None,
     ) -> ProposalAcceptance:
-        if actor_kind != "HUMAN":
-            raise HumanApprovalRequired("material authority acceptance requires a human actor")
+        delegated = (
+            actor_kind == "SYSTEM"
+            and isinstance(gates.get("delegated_authorization_id"), str)
+            and bool(gates.get("delegated_authorization_scope"))
+            and isinstance(gates.get("auto_book_run_id"), str)
+        )
+        if actor_kind != "HUMAN" and not delegated:
+            raise HumanApprovalRequired(
+                "material authority acceptance requires a human action or an explicit durable "
+                "delegated authorization"
+            )
         now = utc_now()
         decision_id = new_ulid()
         revision_id = new_ulid()

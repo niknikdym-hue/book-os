@@ -26,7 +26,7 @@ const author = {
 
 type RunningState = {
   run_id: string;
-  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_CONCEPT_APPROVAL" | "AWAITING_AUDIO_APPROVAL";
+  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_CONCEPT_APPROVAL" | "AWAITING_FINAL_ACCEPTANCE" | "AWAITING_AUDIO_APPROVAL";
   phase: string;
   requests_used: number;
   max_requests: number;
@@ -59,6 +59,18 @@ function fakeApi(autoState: RunningState | null = null, audioScript: object | nu
       return { openai_credential_state: "AVAILABLE" } as T;
     }
     if (method === "GET" && path.endsWith("/auto-book")) return autoState as T;
+    if (method === "GET" && path.endsWith("/auto-book/final-candidate")) {
+      return {
+        candidate_id: "01JFINAL00000000000000000",
+        snapshot_hash: "c".repeat(64),
+        status: "AWAITING",
+        candidate: {
+          selected_outputs: ["FULL_MANUSCRIPT_DOCX", "EPUB"],
+          findings_remaining: 0,
+          bookbench_snapshot_id: "snapshot-1",
+        },
+      } as T;
+    }
     if (method === "GET" && path.endsWith("/auto-book/audio-script")) return audioScript as T;
     if (method === "GET" && path.endsWith("/context")) {
       return {
@@ -75,6 +87,41 @@ function fakeApi(autoState: RunningState | null = null, audioScript: object | nu
 
 afterEach(() => {
   cleanup();
+});
+
+it("shows the exact final candidate and requires a real human acceptance action", async () => {
+  const awaiting: RunningState = {
+    run_id: "01JRUN00000000000000000000",
+    status: "AWAITING_FINAL_ACCEPTANCE",
+    phase: "EXPORT",
+    requests_used: 10,
+    max_requests: 40,
+    authorized_cost_usd: 6,
+    max_total_cost_usd: 25,
+    current_chapter_ordinal: null,
+    last_action: "Финальный кандидат ждёт принятия человеком",
+    output_path: null,
+    error: null,
+  };
+  render(
+    <LaunchPlanningPanel
+      project={project}
+      chapter={null}
+      onProject={() => undefined}
+      api={fakeApi(awaiting)}
+    />,
+  );
+
+  expect(await screen.findByText("01JFINAL00000000000000000")).toBeInTheDocument();
+  expect(screen.getByText(/FULL_MANUSCRIPT_DOCX, EPUB/)).toBeInTheDocument();
+  const accept = screen.getByRole("button", { name: "Принять книгу и подготовить файлы" });
+  expect(accept).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: "Я проверила финальный кандидат и принимаю именно эту версию книги.",
+    }),
+  );
+  expect(accept).toBeEnabled();
 });
 
 it("separates the new-book delivery profile from the existing-book audio workflow", async () => {

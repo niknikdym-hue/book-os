@@ -7,6 +7,7 @@ from html import unescape
 import json
 from pathlib import Path
 import re
+import shutil
 from typing import Any, Literal, cast
 from zipfile import BadZipFile, ZipFile
 
@@ -864,7 +865,13 @@ class SeriesWorkspaceService:
         }
 
     def approve_book_passport(
-        self, series_profile_id: str, book_id: str, passport_hash: str, reason: str
+        self,
+        series_profile_id: str,
+        book_id: str,
+        passport_hash: str,
+        reason: str,
+        *,
+        actor: str = "HUMAN:OWNER",
     ) -> SeriesBookView:
         book = next(
             (item for item in self.books(series_profile_id) if item.book_id == book_id), None
@@ -880,7 +887,7 @@ class SeriesWorkspaceService:
                     text(
                         "INSERT INTO series_author_decisions(decision_id,series_profile_id,book_id,"
                         "decision_kind,input_hash,decision,reason,actor,created_at) VALUES "
-                        "(:id,:series,:book,'BOOK_PASSPORT',:hash,'APPROVED',:reason,'OWNER',:created)"
+                        "(:id,:series,:book,'BOOK_PASSPORT',:hash,'APPROVED',:reason,:actor,:created)"
                     ),
                     {
                         "id": new_ulid(),
@@ -888,6 +895,7 @@ class SeriesWorkspaceService:
                         "book": book_id,
                         "hash": passport_hash,
                         "reason": reason.strip() or "Owner approved the current Book Passport",
+                        "actor": actor,
                         "created": utc_now(),
                     },
                 )
@@ -1406,7 +1414,14 @@ class SeriesWorkspaceService:
             approved=False,
         )
 
-    def approve_map(self, series_profile_id: str, map_hash: str, reason: str) -> SeriesMapView:
+    def approve_map(
+        self,
+        series_profile_id: str,
+        map_hash: str,
+        reason: str,
+        *,
+        actor: str = "HUMAN:OWNER",
+    ) -> SeriesMapView:
         current = self.current_map(series_profile_id)
         if current is None or not current.current or current.map_hash != map_hash:
             raise SeriesWorkspaceGateError("series map is missing or stale")
@@ -1423,7 +1438,7 @@ class SeriesWorkspaceService:
                     text(
                         "INSERT INTO series_author_decisions(decision_id,series_profile_id,book_id,"
                         "decision_kind,input_hash,decision,reason,actor,created_at) VALUES (:id,:series,"
-                        ":book,'OVERLAP_MAP',:hash,'APPROVED',:reason,'OWNER',:created)"
+                        ":book,'OVERLAP_MAP',:hash,'APPROVED',:reason,:actor,:created)"
                     ),
                     {
                         "id": new_ulid(),
@@ -1432,6 +1447,7 @@ class SeriesWorkspaceService:
                         "hash": map_hash,
                         "reason": reason.strip()
                         or "Owner approved the current series difference map",
+                        "actor": actor,
                         "created": utc_now(),
                     },
                 )
@@ -1649,14 +1665,107 @@ class SeriesWorkspaceService:
                 encoding="utf-8",
             )
             files.append(path)
-        existing: dict[str, list[str]] = {}
+        packaged: dict[str, list[str]] = {}
+        missing: dict[str, list[str]] = {}
+        requested_assets = any(
+            (
+                selection.complete_manuscripts,
+                selection.editorial_and_litres,
+                selection.audio_editions,
+                selection.visual_materials,
+            )
+        )
+        packaged_asset_count = 0
+        category_kinds = {
+            "complete_manuscripts": {"FULL_MANUSCRIPT_DOCX"},
+            "editorial_and_litres": {
+                "LITRES_EBOOK_DOCX",
+                "READING_PDF",
+                "EPUB",
+                "PUBLISHER_PACK",
+            },
+            "audio_editions": {
+                "AUDIO_READING_DOCX",
+                "AUDIO_LITRES_DOCX",
+                "VOICE_TEXT_TXT",
+                "PRONUNCIATION_DICTIONARY",
+                "AUDIO_PRODUCTION_HANDOFF",
+            },
+        }
         for book in workspace.books:
             book_exports = self.projects.projects_dir / book.book_id / "exports"
-            existing[book.book_id] = (
-                sorted(str(path) for path in book_exports.rglob("*") if path.is_file())
+            engine = self._engine(book.book_id)
+            try:
+                with engine.connect() as connection:
+                    rows = list(
+                        connection.execute(
+                            text(
+                                "SELECT a.output_kind,a.relative_path FROM auto_book_output_artifacts a "
+                                "JOIN auto_book_runtime_runs r ON r.run_id=a.run_id "
+                                "WHERE r.book_id=:book_id AND a.status='READY' "
+                                "ORDER BY a.created_at,a.artifact_id"
+                            ),
+                            {"book_id": book.book_id},
+                        ).mappings()
+                    )
+            finally:
+                engine.dispose()
+            visual_paths = (
+                [path for path in book_exports.rglob("*.png") if output not in path.parents]
                 if book_exports.is_dir()
                 else []
             )
+            if not rows and not visual_paths:
+                # Planned or title-only books have no derivatives yet and belong in the series
+                # plan, not as false missing-file errors in a package of completed books.
+                packaged[book.book_id] = []
+                continue
+            requested_categories = [
+                category for category in category_kinds if bool(getattr(selection, category))
+            ]
+            copied_for_book: list[str] = []
+            missing_for_book: list[str] = []
+            destination = output / "books" / f"{book.ordinal:03d}-{book.book_id}"
+            for category in requested_categories:
+                category_rows = [
+                    row for row in rows if row["output_kind"] in category_kinds[category]
+                ]
+                if not category_rows:
+                    missing_for_book.append(category)
+                    continue
+                for row in category_rows:
+                    source = self.projects.projects_dir / book.book_id / str(row["relative_path"])
+                    if not source.is_file():
+                        missing_for_book.append(f"{category}:{row['output_kind']}")
+                        continue
+                    category_destination = destination / category / str(row["output_kind"])
+                    category_destination.mkdir(parents=True, exist_ok=True)
+                    target = category_destination / source.name
+                    shutil.copy2(source, target)
+                    files.append(target)
+                    copied_for_book.append(target.relative_to(output).as_posix())
+                    packaged_asset_count += 1
+            if selection.visual_materials:
+                if not visual_paths:
+                    missing_for_book.append("visual_materials")
+                for source in visual_paths:
+                    visual_destination = destination / "visual_materials"
+                    visual_destination.mkdir(parents=True, exist_ok=True)
+                    target = visual_destination / source.name
+                    shutil.copy2(source, target)
+                    files.append(target)
+                    copied_for_book.append(target.relative_to(output).as_posix())
+                    packaged_asset_count += 1
+            packaged[book.book_id] = sorted(set(copied_for_book))
+            if missing_for_book:
+                missing[book.book_id] = sorted(set(missing_for_book))
+        if missing:
+            raise SeriesWorkspaceGateError(
+                "selected series derivatives are missing: "
+                + json.dumps(missing, ensure_ascii=False, sort_keys=True)
+            )
+        if requested_assets and packaged_asset_count == 0:
+            raise SeriesWorkspaceGateError("selected series derivatives are not ready yet")
         write_json(
             "manifest.json",
             {
@@ -1665,7 +1774,7 @@ class SeriesWorkspaceService:
                 "map_current": workspace.map.current if workspace.map else False,
                 "map_approved": workspace.map.approved if workspace.map else False,
                 "selected": selected,
-                "existing_book_outputs": existing,
+                "packaged_book_outputs": packaged,
                 "writing_started": False,
                 "note": (
                     "Series export aggregates existing book outputs and metadata; it never starts "

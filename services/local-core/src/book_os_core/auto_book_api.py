@@ -35,6 +35,10 @@ class AutoBookChangeRequest(BaseModel):
     request_text: str = Field(min_length=1, max_length=12000)
 
 
+class AutoBookChangeClarification(BaseModel):
+    clarification: str = Field(min_length=1, max_length=12000)
+
+
 class AutoBookConceptApprovalRequest(BaseModel):
     concept: BookConceptProposalOutput | None = None
 
@@ -52,6 +56,11 @@ class AutoBookAudioRevisionRequest(BaseModel):
     content: AudioScriptContent
     human_actor: str = Field(min_length=1, max_length=300)
     change_summary: str = Field(min_length=3, max_length=4000)
+
+
+class AutoBookFinalDecisionRequest(BaseModel):
+    human_actor: str = Field(min_length=1, max_length=300)
+    reason: str = Field(min_length=1, max_length=4000)
 
 
 def build_auto_book_router(
@@ -88,15 +97,9 @@ def build_auto_book_router(
 
         state = service.get(book_id)
         if state is not None:
-            try:
-                uncertain_cap = service._remaining_call_cap(state)
-            except AutoBookError:
-                uncertain_cap = None
-            if uncertain_cap is not None:
-                service._consume_call(state, uncertain_cap)
-            state.status = "RUNNING"
+            state.status = "STOPPED"
             state.error = str(exc)
-            state.last_action = "Temporary model connection interruption; progress and budget saved"
+            state.last_action = "Исход запроса неизвестен; слепой повтор заблокирован"
             service._write(state)
         raise HTTPException(
             status_code=503,
@@ -111,13 +114,6 @@ def build_auto_book_router(
         state = service.get(book_id)
         if state is None:
             return
-        try:
-            uncertain_cap = service._remaining_call_cap(state)
-        except AutoBookError:
-            uncertain_cap = 0.0
-        if uncertain_cap > 0:
-            service._consume_call(state, uncertain_cap)
-            state.unknown_cost_usd = round(state.unknown_cost_usd + uncertain_cap, 6)
         state.status = "STOPPED"
         state.error = str(exc)
         state.last_action = (
@@ -233,6 +229,11 @@ def build_auto_book_router(
         state.output_files = result.output_files
         state.audio_script_id = result.audio_script_id
         state.error = None
+        if result.awaiting_final_acceptance:
+            state.status = "AWAITING_FINAL_ACCEPTANCE"
+            state.phase = "EXPORT"
+            state.last_action = "Финальный кандидат ждёт принятия человеком"
+            return service._write(state)
         if result.awaiting_audio_approval:
             state.status = "AWAITING_AUDIO_APPROVAL"
             state.phase = "EXPORT"
@@ -358,18 +359,113 @@ def build_auto_book_router(
                 current.run_id,
                 payload.request_text,
             )
-            return {
-                "change_id": change_id,
-                "status": "SAVED",
-                "message": (
-                    "Запрос сохранён. BOOK OS обновит только затронутые части и зависимые проверки."
-                ),
-            }
+            result = finalizer.execute_change(book_id, current, change_id)
+            if result.get("status") == "DONE" and isinstance(result.get("result"), dict):
+                current.status = "AWAITING_FINAL_ACCEPTANCE"
+                current.phase = "EXPORT"
+                current.audio_script_id = None
+                current.last_action = "Изменение применено; новый финальный кандидат ждёт решения"
+                service._write(current)
+            return result
         except AutoBookRuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except AutoBookError as exc:
             raise_http(exc)
         raise AssertionError("unreachable")
+
+    @router.get("/api/projects/{book_id}/auto-book/changes")
+    def list_auto_book_changes(book_id: str) -> list[dict[str, object]]:
+        current = service.get(book_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Auto Book has not been started")
+        return [
+            item.model_dump(mode="json")
+            for item in service.runtime.list_changes(book_id, current.run_id)
+        ]
+
+    @router.post("/api/projects/{book_id}/auto-book/changes/{change_id}/clarify")
+    def clarify_auto_book_change(
+        book_id: str, change_id: str, payload: AutoBookChangeClarification
+    ) -> dict[str, object]:
+        current = service.get(book_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Auto Book has not been started")
+        try:
+            result = finalizer.execute_change(
+                book_id, current, change_id, clarification=payload.clarification
+            )
+            if result.get("status") == "DONE" and isinstance(result.get("result"), dict):
+                current.status = "AWAITING_FINAL_ACCEPTANCE"
+                current.phase = "EXPORT"
+                current.audio_script_id = None
+                current.last_action = "Изменение применено; новый финальный кандидат ждёт решения"
+                service._write(current)
+            return result
+        except (AutoBookError, AutoBookRuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.get("/api/projects/{book_id}/auto-book/final-candidate")
+    def get_final_candidate(book_id: str) -> dict[str, object] | None:
+        current = service.get(book_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Auto Book has not been started")
+        return finalizer._final_candidate(book_id, current.run_id)
+
+    @router.post("/api/projects/{book_id}/auto-book/final-candidate/accept")
+    def accept_final_candidate(
+        book_id: str, payload: AutoBookFinalDecisionRequest
+    ) -> dict[str, object]:
+        current = service.get(book_id)
+        if current is None or current.status != "AWAITING_FINAL_ACCEPTANCE":
+            raise HTTPException(status_code=409, detail="No final candidate awaits acceptance")
+        try:
+            finalizer.decide_final_candidate(
+                book_id,
+                current,
+                accept=True,
+                human_actor=payload.human_actor,
+                reason=payload.reason,
+            )
+            current.status = "DONE"
+            current.phase = "DONE"
+            result = finalizer.finalize(
+                book_id, current, prepare_litres_docx=current.prepare_litres_docx
+            )
+        except (AutoBookError, AutoBookRuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        current.output_path = result.output_path
+        current.output_files = result.output_files
+        current.audio_script_id = result.audio_script_id
+        current.status = "AWAITING_AUDIO_APPROVAL" if result.awaiting_audio_approval else "DONE"
+        current.last_action = (
+            "AudioScript ждёт утверждения человеком"
+            if result.awaiting_audio_approval
+            else "Literary Master принят человеком; выбранные файлы готовы"
+        )
+        return service._write(current).model_dump(mode="json")
+
+    @router.post("/api/projects/{book_id}/auto-book/final-candidate/rework")
+    def rework_final_candidate(
+        book_id: str, payload: AutoBookFinalDecisionRequest
+    ) -> dict[str, object]:
+        current = service.get(book_id)
+        if current is None or current.status != "AWAITING_FINAL_ACCEPTANCE":
+            raise HTTPException(status_code=409, detail="No final candidate awaits rework decision")
+        try:
+            candidate = finalizer.decide_final_candidate(
+                book_id,
+                current,
+                accept=False,
+                human_actor=payload.human_actor,
+                reason=payload.reason,
+            )
+        except (AutoBookError, AutoBookRuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        current.status = "STOPPED"
+        current.error = None
+        current.last_action = "Автор запросил доработку финального кандидата"
+        service._write(current)
+        return candidate
 
     @router.get("/api/projects/{book_id}/auto-book/audio-script")
     def get_auto_book_audio_script(book_id: str) -> dict[str, object] | None:
@@ -392,13 +488,23 @@ def build_auto_book_router(
         if current.status != "AWAITING_AUDIO_APPROVAL":
             raise HTTPException(status_code=409, detail="Auto Book is not awaiting audio approval")
         try:
-            approved = audio_scripts.approve(
-                book_id,
-                current.audio_script_id,
-                human_actor=payload.human_actor,
-                accepted_attention_codes=payload.accepted_attention_codes,
+            existing_script = audio_scripts.get(book_id, current.audio_script_id)
+            approved = (
+                existing_script
+                if existing_script.status == "APPROVED" and existing_script.ready_for_export
+                else audio_scripts.approve(
+                    book_id,
+                    current.audio_script_id,
+                    human_actor=payload.human_actor,
+                    accepted_attention_codes=payload.accepted_attention_codes,
+                )
             )
             result = finalizer.complete_audio_outputs(book_id, current, approved)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="AudioScript принят; экспорт не завершён и может быть безопасно повторён",
+            ) from exc
         except (AudioScriptGateError, AutoBookError, AutoBookRuntimeError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         current.status = "DONE"

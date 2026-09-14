@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from html import escape as html_escape
+import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any, cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -15,9 +18,15 @@ from .authority import AuthorityService, new_ulid
 from .authority_types import JSONValue, utc_now
 from .audio_script import AudioScriptService, AudioScriptView
 from .auto_book import AutoBookGateError, AutoBookRunView
-from .auto_book_exports import AutoBookExporter, MasterChapter, StructuredBookMaster
+from .auto_book_exports import (
+    AutoBookExporter,
+    MasterChapter,
+    MasterTable,
+    MasterVisual,
+    StructuredBookMaster,
+)
 from .auto_book_quality import AutoBookQualityEngine, AutoQualityFinding, AutoQualityReport
-from .auto_book_runtime import AutoBookRuntimeError, AutoBookStage, DurableAutoBookRuntime
+from .auto_book_runtime import AutoBookStage, DurableAutoBookRuntime
 from .book_context import BookContextService
 from .bookbench import BookBenchReport, BookBenchService
 from .db import create_database
@@ -27,6 +36,7 @@ from .literary_master import LiteraryMasterService
 from .model_gateway import (
     AuthorityInputRef,
     BookBenchJudgeOutput,
+    ModelAdapterResult,
     ModelGateway,
     ModelBudgetError,
     ModelOutputError,
@@ -38,6 +48,13 @@ from .model_gateway import (
 from .model_routing import ModelRoutingService
 from .projects import ProjectService
 from .prompts import PromptTemplate
+from .research import (
+    ClaimCreateRequest,
+    ClaimUpdateRequest,
+    EvidenceCreateRequest,
+    ResearchService,
+)
+from .research_adapters import ResearchGateway
 from .series_production import ProductionCheckpointRequest, SeriesProductionService
 from .series_workspace import SeriesWorkspaceGateError, SeriesWorkspaceService
 
@@ -92,8 +109,8 @@ AUDIO_SCRIPT_EDITOR_V1 = PromptTemplate(
 
 
 class AutoBookFinalizationView(BaseModel):
-    master_id: str
-    master_manifest_hash: str
+    master_id: str | None = None
+    master_manifest_hash: str | None = None
     bookbench_snapshot_id: str
     output_path: str | None
     requests_used: int
@@ -101,6 +118,8 @@ class AutoBookFinalizationView(BaseModel):
     output_files: list[dict[str, Any]] = Field(default_factory=list)
     audio_script_id: str | None = None
     awaiting_audio_approval: bool = False
+    awaiting_final_acceptance: bool = False
+    final_candidate_id: str | None = None
 
 
 class AutoBookFinalizer:
@@ -122,6 +141,7 @@ class AutoBookFinalizer:
         self.exporter = AutoBookExporter(data_dir, self.runtime)
         self.audio_scripts = AudioScriptService(data_dir)
         self.quality = AutoBookQualityEngine()
+        self.research = ResearchService(data_dir, ResearchGateway({}))
 
     def _ensure_audio_script(
         self,
@@ -363,6 +383,104 @@ class AutoBookFinalizer:
         state.requests_used += 1
         state.authorized_cost_usd = round(state.authorized_cost_usd + cap, 6)
 
+    @staticmethod
+    def _confirmed_cost(usage: dict[str, Any]) -> float:
+        direct = usage.get("cost_usd")
+        guard = usage.get("cost_guard")
+        nested = guard.get("estimated_actual_cost_usd") if isinstance(guard, dict) else None
+        value = direct if isinstance(direct, (int, float)) else nested
+        return max(0.0, float(value)) if isinstance(value, (int, float)) else 0.0
+
+    def _paid_model_operation(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        *,
+        stage: AutoBookStage,
+        operation: str,
+        request: ModelTaskRequest,
+        prompt: PromptTemplate,
+        cap: float,
+    ) -> ModelAdapterResult:
+        ledger = self.runtime.ensure_operation(
+            book_id,
+            state.run_id,
+            ordinal=len(self.runtime.list_operations(book_id, state.run_id)),
+            stage=stage,
+            operation=operation,
+            input_payload={
+                "request": request.model_dump(mode="json"),
+                "prompt_hash": prompt.prompt_hash,
+            },
+            provider=request.provider,
+            model=request.model,
+            reasoning_effort=request.reasoning_effort,
+            estimated_cost_usd=cap,
+        )
+        if ledger.state == "SUCCEEDED":
+            if ledger.output is None:
+                raise AutoBookGateError("confirmed paid operation has no output")
+            return ModelAdapterResult(
+                provider_run_id=ledger.provider_run_id,
+                output=cast(dict[str, Any], ledger.output["model_output"]),
+                usage=cast(dict[str, Any], ledger.output.get("usage", {})),
+            )
+        if ledger.state in {"RESERVED", "RUNNING"}:
+            self.runtime.mark_unknown(
+                book_id,
+                state.run_id,
+                ledger.operation_id,
+                provider_run_id=ledger.provider_run_id,
+            )
+            raise AutoBookGateError(
+                f"paid operation {ledger.operation_id} has UNKNOWN_OUTCOME; blind retry blocked"
+            )
+        if ledger.state == "UNKNOWN":
+            raise AutoBookGateError(
+                f"paid operation {ledger.operation_id} has UNKNOWN_OUTCOME; blind retry blocked"
+            )
+        self.runtime.reserve(book_id, state.run_id, ledger.operation_id, cap)
+        try:
+            result = self.gateway.generate(request, prompt)
+            self.runtime.complete_operation(
+                book_id,
+                state.run_id,
+                ledger.operation_id,
+                output={
+                    "model_output": result.output,
+                    "usage": result.usage,
+                    "output_identity": hashlib.sha256(
+                        json.dumps(result.output, ensure_ascii=False, sort_keys=True).encode(
+                            "utf-8"
+                        )
+                    ).hexdigest(),
+                },
+                confirmed_cost_usd=min(cap, self._confirmed_cost(result.usage)),
+                provider_run_id=result.provider_run_id,
+            )
+        except BaseException:
+            current = self.runtime.operation(book_id, ledger.operation_id)
+            if current.state != "SUCCEEDED":
+                self.runtime.mark_unknown(
+                    book_id,
+                    state.run_id,
+                    ledger.operation_id,
+                    provider_run_id=getattr(locals().get("result"), "provider_run_id", None),
+                )
+            raise
+        runtime = self.runtime.get(book_id, state.run_id)
+        state.requests_used = runtime.requests_used
+        state.confirmed_cost_usd = runtime.confirmed_cost_usd
+        state.unknown_cost_usd = runtime.unknown_cost_usd
+        state.reserved_cost_usd = runtime.reserved_cost_usd
+        state.authorized_cost_usd = round(
+            runtime.confirmed_cost_usd + runtime.unknown_cost_usd + runtime.reserved_cost_usd, 6
+        )
+        hook = getattr(self, "_after_paid_operation_commit", None)
+        if callable(hook):
+            hook(operation, ledger.operation_id)
+        return result
+
     def _book_context(self, book_id: str) -> dict[str, Any]:
         context = self.contexts.get_context(book_id)
         if not context.ready_for_planning:
@@ -455,6 +573,23 @@ class AutoBookFinalizer:
             if not isinstance(current_text, str) or not current_text.strip():
                 raise AutoBookGateError(f"manuscript unit {unit['unit_id']} has no editable text")
 
+            if correction_findings is None:
+                with engine.connect() as connection:
+                    prior_auto_approval = connection.execute(
+                        text(
+                            "SELECT gates_json FROM approvals WHERE approved_revision_id=:revision_id "
+                            "ORDER BY created_at DESC,approval_id DESC LIMIT 1"
+                        ),
+                        {"revision_id": head.revision_id},
+                    ).scalar_one_or_none()
+                if prior_auto_approval is not None:
+                    gates = cast(dict[str, Any], json.loads(str(prior_auto_approval)))
+                    if (
+                        gates.get("final_editorial_pass") is True
+                        and gates.get("auto_book_run_id") == state.run_id
+                    ):
+                        return
+
             contract_entity = unit.get("chapter_contract_entity_id")
             if not isinstance(contract_entity, str) or not contract_entity:
                 raise AutoBookGateError(
@@ -472,67 +607,78 @@ class AutoBookFinalizer:
             model, effort, selection_mode, selection_scope, rationale = self._resolve_model(
                 book_id, state
             )
-            task_id = new_ulid()
-            result = self.gateway.generate(
-                ModelTaskRequest(
-                    task_id=task_id,
-                    task_type="SECTION_DRAFT",
-                    role="WRITER",
-                    provider="openai",
-                    model=model,
-                    prompt_id=AUTO_BOOK_FINAL_EDIT_V1.prompt_id,
-                    prompt_version=AUTO_BOOK_FINAL_EDIT_V1.version,
-                    prompt_hash=AUTO_BOOK_FINAL_EDIT_V1.prompt_hash,
-                    section_objective=(
-                        f"Final publication edit of chapter {unit['chapter_ordinal']}: "
-                        f"{unit['working_title']}. Preserve meaning and supported facts; make the "
-                        "approved chapter function explicit and produce only finished book prose. "
-                        + (
-                            "Preserve one-pass listenability and audible orientation. "
-                            if state.delivery_profile in {"AUDIO_FIRST", "DUAL_TEXT_AUDIO"}
-                            else ""
-                        )
-                        + (
-                            "Resolve only the supplied verified correction findings and do not "
-                            "introduce unrelated changes."
-                            if correction_findings
-                            else ""
-                        )
-                    ),
-                    authority_inputs=[
-                        AuthorityInputRef(
-                            revision_id=head.revision_id,
-                            revision_hash=head.revision_hash,
-                            entity_type="manuscript.unit",
-                        ),
-                        AuthorityInputRef(
-                            revision_id=contract_head.revision_id,
-                            revision_hash=contract_head.revision_hash,
-                            entity_type="chapter.contract",
-                        ),
-                    ],
-                    authoritative_context={
-                        "current_manuscript_text": current_text,
-                        "chapter_contract": contract,
-                        "book_context": book_context,
-                        "delivery_profile": state.delivery_profile,
-                        "required_corrections": correction_findings or [],
-                    },
-                    task_payload={
-                        "auto_book_run_id": state.run_id,
-                        "selection_mode": selection_mode,
-                        "selection_scope": selection_scope,
-                        "routing_rationale": rationale,
-                        "final_editorial_pass": True,
-                        "targeted_correction": bool(correction_findings),
-                    },
-                    reasoning_effort=effort,
-                    max_output_tokens=12_000,
-                    max_cost_usd=cap,
+            task_id = hashlib.sha256(
+                f"{state.run_id}:{unit['unit_id']}:{head.revision_hash}:"
+                f"{bool(correction_findings)}".encode("utf-8")
+            ).hexdigest()[:26]
+            request = ModelTaskRequest(
+                task_id=task_id,
+                task_type="SECTION_DRAFT",
+                role="WRITER",
+                provider="openai",
+                model=model,
+                prompt_id=AUTO_BOOK_FINAL_EDIT_V1.prompt_id,
+                prompt_version=AUTO_BOOK_FINAL_EDIT_V1.version,
+                prompt_hash=AUTO_BOOK_FINAL_EDIT_V1.prompt_hash,
+                section_objective=(
+                    f"Final publication edit of chapter {unit['chapter_ordinal']}: "
+                    f"{unit['working_title']}. Preserve meaning and supported facts; make the "
+                    "approved chapter function explicit and produce only finished book prose. "
+                    + (
+                        "Preserve one-pass listenability and audible orientation. "
+                        if state.delivery_profile in {"AUDIO_FIRST", "DUAL_TEXT_AUDIO"}
+                        else ""
+                    )
+                    + (
+                        "Resolve only the supplied verified correction findings and do not "
+                        "introduce unrelated changes."
+                        if correction_findings
+                        else ""
+                    )
                 ),
-                AUTO_BOOK_FINAL_EDIT_V1,
+                authority_inputs=[
+                    AuthorityInputRef(
+                        revision_id=head.revision_id,
+                        revision_hash=head.revision_hash,
+                        entity_type="manuscript.unit",
+                    ),
+                    AuthorityInputRef(
+                        revision_id=contract_head.revision_id,
+                        revision_hash=contract_head.revision_hash,
+                        entity_type="chapter.contract",
+                    ),
+                ],
+                authoritative_context={
+                    "current_manuscript_text": current_text,
+                    "chapter_contract": contract,
+                    "book_context": book_context,
+                    "delivery_profile": state.delivery_profile,
+                    "required_corrections": correction_findings or [],
+                },
+                task_payload={
+                    "auto_book_run_id": state.run_id,
+                    "selection_mode": selection_mode,
+                    "selection_scope": selection_scope,
+                    "routing_rationale": rationale,
+                    "final_editorial_pass": True,
+                    "targeted_correction": bool(correction_findings),
+                },
+                reasoning_effort=effort,
+                max_output_tokens=12_000,
+                max_cost_usd=cap,
             )
-            self._consume(state, cap)
+            result = self._paid_model_operation(
+                book_id,
+                state,
+                stage=AutoBookStage.WHOLE_BOOK_EDIT,
+                operation=(
+                    f"FINAL_EDIT:{unit['unit_id']}:"
+                    f"{'CORRECTION' if correction_findings else 'PRIMARY'}"
+                ),
+                request=request,
+                prompt=AUTO_BOOK_FINAL_EDIT_V1,
+                cap=cap,
+            )
             try:
                 output = SectionDraftOutput.model_validate(result.output)
             except ValidationError as exc:
@@ -564,15 +710,18 @@ class AutoBookFinalizer:
                 task_id=task_id,
                 input_revision_ids=(contract_head.revision_id,),
             )
+            authorization = self.runtime.authorization(book_id, state.run_id)
             accepted = authority.accept_proposal(
                 proposal_id,
-                actor="OWNER",
-                actor_kind="HUMAN",
+                actor=f"system:auto-book:{state.run_id}",
+                actor_kind="SYSTEM",
                 reason=(
-                    f"Owner pre-authorized final editorial acceptance for Auto Book run {state.run_id}"
+                    f"Delegated final editorial application under authorization "
+                    f"{authorization['authorization_id']}"
                 ),
                 gates={
-                    "owner_auto_book_authorization": True,
+                    "delegated_authorization_id": authorization["authorization_id"],
+                    "delegated_authorization_scope": authorization["scope"],
                     "auto_book_run_id": state.run_id,
                     "final_editorial_pass": True,
                     "model": model,
@@ -895,6 +1044,12 @@ class AutoBookFinalizer:
                             chapter_id=str(chapter["chapter_id"]),
                             title=str(chapter["title"]),
                             paragraphs=paragraphs,
+                            tables=self._tables_for_chapter(
+                                book_id, state_run_id=None, chapter_id=str(chapter["chapter_id"])
+                            ),
+                            visuals=self._visuals_for_chapter(
+                                book_id, state_run_id=None, chapter_id=str(chapter["chapter_id"])
+                            ),
                         )
                     )
                 bibliography = self._verified_bibliography(book_id)
@@ -944,6 +1099,31 @@ class AutoBookFinalizer:
         finally:
             engine.dispose()
 
+    def _bibliography_evidence(self, book_id: str, book_context: dict[str, Any]) -> dict[str, Any]:
+        verified = self._verified_bibliography(book_id)
+        integrity = {
+            "builder": "ACTIVE_EVIDENCE_FOR_SUPPORTED_CURRENT_CLAIMS_V1",
+            "verified_used_source_count": len(verified),
+            "unique_entry_count": len(set(verified)),
+            "duplicate_entries": sorted({entry for entry in verified if verified.count(entry) > 1}),
+        }
+        status = (
+            "PASS"
+            if integrity["verified_used_source_count"] == integrity["unique_entry_count"]
+            else "BLOCKING"
+        )
+        if status == "BLOCKING":
+            raise AutoBookGateError("Bibliography Integrity Gate found duplicate source entries")
+        included = bool(book_context.get("include_bibliography"))
+        return {
+            "preference": "AUTO_INCLUDED" if included else "EXPLICITLY_OMITTED",
+            "public_included": included,
+            "public_entries": verified if included else [],
+            "verified_used_sources": verified,
+            "integrity_gate": status,
+            "integrity_evidence": integrity,
+        }
+
     def _structured_current(
         self,
         book_id: str,
@@ -968,6 +1148,12 @@ class AutoBookFinalizer:
                         "chapter_id": chapter_id,
                         "title": str(unit["working_title"]),
                         "paragraphs": [],
+                        "tables": self._tables_for_chapter(
+                            book_id, state_run_id=None, chapter_id=chapter_id
+                        ),
+                        "visuals": self._visuals_for_chapter(
+                            book_id, state_run_id=None, chapter_id=chapter_id
+                        ),
                     }
                     chapter_rows[chapter_id] = chapter
                 cast(list[str], chapter["paragraphs"]).extend(
@@ -989,6 +1175,188 @@ class AutoBookFinalizer:
             author=author,
             chapters=[MasterChapter.model_validate(item) for item in chapter_rows.values()],
         )
+
+    def _visual_asset_rows(
+        self, book_id: str, *, state_run_id: str | None, chapter_id: str
+    ) -> list[dict[str, Any]]:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                rows = list(
+                    connection.execute(
+                        text(
+                            "SELECT v.* FROM auto_book_visual_assets v "
+                            "WHERE v.chapter_id=:chapter_id AND v.status='READY' "
+                            + ("AND v.run_id=:run_id " if state_run_id else "")
+                            + "ORDER BY v.created_at,v.asset_id"
+                        ),
+                        {"chapter_id": chapter_id, "run_id": state_run_id},
+                    ).mappings()
+                )
+        finally:
+            engine.dispose()
+        return [{**dict(row), "data": json.loads(str(row["data_json"]))} for row in rows]
+
+    def _tables_for_chapter(
+        self, book_id: str, *, state_run_id: str | None, chapter_id: str
+    ) -> list[MasterTable]:
+        return [
+            MasterTable(
+                object_id=str(row["asset_id"]),
+                title=str(row["caption"]),
+                headers=cast(list[str], row["data"].get("headers", [])),
+                rows=cast(list[list[str]], row["data"].get("rows", [])),
+                audio_equivalent=str(row["audio_equivalent"]),
+                source_note=str(row["data_source"]) if row["data_source"] else None,
+                placement_after_paragraph=int(str(row["placement"]).split(":")[-1]),
+            )
+            for row in self._visual_asset_rows(
+                book_id, state_run_id=state_run_id, chapter_id=chapter_id
+            )
+            if row["kind"] == "TABLE"
+        ]
+
+    def _visuals_for_chapter(
+        self, book_id: str, *, state_run_id: str | None, chapter_id: str
+    ) -> list[MasterVisual]:
+        return [
+            MasterVisual(
+                object_id=str(row["asset_id"]),
+                kind=cast(Any, row["kind"]),
+                title=str(row["purpose"]),
+                caption=str(row["caption"]),
+                alt_text=str(row["alt_text"]),
+                audio_equivalent=str(row["audio_equivalent"]),
+                data=cast(list[tuple[str, float]], row["data"].get("data", [])),
+                source_note=str(row["data_source"]) if row["data_source"] else None,
+                rights_note=str(row["rights_note"]),
+                placement_after_paragraph=int(str(row["placement"]).split(":")[-1]),
+            )
+            for row in self._visual_asset_rows(
+                book_id, state_run_id=state_run_id, chapter_id=chapter_id
+            )
+            if row["kind"] in {"CHART", "SCHEME", "ILLUSTRATION"}
+        ]
+
+    def _execute_visual_policy(
+        self, book_id: str, state: AutoBookRunView, units: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        runtime = self.runtime.get(book_id, state.run_id)
+        policy = runtime.intent.visuals
+        engine = self._engine(book_id)
+        authority = AuthorityService(engine)
+        created: list[str] = []
+        try:
+            if not policy.as_needed:
+                return {"policy": policy.model_dump(mode="json"), "created": [], "skipped": True}
+            for unit in units:
+                head = authority.get_head(str(unit["authority_entity_id"]))
+                revision = authority.get_revision(head.revision_id)
+                content = cast(dict[str, Any], revision["content"])
+                manuscript = str(content.get("text", ""))
+                contract_head = authority.get_head(str(unit["chapter_contract_entity_id"]))
+                contract = cast(
+                    dict[str, Any], authority.get_revision(contract_head.revision_id)["content"]
+                )
+                requirements = " ".join(
+                    str(item) for item in contract.get("required_scenes_examples", [])
+                ).casefold()
+                wants_table = "таблиц" in requirements or "таблиц" in manuscript.casefold()
+                wants_visual = any(
+                    token in requirements or token in manuscript.casefold()
+                    for token in ("график", "диаграм", "схем")
+                )
+                paragraphs = [p.strip() for p in manuscript.split("\n\n") if p.strip()]
+                assets: list[tuple[str, dict[str, Any], str, str]] = []
+                if wants_table and paragraphs:
+                    rows = [
+                        [str(index), paragraph[:240]]
+                        for index, paragraph in enumerate(paragraphs[:4], 1)
+                    ]
+                    spoken_rows = " ".join(
+                        f"Шаг {index}: {paragraph[:240]}"
+                        for index, paragraph in enumerate(paragraphs[:4], 1)
+                    )
+                    assets.append(
+                        (
+                            "TABLE",
+                            {"headers": ["Шаг", "Содержание"], "rows": rows},
+                            "Ключевые шаги главы",
+                            "Таблица последовательно перечисляет ключевые шаги главы. "
+                            + spoken_rows,
+                        )
+                    )
+                if wants_visual:
+                    points = [
+                        (
+                            label.strip()[-50:] or f"Показатель {index}",
+                            float(value.replace(",", ".")),
+                        )
+                        for index, (label, value) in enumerate(
+                            re.findall(r"([^.!?\n]{1,60}?)\s+(\d+(?:[.,]\d+)?)\s*%", manuscript),
+                            1,
+                        )
+                    ][:8]
+                    kind = "CHART" if points else "SCHEME"
+                    assets.append(
+                        (
+                            kind,
+                            {"data": points},
+                            "Наглядное объяснение механизма главы",
+                            (
+                                "Диаграмма вслух перечисляет значения и объясняет их соотношение "
+                                "в контексте главы."
+                                if points
+                                else "Схема последовательно объясняет механизм, его этапы и связь "
+                                "с выводом главы."
+                            ),
+                        )
+                    )
+                for kind, data, caption, audio in assets:
+                    digest = hashlib.sha256(
+                        json.dumps(
+                            {
+                                "kind": kind,
+                                "data": data,
+                                "revision_hash": head.revision_hash,
+                            },
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ).encode("utf-8")
+                    ).hexdigest()
+                    asset_id = digest[:26].upper()
+                    with engine.begin() as connection:
+                        connection.execute(
+                            text(
+                                "INSERT OR IGNORE INTO auto_book_visual_assets(asset_id,run_id,kind,"
+                                "purpose,placement,data_source,caption,origin,rights_note,alt_text,"
+                                "audio_equivalent,content_hash,created_at,chapter_id,source_revision_id,"
+                                "source_revision_hash,data_json,status) VALUES (:id,:run_id,:kind,:purpose,"
+                                "'paragraph:0',:source,:caption,'PROGRAMMATIC',:rights,:alt,:audio,:hash,"
+                                ":created,:chapter,:revision,:revision_hash,:data,'READY')"
+                            ),
+                            {
+                                "id": asset_id,
+                                "run_id": state.run_id,
+                                "kind": kind,
+                                "purpose": caption,
+                                "source": f"revision:{head.revision_id}#{head.revision_hash}",
+                                "caption": caption,
+                                "rights": "Created deterministically by BOOK OS from the manuscript",
+                                "alt": audio,
+                                "audio": audio,
+                                "hash": digest,
+                                "created": utc_now(),
+                                "chapter": str(unit["chapter_id"]),
+                                "revision": head.revision_id,
+                                "revision_hash": head.revision_hash,
+                                "data": json.dumps(data, ensure_ascii=False, sort_keys=True),
+                            },
+                        )
+                    created.append(asset_id)
+        finally:
+            engine.dispose()
+        return {"policy": policy.model_dump(mode="json"), "created": sorted(set(created))}
 
     def _registered_claims(self, book_id: str) -> dict[str, bool]:
         engine = self._engine(book_id)
@@ -1017,6 +1385,238 @@ class AutoBookFinalizer:
             for row in rows
         }
 
+    @staticmethod
+    def _claim_type(value: str) -> str:
+        lowered = value.casefold()
+        if any(token in lowered for token in ("%", "процент", "числ", "руб", "доллар")):
+            return "QUANTITATIVE"
+        if any(token in lowered for token in ("приводит", "влияет", "причин", "из-за")):
+            return "CAUSAL"
+        if any(token in lowered for token in ("закон", "правил", "требован", "регулир")):
+            return "LEGAL_REGULATORY"
+        if any(token in lowered for token in ("исследован", "данные", "опрос", "наблюден")):
+            return "EMPIRICAL"
+        if any(
+            token in lowered
+            for token in ("платформ", "рынок", "технолог", "алгоритм", "практика отрасли")
+        ):
+            return "EMPIRICAL"
+        if any(token in lowered for token in ("истор", "впервые", "веке", "году")):
+            return "HISTORICAL"
+        if any(token in lowered for token in ("по словам", "считает", "утверждает")):
+            return "ATTRIBUTION"
+        if any(token in lowered for token in ("консенсус", "согласны эксперты", "общепринято")):
+            return "CONSENSUS"
+        return "AUTHORIAL"
+
+    @staticmethod
+    def _claim_requires_freshness(value: str) -> bool:
+        lowered = value.casefold()
+        return any(
+            token in lowered
+            for token in (
+                "сейчас",
+                "сегодня",
+                "текущ",
+                "актуальн",
+                "платформ",
+                "рынок",
+                "технолог",
+                "алгоритм",
+                "закон",
+                "правил",
+                "регулир",
+            )
+        )
+
+    def _ensure_research_claims(self, book_id: str, state: AutoBookRunView) -> dict[str, Any]:
+        sources = [
+            source
+            for source in self.research.list_sources(book_id)
+            if source.access_status == "FULL_SOURCE_INSPECTED"
+            and source.inspected_excerpt
+            and source.inspected_pointer
+        ]
+        existing = self.research.list_claims(book_id)
+        source_by_id = {source.source_id: source for source in sources}
+        created: list[str] = []
+        supported: list[str] = []
+        unsupported: list[str] = []
+        engine = self._engine(book_id)
+        authority = AuthorityService(engine)
+        try:
+            for unit in self._current_units(book_id):
+                head = authority.get_head(str(unit["authority_entity_id"]))
+                contract_head = authority.get_head(str(unit["chapter_contract_entity_id"]))
+                contract = cast(
+                    dict[str, Any], authority.get_revision(contract_head.revision_id)["content"]
+                )
+                required = [
+                    str(item).strip()
+                    for item in contract.get("required_claims", [])
+                    if str(item).strip()
+                ]
+                for claim_text in required:
+                    claim_type = self._claim_type(claim_text)
+                    if claim_type == "AUTHORIAL":
+                        continue
+                    freshness_required = self._claim_requires_freshness(claim_text)
+                    claim = next(
+                        (
+                            item
+                            for item in existing
+                            if item.unit_id == unit["unit_id"]
+                            and item.manuscript_revision_id == head.revision_id
+                            and item.normalized_text == claim_text
+                        ),
+                        None,
+                    )
+                    if claim is None:
+                        prior_claim = next(
+                            (
+                                item
+                                for item in existing
+                                if item.unit_id == unit["unit_id"]
+                                and item.normalized_text == claim_text
+                            ),
+                            None,
+                        )
+                        if prior_claim is not None:
+                            # A manuscript revision invalidates the old evidence binding. Reuse
+                            # the Claim identity through the audited update path, which explicitly
+                            # supersedes its evidence before the inspected source is re-evaluated.
+                            claim = self.research.update_claim(
+                                book_id,
+                                prior_claim.claim_id,
+                                ClaimUpdateRequest(
+                                    manuscript_revision_id=head.revision_id,
+                                    manuscript_revision_hash=head.revision_hash,
+                                    normalized_text=claim_text,
+                                    claim_type=cast(Any, claim_type),
+                                    materiality="HIGH",
+                                    required_evidence_level=(
+                                        "TRACEABLE_FRESH_SOURCE"
+                                        if freshness_required
+                                        else "TRACEABLE_SOURCE"
+                                    ),
+                                ),
+                            )
+                            existing[existing.index(prior_claim)] = claim
+                        else:
+                            claim = self.research.create_claim(
+                                book_id,
+                                ClaimCreateRequest(
+                                    chapter_id=str(unit["chapter_id"]),
+                                    unit_id=str(unit["unit_id"]),
+                                    manuscript_revision_id=head.revision_id,
+                                    manuscript_revision_hash=head.revision_hash,
+                                    normalized_text=claim_text,
+                                    claim_type=cast(Any, claim_type),
+                                    materiality="HIGH",
+                                    required_evidence_level=(
+                                        "TRACEABLE_FRESH_SOURCE"
+                                        if freshness_required
+                                        else "TRACEABLE_SOURCE"
+                                    ),
+                                    actor=f"system:auto-book-research:{state.run_id}",
+                                    actor_kind="SYSTEM",
+                                ),
+                            )
+                            existing.append(claim)
+                            created.append(claim.claim_id)
+                    active_evidence = [
+                        item
+                        for item in self.research.list_evidence(book_id, claim.claim_id)
+                        if item.status == "ACTIVE"
+                    ]
+
+                    def eligible_evidence() -> bool:
+                        cutoff = datetime.now(UTC).year - 3
+                        return any(
+                            item.status == "ACTIVE"
+                            and item.relationship in {"SUPPORTS", "PARTIALLY_SUPPORTS"}
+                            and bool(item.pointer.strip())
+                            and (source := source_by_id.get(item.source_id)) is not None
+                            and (
+                                not freshness_required
+                                or (
+                                    source.publication_year is not None
+                                    and source.publication_year >= cutoff
+                                )
+                            )
+                            for item in active_evidence
+                        )
+
+                    if not eligible_evidence():
+                        claim_tokens = set(re.findall(r"[а-яёa-z0-9]{4,}", claim_text.casefold()))
+                        source = next(
+                            (
+                                item
+                                for item in sources
+                                if (
+                                    not freshness_required
+                                    or (
+                                        item.publication_year is not None
+                                        and item.publication_year >= datetime.now(UTC).year - 3
+                                    )
+                                )
+                                if claim_tokens
+                                & set(
+                                    re.findall(
+                                        r"[а-яёa-z0-9]{4,}",
+                                        cast(str, item.inspected_excerpt).casefold(),
+                                    )
+                                )
+                            ),
+                            None,
+                        )
+                        if source is not None and not active_evidence:
+                            self.research.add_evidence(
+                                book_id,
+                                claim.claim_id,
+                                EvidenceCreateRequest(
+                                    source_id=source.source_id,
+                                    relationship="SUPPORTS",
+                                    pointer=cast(str, source.inspected_pointer),
+                                    note="Auto Book exact inspected-source match",
+                                    strength="MODERATE",
+                                    actor=f"system:auto-book-research:{state.run_id}",
+                                ),
+                            )
+                            active_evidence = [
+                                item
+                                for item in self.research.list_evidence(book_id, claim.claim_id)
+                                if item.status == "ACTIVE"
+                            ]
+                        claim = self.research.recalculate_claim(book_id, claim.claim_id)
+                    if (
+                        claim.verification_state
+                        in {
+                            "SUPPORTED",
+                            "PARTIALLY_SUPPORTED",
+                        }
+                        and eligible_evidence()
+                    ):
+                        supported.append(claim.claim_id)
+                    else:
+                        unsupported.append(claim.claim_id)
+        finally:
+            engine.dispose()
+        evidence = {
+            "material_claim_categories": sorted(
+                {item.claim_type for item in self.research.list_claims(book_id)}
+            ),
+            "created_claim_ids": created,
+            "supported_claim_ids": supported,
+            "unsupported_claim_ids": unsupported,
+            "inspected_source_ids": [item.source_id for item in sources],
+        }
+        if unsupported:
+            raise AutoBookGateError(
+                "unsupported material claims block finalization: " + ", ".join(unsupported[:8])
+            )
+        return evidence
+
     def _independent_critique(
         self,
         book_id: str,
@@ -1035,37 +1635,44 @@ class AutoBookFinalizer:
             quality_risk="HIGH",
         )
         effort = manual_effort if manual_effort is not None else choice.reasoning_effort
-        result = self.gateway.generate(
-            ModelTaskRequest(
-                task_id=new_ulid(),
-                task_type="BOOKBENCH_JUDGE",
-                role="EVALUATOR",
-                provider="openai",
-                model=choice.model,
-                prompt_id=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.prompt_id,
-                prompt_version=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.version,
-                prompt_hash=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.prompt_hash,
-                section_objective=(
-                    "Independently review the complete exact pre-release snapshot; provide "
-                    "location-specific evidence and a bounded correction action for every defect."
-                ),
-                authoritative_context={
-                    "master_hash": snapshot.manifest_hash,
-                    "complete_book": snapshot.model_dump(mode="json"),
-                },
-                task_payload={
-                    "auto_book_run_id": state.run_id,
-                    "independent_context": True,
-                    "writer_rationale_included": False,
-                    "routing_policy": choice.policy_version,
-                },
-                reasoning_effort=effort,
-                max_output_tokens=6000,
-                max_cost_usd=cap,
+        request = ModelTaskRequest(
+            task_id=hashlib.sha256(
+                f"{state.run_id}:critique:{snapshot.manifest_hash}".encode("utf-8")
+            ).hexdigest()[:26],
+            task_type="BOOKBENCH_JUDGE",
+            role="EVALUATOR",
+            provider="openai",
+            model=choice.model,
+            prompt_id=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.prompt_id,
+            prompt_version=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.version,
+            prompt_hash=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.prompt_hash,
+            section_objective=(
+                "Independently review the complete exact pre-release snapshot; provide "
+                "location-specific evidence and a bounded correction action for every defect."
             ),
-            AUTO_BOOK_INDEPENDENT_CRITIQUE_V1,
+            authoritative_context={
+                "master_hash": snapshot.manifest_hash,
+                "complete_book": snapshot.model_dump(mode="json"),
+            },
+            task_payload={
+                "auto_book_run_id": state.run_id,
+                "independent_context": True,
+                "writer_rationale_included": False,
+                "routing_policy": choice.policy_version,
+            },
+            reasoning_effort=effort,
+            max_output_tokens=6000,
+            max_cost_usd=cap,
         )
-        self._consume(state, cap)
+        result = self._paid_model_operation(
+            book_id,
+            state,
+            stage=AutoBookStage.INDEPENDENT_CRITIQUE,
+            operation=f"INDEPENDENT_CRITIQUE:{snapshot.manifest_hash}",
+            request=request,
+            prompt=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1,
+            cap=cap,
+        )
         judge = BookBenchJudgeOutput.model_validate(result.output)
         severity = "BLOCKING" if judge.verdict == "BLOCKING" else "ATTENTION"
         model_findings = [
@@ -1114,6 +1721,377 @@ class AutoBookFinalizer:
         )
         return quality_report
 
+    def _final_candidate(self, book_id: str, run_id: str) -> dict[str, Any] | None:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        text(
+                            "SELECT * FROM auto_book_final_acceptances WHERE run_id=:run_id "
+                            "ORDER BY created_at DESC,candidate_id DESC LIMIT 1"
+                        ),
+                        {"run_id": run_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        finally:
+            engine.dispose()
+        if row is None:
+            return None
+        return {**dict(row), "candidate": json.loads(str(row["candidate_json"]))}
+
+    def _record_final_candidate(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        *,
+        snapshot: StructuredBookMaster,
+        bookbench_snapshot_id: str,
+        bibliography_evidence: dict[str, Any],
+        prepare_litres_docx: bool,
+    ) -> dict[str, Any]:
+        candidate = {
+            "snapshot_hash": snapshot.manifest_hash,
+            "bookbench_snapshot_id": bookbench_snapshot_id,
+            "bibliography_evidence": bibliography_evidence,
+            "prepare_litres_docx": prepare_litres_docx,
+            "selected_outputs": self.runtime.get(book_id, state.run_id).intent.outputs.selected(),
+            "findings_remaining": 0,
+        }
+        candidate_id = new_ulid()
+        now = utc_now()
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "INSERT OR IGNORE INTO auto_book_final_acceptances(candidate_id,run_id,"
+                        "snapshot_hash,candidate_json,status,created_at,updated_at) VALUES "
+                        "(:candidate_id,:run_id,:snapshot_hash,:candidate_json,'AWAITING',:now,:now)"
+                    ),
+                    {
+                        "candidate_id": candidate_id,
+                        "run_id": state.run_id,
+                        "snapshot_hash": snapshot.manifest_hash,
+                        "candidate_json": json.dumps(candidate, ensure_ascii=False, sort_keys=True),
+                        "now": now,
+                    },
+                )
+        finally:
+            engine.dispose()
+        return self._final_candidate(book_id, state.run_id) or {
+            "candidate_id": candidate_id,
+            "status": "AWAITING",
+            "candidate": candidate,
+        }
+
+    def decide_final_candidate(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        *,
+        accept: bool,
+        human_actor: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        actor = human_actor.strip()
+        if not actor:
+            raise AutoBookGateError("final acceptance requires the actual human actor")
+        current = self._final_candidate(book_id, state.run_id)
+        if current is None or current["status"] != "AWAITING":
+            raise AutoBookGateError("no current final candidate is awaiting human acceptance")
+        snapshot = self._structured_current(book_id, self._book_context(book_id))
+        if snapshot.manifest_hash != current["snapshot_hash"]:
+            engine = self._engine(book_id)
+            try:
+                with engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            "UPDATE auto_book_final_acceptances SET status='STALE',updated_at=:now "
+                            "WHERE candidate_id=:id AND status='AWAITING'"
+                        ),
+                        {"now": utc_now(), "id": current["candidate_id"]},
+                    )
+            finally:
+                engine.dispose()
+            raise AutoBookGateError("final candidate is stale; prepare a new exact snapshot")
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE auto_book_final_acceptances SET status=:status,actor=:actor,"
+                        "actor_kind='HUMAN',reason=:reason,updated_at=:now WHERE candidate_id=:id"
+                    ),
+                    {
+                        "status": "ACCEPTED" if accept else "REWORK_REQUESTED",
+                        "actor": actor,
+                        "reason": reason.strip() or ("Accepted" if accept else "Rework requested"),
+                        "now": utc_now(),
+                        "id": current["candidate_id"],
+                    },
+                )
+        finally:
+            engine.dispose()
+        return self._final_candidate(book_id, state.run_id) or current
+
+    def execute_change(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        change_id: str,
+        *,
+        clarification: str = "",
+    ) -> dict[str, Any]:
+        change = self.runtime.change(book_id, change_id)
+        if change.run_id != state.run_id:
+            raise AutoBookGateError("change request does not belong to the current Auto Book run")
+        request_text = "\n".join(
+            value for value in (change.request_text, clarification.strip()) if value
+        )
+        match = re.search(r"(?:глав(?:е|а|у|ы)|chapter)\s*(\d+)", request_text.casefold())
+        if match is None:
+            return self.runtime.update_change(
+                book_id,
+                change_id,
+                status="NEEDS_CLARIFICATION",
+                event={"event": "TARGET_UNRESOLVED", "actor_kind": "SYSTEM"},
+                clarification={
+                    "question": "Укажите номер главы и точное изменение.",
+                    "continuation": f"/api/projects/{book_id}/auto-book/changes/{change_id}/clarify",
+                },
+            ).model_dump(mode="json")
+        ordinal = int(match.group(1))
+        self.runtime.update_change(
+            book_id,
+            change_id,
+            status="ANALYZING",
+            event={"event": "TARGET_RESOLVED", "chapter_ordinal": ordinal, "actor_kind": "SYSTEM"},
+            affected=[f"CHAPTER:{ordinal}"],
+        )
+        all_units = self._current_units(book_id)
+        target_units = [item for item in all_units if int(item["chapter_ordinal"]) == ordinal]
+        if not target_units:
+            return self.runtime.update_change(
+                book_id,
+                change_id,
+                status="FAILED",
+                event={"event": "CHAPTER_NOT_FOUND", "actor_kind": "SYSTEM"},
+                result={"error": f"chapter {ordinal} does not exist"},
+            ).model_dump(mode="json")
+        engine = self._engine(book_id)
+        authority = AuthorityService(engine)
+        before: dict[str, dict[str, str]] = {}
+        try:
+            for unit in all_units:
+                head = authority.get_head(str(unit["authority_entity_id"]))
+                before[str(unit["unit_id"])] = {
+                    "revision_id": head.revision_id,
+                    "revision_hash": head.revision_hash,
+                }
+        finally:
+            engine.dispose()
+        self.runtime.update_change(
+            book_id,
+            change_id,
+            status="RUNNING",
+            event={"event": "REVISION_STARTED", "actor_kind": "SYSTEM"},
+        )
+        try:
+            context = self._book_context(book_id)
+            finding = {
+                "change_id": change_id,
+                "location": f"chapter {ordinal}",
+                "required_action": request_text,
+                "scope_rule": "Do not change unrelated chapters",
+            }
+            for unit in target_units:
+                self._final_edit_unit(book_id, state, unit, context, correction_findings=[finding])
+            with self._engine(book_id).begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE auto_book_output_artifacts SET status='STALE' WHERE run_id=:run_id "
+                        "AND status='READY'"
+                    ),
+                    {"run_id": state.run_id},
+                )
+                connection.execute(
+                    text(
+                        "UPDATE auto_book_visual_assets SET status='STALE' WHERE run_id=:run_id "
+                        "AND chapter_id IN (SELECT chapter_id FROM chapters WHERE book_id=:book_id "
+                        "AND ordinal=:ordinal)"
+                    ),
+                    {"run_id": state.run_id, "book_id": book_id, "ordinal": ordinal},
+                )
+                connection.execute(
+                    text(
+                        "UPDATE auto_book_final_acceptances SET status='STALE',updated_at=:now "
+                        "WHERE run_id=:run_id AND status IN ('AWAITING','REWORK_REQUESTED')"
+                    ),
+                    {"run_id": state.run_id, "now": utc_now()},
+                )
+                connection.execute(
+                    text(
+                        "UPDATE audio_scripts SET status='SUPERSEDED',updated_at=:now "
+                        "WHERE book_id=:book_id AND status IN ('PROPOSED','APPROVED')"
+                    ),
+                    {"book_id": book_id, "now": utc_now()},
+                )
+            self._ensure_research_claims(book_id, state)
+            blockers = self._run_editorial_gates(book_id)
+            if blockers:
+                raise AutoBookGateError("targeted change left editorial blockers")
+            report = self._run_bookbench(book_id)
+            self._record_adversarial_review(book_id, report)
+            visual_evidence = self._execute_visual_policy(book_id, state, target_units)
+            context = self._book_context(book_id)
+            snapshot = self._structured_current(book_id, context)
+            candidate = self._record_final_candidate(
+                book_id,
+                state,
+                snapshot=snapshot,
+                bookbench_snapshot_id=report.snapshot_id,
+                bibliography_evidence=self._bibliography_evidence(book_id, context),
+                prepare_litres_docx=state.prepare_litres_docx,
+            )
+            engine = self._engine(book_id)
+            authority = AuthorityService(engine)
+            try:
+                after = {
+                    str(unit["unit_id"]): {
+                        "revision_id": (
+                            head := authority.get_head(str(unit["authority_entity_id"]))
+                        ).revision_id,
+                        "revision_hash": head.revision_hash,
+                    }
+                    for unit in all_units
+                }
+            finally:
+                engine.dispose()
+            changed = [unit_id for unit_id in after if after[unit_id] != before[unit_id]]
+            unrelated_unchanged = [
+                unit_id
+                for unit_id in after
+                if unit_id not in {str(item["unit_id"]) for item in target_units}
+                and after[unit_id] == before[unit_id]
+            ]
+            result = {
+                "affected_chapter": ordinal,
+                "changed_unit_ids": changed,
+                "unrelated_unit_ids_unchanged": unrelated_unchanged,
+                "bookbench_snapshot_id": report.snapshot_id,
+                "final_candidate_id": candidate["candidate_id"],
+                "derivatives": "STALE_AWAITING_FINAL_ACCEPTANCE",
+                "audio_script": "SUPERSEDED_AFTER_SOURCE_SNAPSHOT_CHANGED",
+                "visuals": visual_evidence,
+                "evidence_policy": "UNRELATED_EVIDENCE_PRESERVED",
+            }
+            return self.runtime.update_change(
+                book_id,
+                change_id,
+                status="DONE",
+                event={"event": "DEPENDENT_CHECKS_RERUN", "actor_kind": "SYSTEM"},
+                result=result,
+            ).model_dump(mode="json")
+        except Exception as exc:
+            self.runtime.update_change(
+                book_id,
+                change_id,
+                status="FAILED",
+                event={"event": "EXECUTION_FAILED", "actor_kind": "SYSTEM"},
+                result={"error": str(exc)},
+            )
+            raise
+
+    def _release_candidate(
+        self,
+        book_id: str,
+        state: AutoBookRunView,
+        *,
+        candidate: dict[str, Any],
+        book_context: dict[str, Any],
+    ) -> AutoBookFinalizationView:
+        actor = str(candidate.get("actor") or "").strip()
+        if candidate.get("status") != "ACCEPTED" or not actor:
+            raise AutoBookGateError("Literary Master remains locked behind human final acceptance")
+        payload = cast(dict[str, Any], candidate["candidate"])
+        current_snapshot = self._structured_current(book_id, book_context)
+        if current_snapshot.manifest_hash != payload["snapshot_hash"]:
+            raise AutoBookGateError("accepted final candidate no longer matches current manuscript")
+        master = self.literary.create_master(
+            book_id,
+            human_actor=actor,
+            acceptance_actor_kind=str(candidate.get("actor_kind") or "HUMAN"),
+            bibliography_evidence=cast(dict[str, Any], payload["bibliography_evidence"]),
+        )
+        output_path = (
+            self._export_litres_docx(book_id, master.master_id)
+            if bool(payload.get("prepare_litres_docx"))
+            else None
+        )
+        runtime = self.runtime.get(book_id, state.run_id)
+        structured = self._structured_master(book_id, master.master_id, book_context)
+        audio_script: AudioScriptView | None = None
+        if runtime.intent.outputs.audio_version_requested:
+            audio_script = self._ensure_audio_script(
+                book_id,
+                state,
+                master_id=master.master_id,
+                master_hash=master.manifest_hash,
+                structured=structured,
+            )
+        text_selection = runtime.intent.outputs.model_copy(
+            update={
+                "audio_reading_docx": False,
+                "audio_litres_docx": False,
+                "voice_text_txt": False,
+                "pronunciation_dictionary": (
+                    runtime.intent.outputs.pronunciation_dictionary
+                    if not runtime.intent.outputs.audio_version_requested
+                    else False
+                ),
+            }
+        )
+        bundle = self.exporter.export_selected(
+            book_id,
+            state.run_id,
+            structured,
+            text_selection,
+            audit_bibliography=self._verified_bibliography(book_id),
+            public_bibliography_included=bool(book_context.get("include_bibliography")),
+        )
+        if audio_script is None:
+            self.runtime.complete_stage(
+                book_id,
+                state.run_id,
+                AutoBookStage.MASTER_AND_EXPORTS,
+                evidence={"master_hash": master.manifest_hash, "human_actor": actor},
+                message="Рукопись и выбранные файлы готовы после принятия человеком",
+            )
+            self.runtime.set_stage(
+                book_id,
+                state.run_id,
+                AutoBookStage.MASTER_AND_EXPORTS,
+                status="PACKAGE_READY",
+                message="Рукопись и выбранные файлы готовы",
+            )
+        return AutoBookFinalizationView(
+            master_id=master.master_id,
+            master_manifest_hash=master.manifest_hash,
+            bookbench_snapshot_id=str(payload["bookbench_snapshot_id"]),
+            output_path=output_path,
+            requests_used=runtime.requests_used,
+            authorized_cost_usd=round(
+                runtime.confirmed_cost_usd + runtime.reserved_cost_usd + runtime.unknown_cost_usd,
+                6,
+            ),
+            output_files=[item.model_dump(mode="json") for item in bundle.artifacts],
+            audio_script_id=audio_script.audio_script_id if audio_script else None,
+            awaiting_audio_approval=audio_script is not None,
+        )
+
     def finalize(
         self,
         book_id: str,
@@ -1122,6 +2100,15 @@ class AutoBookFinalizer:
         prepare_litres_docx: bool,
     ) -> AutoBookFinalizationView:
         book_context = self._book_context(book_id)
+        prior_candidate = self._final_candidate(book_id, state.run_id)
+        if prior_candidate is not None and prior_candidate["status"] == "ACCEPTED":
+            return self._release_candidate(
+                book_id, state, candidate=prior_candidate, book_context=book_context
+            )
+        if prior_candidate is not None and prior_candidate["status"] == "REWORK_REQUESTED":
+            raise AutoBookGateError(
+                "human requested rework; submit a targeted change before preparing a new candidate"
+            )
         series_profile = book_context.get("series_profile")
         if isinstance(series_profile, dict) and series_profile.get("profile_id"):
             series_id = str(series_profile["profile_id"])
@@ -1184,6 +2171,17 @@ class AutoBookFinalizer:
             self._final_edit_unit(book_id, state, unit, book_context)
 
         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.WHOLE_BOOK_EDIT)
+        research_evidence = self._ensure_research_claims(book_id, state)
+        self.runtime.complete_stage(
+            book_id,
+            state.run_id,
+            AutoBookStage.RESEARCH,
+            evidence={
+                **research_evidence,
+                "source_identities_imported": state.research_source_count,
+                "exact_source_pointers_required": True,
+            },
+        )
         self.runtime.set_stage(
             book_id,
             state.run_id,
@@ -1225,14 +2223,12 @@ class AutoBookFinalizer:
         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.CHAPTER_REVIEW)
         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.FACT_CHECK)
         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.LITERARY_EDIT)
+        visual_evidence = self._execute_visual_policy(book_id, state, units)
         self.runtime.complete_stage(
             book_id,
             state.run_id,
             AutoBookStage.VISUALS,
-            evidence={
-                "policy": "AS_NEEDED",
-                "selected": bool(book_context.get("plan_illustrations")),
-            },
+            evidence=visual_evidence,
         )
         report = self._run_bookbench(book_id)
         self._record_adversarial_review(book_id, report)
@@ -1288,142 +2284,59 @@ class AutoBookFinalizer:
             AutoBookStage.MASTER_AND_EXPORTS,
             message="Фиксация Literary Master и выбранные экспорты",
         )
-        verified_bibliography = self._verified_bibliography(book_id)
-        bibliography_integrity = {
-            "builder": "ACTIVE_EVIDENCE_FOR_SUPPORTED_CURRENT_CLAIMS_V1",
-            "verified_used_source_count": len(verified_bibliography),
-            "unique_entry_count": len(set(verified_bibliography)),
-            "duplicate_entries": sorted(
-                {entry for entry in verified_bibliography if verified_bibliography.count(entry) > 1}
-            ),
-        }
-        bibliography_integrity_status = (
-            "PASS"
-            if bibliography_integrity["verified_used_source_count"]
-            == bibliography_integrity["unique_entry_count"]
-            else "BLOCKING"
-        )
-        if bibliography_integrity_status == "BLOCKING":
-            raise AutoBookGateError("Bibliography Integrity Gate found duplicate source entries")
-        public_bibliography = (
-            verified_bibliography if bool(book_context.get("include_bibliography")) else []
-        )
-        master = self.literary.create_master(
+        bibliography_evidence = self._bibliography_evidence(book_id, book_context)
+        snapshot = self._structured_current(book_id, book_context)
+        candidate = self._record_final_candidate(
             book_id,
-            human_actor=f"OWNER Auto Book {state.run_id}",
-            bibliography_evidence={
-                "preference": (
-                    "AUTO_INCLUDED"
-                    if bool(book_context.get("include_bibliography"))
-                    else "EXPLICITLY_OMITTED"
-                ),
-                "public_included": bool(book_context.get("include_bibliography")),
-                "public_entries": public_bibliography,
-                "verified_used_sources": verified_bibliography,
-                "integrity_gate": bibliography_integrity_status,
-                "integrity_evidence": bibliography_integrity,
-            },
+            state,
+            snapshot=snapshot,
+            bookbench_snapshot_id=report.snapshot_id,
+            bibliography_evidence=bibliography_evidence,
+            prepare_litres_docx=prepare_litres_docx,
         )
-        output_path = (
-            self._export_litres_docx(book_id, master.master_id) if prepare_litres_docx else None
-        )
-        output_files: list[dict[str, Any]] = []
-        audio_script: AudioScriptView | None = None
-        try:
-            runtime = self.runtime.get(book_id, state.run_id)
-            structured = self._structured_master(
-                book_id,
-                master.master_id,
-                book_context,
-            )
-            if runtime.intent.outputs.audio_version_requested:
-                self.runtime.set_stage(
-                    book_id,
-                    state.run_id,
-                    AutoBookStage.AUDIO_EDITORIAL,
-                    message="Отдельная аудиоредактура exact Literary Master",
-                )
-                audio_script = self._ensure_audio_script(
-                    book_id,
-                    state,
-                    master_id=master.master_id,
-                    master_hash=master.manifest_hash,
-                    structured=structured,
-                )
-                self.runtime.complete_stage(
-                    book_id,
-                    state.run_id,
-                    AutoBookStage.AUDIO_EDITORIAL,
-                    evidence={
-                        "audio_script_id": audio_script.audio_script_id,
-                        "audio_script_hash": audio_script.content_hash,
-                        "source_master_id": master.master_id,
-                        "source_master_hash": master.manifest_hash,
-                        "authority_status": audio_script.status,
-                        "human_approval_required": True,
-                    },
-                    message="AudioScript подготовлен и ждёт проверки человеком",
-                )
-            else:
-                self.runtime.complete_stage(
-                    book_id,
-                    state.run_id,
-                    AutoBookStage.AUDIO_EDITORIAL,
-                    evidence={"not_requested": True, "provider_calls": 0},
-                    message="Аудиоредакция не выбрана",
-                )
-            text_selection = runtime.intent.outputs.model_copy(
-                update={
-                    "audio_reading_docx": False,
-                    "audio_litres_docx": False,
-                    "voice_text_txt": False,
-                    "pronunciation_dictionary": (
-                        runtime.intent.outputs.pronunciation_dictionary
-                        if not runtime.intent.outputs.audio_version_requested
-                        else False
-                    ),
-                }
-            )
-            bundle = self.exporter.export_selected(
+        runtime = self.runtime.get(book_id, state.run_id)
+        if runtime.intent.final_human_acceptance_required:
+            self.runtime.set_stage(
                 book_id,
                 state.run_id,
-                structured,
-                text_selection,
-                audit_bibliography=verified_bibliography,
-                public_bibliography_included=bool(book_context.get("include_bibliography")),
+                AutoBookStage.MASTER_AND_EXPORTS,
+                status="MANUSCRIPT_READY",
+                message="Финальный кандидат ждёт принятия человеком",
             )
-            output_files = [item.model_dump(mode="json") for item in bundle.artifacts]
-            if audio_script is None:
-                self.runtime.complete_stage(
-                    book_id,
-                    state.run_id,
-                    AutoBookStage.MASTER_AND_EXPORTS,
-                    evidence={
-                        "master_hash": master.manifest_hash,
-                        "selected_outputs": runtime.intent.outputs.selected(),
-                    },
-                    message="Рукопись и выбранные файлы готовы",
+            return AutoBookFinalizationView(
+                bookbench_snapshot_id=report.snapshot_id,
+                output_path=None,
+                requests_used=runtime.requests_used,
+                authorized_cost_usd=round(
+                    runtime.confirmed_cost_usd
+                    + runtime.reserved_cost_usd
+                    + runtime.unknown_cost_usd,
+                    6,
+                ),
+                awaiting_final_acceptance=True,
+                final_candidate_id=str(candidate["candidate_id"]),
+            )
+        # An explicitly delegated no-human policy is recorded as SYSTEM/DELEGATED; it is never
+        # represented as a human click.
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE auto_book_final_acceptances SET status='ACCEPTED',"
+                        "actor='SYSTEM:DELEGATED',actor_kind='DELEGATED',"
+                        "reason='Explicit final_human_acceptance_required=false policy',"
+                        "updated_at=:now WHERE candidate_id=:id"
+                    ),
+                    {"now": utc_now(), "id": candidate["candidate_id"]},
                 )
-                self.runtime.set_stage(
-                    book_id,
-                    state.run_id,
-                    AutoBookStage.MASTER_AND_EXPORTS,
-                    status="PACKAGE_READY",
-                    message="Рукопись и выбранные файлы готовы",
-                )
-        except AutoBookRuntimeError:
-            # A run created before migration 0021 keeps its original export behaviour.
-            pass
-        return AutoBookFinalizationView(
-            master_id=master.master_id,
-            master_manifest_hash=master.manifest_hash,
-            bookbench_snapshot_id=report.snapshot_id,
-            output_path=output_path,
-            requests_used=state.requests_used,
-            authorized_cost_usd=state.authorized_cost_usd,
-            output_files=output_files,
-            audio_script_id=audio_script.audio_script_id if audio_script is not None else None,
-            awaiting_audio_approval=audio_script is not None,
+        finally:
+            engine.dispose()
+        return self._release_candidate(
+            book_id,
+            state,
+            candidate=self._final_candidate(book_id, state.run_id) or candidate,
+            book_context=book_context,
         )
 
     def complete_audio_outputs(

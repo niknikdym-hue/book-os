@@ -14,7 +14,7 @@ from .book_context import BookContextService
 from .db import create_database
 from .projects import ProjectService
 
-HumanActorKind = Literal["HUMAN", "OWNER"]
+HumanActorKind = Literal["HUMAN", "OWNER", "SYSTEM"]
 EvidenceActorKind = Literal["HUMAN", "OWNER", "AI", "SYSTEM"]
 GateResult = Literal["PASS", "ATTENTION", "BLOCKING"]
 QualityResult = Literal["PASS", "REWORK"]
@@ -370,9 +370,16 @@ class SeriesProductionService:
             return default
 
     @staticmethod
-    def _require_human(actor_kind: str) -> None:
-        if actor_kind not in {"HUMAN", "OWNER"}:
-            raise SeriesProductionGateError("this action requires HUMAN/OWNER authority")
+    def _require_human(actor_kind: str, actor: str = "") -> None:
+        delegated = (
+            actor_kind == "SYSTEM"
+            and actor.startswith("system:auto-book:")
+            and (":authorization:" in actor)
+        )
+        if actor_kind not in {"HUMAN", "OWNER"} and not delegated:
+            raise SeriesProductionGateError(
+                "this action requires HUMAN/OWNER authority or an explicit Auto Book delegation"
+            )
 
     @staticmethod
     def _row(engine: Engine, sql: str, params: dict[str, object]) -> Any | None:
@@ -484,7 +491,7 @@ class SeriesProductionService:
     def approve_definition_pack(
         self, book_id: str, definition_id: str, request: DefinitionPackApprovalRequest
     ) -> DefinitionPackView:
-        self._require_human(request.actor_kind)
+        self._require_human(request.actor_kind, request.actor)
         current = self.get_definition_pack(book_id, definition_id)
         if current.status != "DRAFT":
             raise SeriesProductionGateError("only a DRAFT Definition Pack can be approved")
@@ -603,7 +610,7 @@ class SeriesProductionService:
         contract_id: str,
         request: ChapterProductionContractApprovalRequest,
     ) -> ChapterProductionContractView:
-        self._require_human(request.actor_kind)
+        self._require_human(request.actor_kind, request.actor)
         current = self.get_production_contract(book_id, chapter_id, contract_id)
         if current.status != "DRAFT":
             raise SeriesProductionGateError(
@@ -807,7 +814,7 @@ class SeriesProductionService:
     def admit_chapter(
         self, book_id: str, chapter_id: str, request: ChapterAdmissionRequest
     ) -> ChapterAdmissionStatusView:
-        self._require_human(request.actor_kind)
+        self._require_human(request.actor_kind, request.actor)
         blockers = request.checks.blockers()
         if blockers:
             raise SeriesProductionGateError(

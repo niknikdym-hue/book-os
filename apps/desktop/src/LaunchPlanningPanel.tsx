@@ -44,7 +44,7 @@ type BookConcept = {
 
 type AutoBookState = {
   run_id: string;
-  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_CONCEPT_APPROVAL" | "AWAITING_AUDIO_APPROVAL";
+  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_CONCEPT_APPROVAL" | "AWAITING_FINAL_ACCEPTANCE" | "AWAITING_AUDIO_APPROVAL";
   phase: string;
   requests_used: number;
   max_requests: number;
@@ -73,6 +73,17 @@ type AutoBookState = {
   updated_at?: string | null;
   concept?: BookConcept | null;
   concept_revision?: number;
+};
+
+type FinalCandidate = {
+  candidate_id: string;
+  snapshot_hash: string;
+  status: "AWAITING" | "ACCEPTED" | "REWORK_REQUESTED" | "STALE";
+  candidate: {
+    selected_outputs?: string[];
+    findings_remaining?: number;
+    bookbench_snapshot_id?: string;
+  };
 };
 
 type AudioScriptState = {
@@ -194,6 +205,7 @@ function progressPercent(state: AutoBookState | null): number {
   if (!state) return 0;
   if (state.status === "DONE" || state.phase === "DONE") return 100;
   if (state.status === "AWAITING_AUDIO_APPROVAL") return 96;
+  if (state.status === "AWAITING_FINAL_ACCEPTANCE") return 94;
   if (state.progress_total && state.progress_total > 0) {
     return Math.min(99, Math.round(((state.progress_completed ?? 0) * 100) / state.progress_total));
   }
@@ -217,6 +229,9 @@ function progressMessage(state: AutoBookState | null): string {
   if (state.status === "DONE") return "Книга создана и финальная проверка завершена";
   if (state.status === "AWAITING_AUDIO_APPROVAL") {
     return "Аудиоредакция готова к проверке и утверждению";
+  }
+  if (state.status === "AWAITING_FINAL_ACCEPTANCE") {
+    return "Финальный кандидат готов к вашему решению";
   }
   const runtimeMessages: Record<string, string> = {
     RESEARCH: "Исследую тему и собираю доказательную основу",
@@ -456,6 +471,10 @@ export function LaunchPlanningPanel({
   const [error, setError] = useState<string | null>(null);
   const [changeRequest, setChangeRequest] = useState("");
   const [changeSaved, setChangeSaved] = useState<string | null>(null);
+  const [changeStatus, setChangeStatus] = useState<string | null>(null);
+  const [changeId, setChangeId] = useState<string | null>(null);
+  const [finalAccepted, setFinalAccepted] = useState(false);
+  const [finalCandidate, setFinalCandidate] = useState<FinalCandidate | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [legacyIntent, setLegacyIntent] = useState<LegacyIntent>("WRITE_FROM_ZERO");
   const [audioScript, setAudioScript] = useState<AudioScriptState | null>(null);
@@ -490,6 +509,16 @@ export function LaunchPlanningPanel({
     );
     setAutoState(state);
     if (state?.concept) setConceptDraft(state.concept);
+    if (state?.status === "AWAITING_FINAL_ACCEPTANCE") {
+      setFinalCandidate(
+        await api<FinalCandidate>(
+          "GET",
+          `/api/projects/${project.book_id}/auto-book/final-candidate`,
+        ),
+      );
+    } else {
+      setFinalCandidate(null);
+    }
     if (state?.audio_script_id) {
       setAudioScript(
         await api<AudioScriptState>(
@@ -618,6 +647,7 @@ export function LaunchPlanningPanel({
           },
           attachments: encodedAttachments,
           owner_authorizes_auto_progress: true,
+          final_human_acceptance_required: true,
         },
       );
       setAutoState(started);
@@ -681,15 +711,57 @@ export function LaunchPlanningPanel({
     if (!autoState || !changeRequest.trim()) return;
     setChangeSaved(null);
     try {
-      const result = await api<{ message: string }>(
+      const result = await api<{
+        change_id: string;
+        status: string;
+        result?: { changed_unit_ids?: string[] };
+        clarification?: { question?: string };
+      }>(
         "POST",
-        `/api/projects/${project.book_id}/auto-book/changes`,
-        { request_text: changeRequest.trim() },
+        changeId
+          ? `/api/projects/${project.book_id}/auto-book/changes/${changeId}/clarify`
+          : `/api/projects/${project.book_id}/auto-book/changes`,
+        changeId
+          ? { clarification: changeRequest.trim() }
+          : { request_text: changeRequest.trim() },
       );
-      setChangeSaved(result.message);
+      setChangeStatus(result.status);
+      setChangeId(result.status === "NEEDS_CLARIFICATION" ? result.change_id : null);
+      setChangeSaved(
+        result.status === "DONE"
+          ? `Готово. Изменены фрагменты: ${result.result?.changed_unit_ids?.join(", ") || "указанная глава"}. Зависимые проверки повторены.`
+          : result.status === "NEEDS_CLARIFICATION"
+            ? result.clarification?.question || "Нужно уточнить запрос."
+            : `Состояние запроса: ${result.status}`,
+      );
       setChangeRequest("");
     } catch (reason) {
       setError(String(reason));
+    }
+  }
+
+  async function decideFinal(accept: boolean) {
+    if (!autoState) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const result = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/final-candidate/${accept ? "accept" : "rework"}`,
+        {
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          reason: accept
+            ? "Автор проверил и принял точный финальный кандидат"
+            : "Автор запросил доработку финального кандидата",
+        },
+      );
+      setAutoState(result);
+      setFinalAccepted(false);
+      await reloadAutoState();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
     }
   }
 
@@ -881,7 +953,7 @@ export function LaunchPlanningPanel({
       </section>
       )}
 
-      {workflowMode === "NEW_BOOK" && autoState?.status !== "RUNNING" && !autoBusy && autoState?.status !== "DONE" && autoState?.status !== "AWAITING_CONCEPT_APPROVAL" && autoState?.status !== "AWAITING_AUDIO_APPROVAL" && (
+      {workflowMode === "NEW_BOOK" && autoState?.status !== "RUNNING" && !autoBusy && autoState?.status !== "DONE" && autoState?.status !== "AWAITING_CONCEPT_APPROVAL" && autoState?.status !== "AWAITING_FINAL_ACCEPTANCE" && autoState?.status !== "AWAITING_AUDIO_APPROVAL" && (
         <>
           <details className="advanced-settings ai-project-settings">
             <summary>
@@ -1702,6 +1774,59 @@ export function LaunchPlanningPanel({
         </section>
       )}
 
+      {workflowMode === "NEW_BOOK" && autoState?.status === "AWAITING_FINAL_ACCEPTANCE" && (
+        <section className="auto-progress" aria-label="Финальное принятие книги">
+          <div className="auto-progress-heading">
+            <div>
+              <p className="eyebrow">ФИНАЛЬНЫЙ КАНДИДАТ · НУЖНО РЕШЕНИЕ АВТОРА</p>
+              <h4>Проверьте книгу перед фиксацией Literary Master</h4>
+            </div>
+            <strong>94%</strong>
+          </div>
+          <p>
+            Редактура, фактчек, BookBench и независимая критика завершены. BOOK OS не назовёт
+            автоматический проход вашим решением: финальный master будет зафиксирован только после
+            этого явного действия.
+          </p>
+          {finalCandidate && (
+            <div className="run-details" aria-label="Точный финальный кандидат">
+              <p>
+                <strong>Кандидат:</strong> {finalCandidate.candidate_id}
+              </p>
+              <p>
+                <strong>Снимок:</strong> {finalCandidate.snapshot_hash.slice(0, 16)}… · замечаний
+                осталось: {finalCandidate.candidate.findings_remaining ?? 0}
+              </p>
+              <p>
+                <strong>Будут подготовлены:</strong>{" "}
+                {finalCandidate.candidate.selected_outputs?.join(", ") || "выбранные файлы"}
+              </p>
+            </div>
+          )}
+          <label className="paid-approval required-approval">
+            <input
+              type="checkbox"
+              checked={finalAccepted}
+              onChange={(event) => setFinalAccepted(event.target.checked)}
+            />
+            <span>Я проверила финальный кандидат и принимаю именно эту версию книги.</span>
+          </label>
+          <div className="actions planning-action">
+            <button
+              type="button"
+              className={`primary auto-launch-button ${finalAccepted ? "ready" : ""}`}
+              disabled={!finalAccepted || autoBusy}
+              onClick={() => void decideFinal(true)}
+            >
+              Принять книгу и подготовить файлы
+            </button>
+            <button type="button" className="ghost" disabled={autoBusy} onClick={() => void decideFinal(false)}>
+              Вернуть на доработку
+            </button>
+          </div>
+        </section>
+      )}
+
       {workflowMode === "NEW_BOOK" && autoState?.status === "DONE" && (
         <section className="auto-progress complete" role="status">
           <div className="auto-progress-heading">
@@ -1761,8 +1886,9 @@ export function LaunchPlanningPanel({
             disabled={!changeRequest.trim()}
             onClick={() => void saveChangeRequest()}
           >
-            Сохранить запрос на изменение
+            {changeId ? "Отправить уточнение и продолжить" : "Выполнить изменение"}
           </button>
+          {changeStatus && <small>Статус: {changeStatus}</small>}
           {changeSaved && <p className="series-studio-success">{changeSaved}</p>}
         </section>
       )}

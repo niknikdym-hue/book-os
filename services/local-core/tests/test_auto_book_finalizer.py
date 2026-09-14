@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from zipfile import ZipFile
 
+import pytest
 from sqlalchemy import text
 
 from book_os_core.auto_book import AutoBookService, AutoBookStartRequest
@@ -29,8 +30,13 @@ from book_os_core.projects import NewBookRequest, ProjectService
 from book_os_core.prompts import PromptTemplate
 
 
+class SimulatedProcessCrash(BaseException):
+    pass
+
+
 class PublishingAdapter(DeterministicFakeAdapter):
     def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
+        self.task_calls = [*getattr(self, "task_calls", []), request.task_id]
         if prompt.prompt_id == AUDIO_SCRIPT_EDITOR_V1.prompt_id:
             self.audio_prompt_calls = getattr(self, "audio_prompt_calls", 0) + 1
         if request.task_type != "SECTION_DRAFT":
@@ -112,7 +118,7 @@ class PublishingAdapter(DeterministicFakeAdapter):
                         "Финансовый предел — только один вид границы. В работе с клиентом важнее могут "
                         "быть репутационный риск, необратимость обещания или влияние на другие "
                         "проекты. Поэтому хорошее правило описывает смысл исключения, а не просто "
-                        "число в таблице."
+                        "число в таблице или схеме."
                     ),
                     (
                         "Контроль переносится с разрешения до действия на проверку после действия. "
@@ -147,6 +153,11 @@ class PublishingAdapter(DeterministicFakeAdapter):
                 ]
                 marker = "второй"
             text_value = f"{required}.\n\n" + "\n\n".join(paragraphs)
+            if request.authoritative_context.get("required_corrections"):
+                text_value += (
+                    "\n\nТочечное уточнение связывает решение с проверяемым критерием, "
+                    "не меняя содержание остальных глав."
+                )
             return ModelAdapterResult(
                 provider_run_id=f"final-{marker}",
                 output={"text": text_value, "notes": []},
@@ -215,6 +226,7 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
             max_requests=30,
             prepare_litres_docx=True,
             owner_authorizes_auto_progress=True,
+            final_human_acceptance_required=False,
         ),
     )
     state = auto.advance(book_id)
@@ -278,10 +290,20 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
                     )
                 ).scalars()
             )
-            approval_gates = [
-                json.loads(value)
-                for value in connection.execute(text("SELECT gates_json FROM approvals")).scalars()
-            ]
+            approval_rows = list(
+                connection.execute(
+                    text(
+                        "SELECT approving_actor,approving_actor_kind,gates_json FROM approvals "
+                        "ORDER BY approval_id"
+                    )
+                ).mappings()
+            )
+            approval_gates = [json.loads(str(row["gates_json"])) for row in approval_rows]
+            visual_kinds = set(
+                connection.execute(
+                    text("SELECT kind FROM auto_book_visual_assets WHERE status='READY'")
+                ).scalars()
+            )
     finally:
         engine.dispose()
 
@@ -292,10 +314,26 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
     assert "LITRES_DOCX" in export_formats
     assert unit_statuses and set(unit_statuses) == {"APPROVED"}
     assert any(item.get("final_editorial_pass") is True for item in approval_gates)
+    assert any(row["approving_actor_kind"] == "SYSTEM" for row in approval_rows)
+    assert all(
+        row["approving_actor_kind"] == "SYSTEM"
+        for row in approval_rows
+        if str(row["approving_actor"]).startswith("system:auto-book:")
+    )
+    assert all(
+        item.get("delegated_authorization_id") and item.get("auto_book_run_id")
+        for item, row in zip(approval_gates, approval_rows, strict=True)
+        if row["approving_actor_kind"] == "SYSTEM"
+    )
+    assert {"TABLE", "SCHEME"} <= visual_kinds
+    visual_files = list((tmp_path / "projects" / book_id / "exports").rglob("*.png"))
+    assert visual_files
+    assert all(path.read_bytes().startswith(b"\x89PNG") for path in visual_files)
 
 
 def test_audio_first_uses_approved_listening_master_without_redundant_rewrite_then_waits_for_human(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     book_id = ready_book(tmp_path)
     gateway = ModelGateway({"openai": PublishingAdapter()})
@@ -314,6 +352,7 @@ def test_audio_first_uses_approved_listening_master_without_redundant_rewrite_th
             max_requests=30,
             prepare_litres_docx=False,
             owner_authorizes_auto_progress=True,
+            final_human_acceptance_required=False,
         ),
     )
     state = auto.advance(book_id)
@@ -352,9 +391,26 @@ def test_audio_first_uses_approved_listening_master_without_redundant_rewrite_th
         human_actor="Owner",
         accepted_attention_codes=attention,
     )
+    approved_hash = approved.content_hash
+    original_export = finalizer.exporter.export_selected
+
+    def fail_after_approval(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise OSError("simulated export filesystem failure")
+
+    monkeypatch.setattr(finalizer.exporter, "export_selected", fail_after_approval)
+    with pytest.raises(OSError, match="simulated export"):
+        finalizer.complete_audio_outputs(book_id, state, approved)
+    persisted = AudioScriptService(tmp_path).get(book_id, approved.audio_script_id)
+    assert persisted.status == "APPROVED"
+    assert persisted.content_hash == approved_hash
+    monkeypatch.setattr(finalizer.exporter, "export_selected", original_export)
     completed = finalizer.complete_audio_outputs(book_id, state, approved)
     kinds = {item["output_kind"] for item in completed.output_files}
     assert {"AUDIO_READING_DOCX", "VOICE_TEXT_TXT", "AUDIO_PRODUCTION_HANDOFF"} <= kinds
+    retried = AudioScriptService(tmp_path).get(book_id, approved.audio_script_id)
+    assert retried.status == "APPROVED"
+    assert retried.content_hash == approved_hash
 
 
 def test_text_first_audio_output_runs_a_real_separate_audio_editorial_pass(
@@ -378,6 +434,7 @@ def test_text_first_audio_output_runs_a_real_separate_audio_editorial_pass(
             max_requests=40,
             prepare_litres_docx=False,
             owner_authorizes_auto_progress=True,
+            final_human_acceptance_required=False,
         ),
     )
     state = auto.advance(book_id)
@@ -403,3 +460,165 @@ def test_text_first_audio_output_runs_a_real_separate_audio_editorial_pass(
         for section in proposed.content.sections
     )
     assert len(proposed.provenance["model_runs"]) == len(proposed.content.sections)
+
+
+def test_final_candidate_requires_real_human_acceptance_before_master_lock(
+    tmp_path: Path,
+) -> None:
+    book_id = ready_book(tmp_path)
+    gateway = ModelGateway({"openai": PublishingAdapter()})
+    auto = AutoBookService(tmp_path, gateway)
+    state = auto.start(
+        book_id,
+        AutoBookStartRequest(
+            idea="Подготовить книгу и остановиться перед настоящим финальным решением автора.",
+            max_cost_usd_per_request=2,
+            max_total_cost_usd=30,
+            max_requests=30,
+            prepare_litres_docx=False,
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    state = auto.advance(book_id)
+    state = auto.accept_concept(book_id)
+    for _ in range(40):
+        if state.status != "RUNNING":
+            break
+        state = auto.advance(book_id)
+    assert state.status == "DONE"
+
+    finalizer = AutoBookFinalizer(tmp_path, gateway)
+    candidate_view = finalizer.finalize(book_id, state, prepare_litres_docx=False)
+    assert candidate_view.awaiting_final_acceptance is True
+    assert candidate_view.master_id is None
+    engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT COUNT(*) FROM literary_masters")).scalar_one() == 0
+            )
+    finally:
+        engine.dispose()
+
+    accepted = finalizer.decide_final_candidate(
+        book_id,
+        state,
+        accept=True,
+        human_actor="Тестовый автор",
+        reason="Автор проверил точный финальный кандидат",
+    )
+    assert accepted["actor_kind"] == "HUMAN"
+    released = finalizer.finalize(book_id, state, prepare_litres_docx=False)
+    assert released.master_id is not None
+    master = finalizer.literary.get_master(book_id, released.master_id)
+    assert master.status == "LOCKED"
+    assert master.human_actor == "Тестовый автор"
+    assert master.acceptance_actor_kind == "HUMAN"
+
+
+def test_stale_final_candidate_cannot_be_accepted(tmp_path: Path) -> None:
+    book_id = ready_book(tmp_path)
+    gateway = ModelGateway({"openai": PublishingAdapter()})
+    auto = AutoBookService(tmp_path, gateway)
+    state = auto.start(
+        book_id,
+        AutoBookStartRequest(
+            idea="Проверить запрет принятия устаревшего финального снимка.",
+            max_cost_usd_per_request=2,
+            max_total_cost_usd=40,
+            max_requests=40,
+            prepare_litres_docx=False,
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    state = auto.advance(book_id)
+    state = auto.accept_concept(book_id)
+    for _ in range(40):
+        if state.status != "RUNNING":
+            break
+        state = auto.advance(book_id)
+    finalizer = AutoBookFinalizer(tmp_path, gateway)
+    candidate = finalizer.finalize(book_id, state, prepare_litres_docx=False)
+    assert candidate.final_candidate_id is not None
+    unit = finalizer._current_units(book_id)[0]
+    finalizer._final_edit_unit(
+        book_id,
+        state,
+        unit,
+        finalizer._book_context(book_id),
+        correction_findings=[{"required_action": "Уточнить один абзац"}],
+    )
+    with pytest.raises(Exception, match="stale"):
+        finalizer.decide_final_candidate(
+            book_id,
+            state,
+            accept=True,
+            human_actor="Тестовый автор",
+            reason="Попытка принять старый снимок",
+        )
+    assert finalizer._final_candidate(book_id, state.run_id)["status"] == "STALE"
+
+
+def test_final_edit_and_independent_critique_reuse_confirmed_results_after_crash(
+    tmp_path: Path,
+) -> None:
+    book_id = ready_book(tmp_path)
+    adapter = PublishingAdapter()
+    gateway = ModelGateway({"openai": adapter})
+    auto = AutoBookService(tmp_path, gateway)
+    state = auto.start(
+        book_id,
+        AutoBookStartRequest(
+            idea="Проверить crash recovery финальной редактуры и независимой критики.",
+            max_cost_usd_per_request=2,
+            max_total_cost_usd=40,
+            max_requests=40,
+            prepare_litres_docx=False,
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    state = auto.advance(book_id)
+    state = auto.accept_concept(book_id)
+    for _ in range(40):
+        if state.status != "RUNNING":
+            break
+        state = auto.advance(book_id)
+
+    first = AutoBookFinalizer(tmp_path, gateway)
+
+    def crash_on_first_final_edit(operation: str, operation_id: str) -> None:
+        del operation_id
+        if operation.startswith("FINAL_EDIT:"):
+            raise SimulatedProcessCrash(operation)
+
+    setattr(first, "_after_paid_operation_commit", crash_on_first_final_edit)
+    with pytest.raises(SimulatedProcessCrash):
+        first.finalize(book_id, state, prepare_litres_docx=False)
+    operations = first.runtime.list_operations(book_id, state.run_id)
+    first_edit = next(item for item in operations if item.operation.startswith("FINAL_EDIT:"))
+    assert first_edit.state == "SUCCEEDED"
+    calls_after_edit_crash = len(adapter.task_calls)
+
+    second = AutoBookFinalizer(tmp_path, gateway)
+
+    def crash_on_critique(operation: str, operation_id: str) -> None:
+        del operation_id
+        if operation.startswith("INDEPENDENT_CRITIQUE:"):
+            raise SimulatedProcessCrash(operation)
+
+    setattr(second, "_after_paid_operation_commit", crash_on_critique)
+    with pytest.raises(SimulatedProcessCrash):
+        second.finalize(book_id, state, prepare_litres_docx=False)
+    operations = second.runtime.list_operations(book_id, state.run_id)
+    critique = next(
+        item for item in operations if item.operation.startswith("INDEPENDENT_CRITIQUE:")
+    )
+    assert critique.state == "SUCCEEDED"
+    assert len(adapter.task_calls) == calls_after_edit_crash + 2
+    critique_calls = len(adapter.task_calls)
+
+    recovered = AutoBookFinalizer(tmp_path, gateway).finalize(
+        book_id, state, prepare_litres_docx=False
+    )
+    assert recovered.awaiting_final_acceptance is True
+    assert len(adapter.task_calls) == critique_calls

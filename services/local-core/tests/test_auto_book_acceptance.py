@@ -179,6 +179,31 @@ class CourseAcceptanceAdapter(DeterministicFakeAdapter):
                 },
                 usage={"input_tokens": 140, "output_tokens": 240},
             )
+        if request.task_type == "CHAPTER_CONTRACT_PROPOSAL":
+            return ModelAdapterResult(
+                provider_run_id="fixture-course-chapter-contract",
+                output={
+                    "chapter_purpose": "Раскрыть отдельный механизм системы продаж",
+                    "new_contribution": "Дать проверяемый шаг без повторения соседних глав",
+                    "reader_prior_state": "Читатель видит симптом, но не причинный механизм",
+                    "reader_after_state": "Читатель может проверить механизм на своей практике",
+                    "required_claims": [
+                        "Исследование решений покупателей показывает проверяемую связь между "
+                        "обещанием результата и оценкой предложения"
+                    ],
+                    "required_or_permitted_research": [
+                        "Проверить утверждение по полностью просмотренному источнику"
+                    ],
+                    "required_scenes_examples": [
+                        "Таблица шагов и схема механизма там, где они помогают пониманию"
+                    ],
+                    "reserved_elsewhere": ["Не повторять механизмы соседних глав"],
+                    "opening_requirements": "Начать с наблюдаемой ситуации покупателя",
+                    "ending_requirements": "Закончить проверяемым следующим действием",
+                    "transition_requirements": "Передать следующий вопрос следующей главе",
+                },
+                usage={"input_tokens": 100, "output_tokens": 160},
+            )
         if request.task_type == "BOOKBENCH_JUDGE":
             return ModelAdapterResult(
                 provider_run_id="fixture-independent-critic",
@@ -195,6 +220,12 @@ class CourseAcceptanceAdapter(DeterministicFakeAdapter):
         if request.task_type == "SECTION_DRAFT":
             if prompt.prompt_id == AUTO_BOOK_FINAL_EDIT_V1.prompt_id:
                 current = str(request.authoritative_context["current_manuscript_text"])
+                corrections = request.authoritative_context.get("required_corrections", [])
+                if corrections:
+                    current += (
+                        "\n\nУточнение цены: автор сопоставляет стоимость с измеримой ценностью, "
+                        "издержками сопровождения и честно названными границами результата."
+                    )
                 return ModelAdapterResult(
                     provider_run_id="fixture-identity-final-edit",
                     output={"text": current, "notes": []},
@@ -251,6 +282,11 @@ class OfflineResearchAdapter:
                 doi="10.1000/book-os.course",
                 canonical_url="https://example.test/course-sales",
                 abstract="Локальная deterministic fixture без сетевого запроса.",
+                inspected_excerpt=(
+                    "Исследование решений покупателей показывает проверяемую связь между "
+                    "обещанием результата и оценкой предложения."
+                ),
+                inspected_pointer="fixture://course-sales/results#buyer-decisions",
             )
         ]
 
@@ -301,6 +337,7 @@ def _run_to_done(
             max_total_cost_usd=100,
             max_requests=80,
             owner_authorizes_auto_progress=True,
+            final_human_acceptance_required=False,
         ),
     )
     state = service.advance(book_id)
@@ -460,6 +497,7 @@ def test_online_courses_linked_deterministic_acceptance_cycle(tmp_path: Path) ->
             max_total_cost_usd=100,
             max_requests=80,
             owner_authorizes_auto_progress=True,
+            final_human_acceptance_required=False,
         ),
     )
     context = BookContextService(tmp_path).get_context(project.book_id)
@@ -524,18 +562,21 @@ def test_online_courses_linked_deterministic_acceptance_cycle(tmp_path: Path) ->
     engine.dispose()
     assert midpoint_count == 1
 
+    blocked_state = state.model_copy(update={"midbook_audit_completed": False})
+    with pytest.raises(AutoBookGateError, match="mandatory MID_BOOK audit"):
+        AutoBookFinalizer(tmp_path, gateway).finalize(
+            project.book_id, blocked_state, prepare_litres_docx=True
+        )
+
+    final = AutoBookFinalizer(tmp_path, gateway).finalize(
+        project.book_id, state, prepare_litres_docx=True
+    )
+
     assert service.research is not None
     research = service.research
     used_source = research.list_sources(project.book_id)[0]
-    used_source = research.mark_source_access(
-        project.book_id,
-        used_source.source_id,
-        SourceAccessRequest(
-            access_status="FULL_SOURCE_INSPECTED",
-            actor="OWNER",
-            note="Deterministic acceptance fixture inspected in full.",
-        ),
-    )
+    assert used_source.access_status == "FULL_SOURCE_INSPECTED"
+    assert used_source.inspected_pointer == "fixture://course-sales/results#buyer-decisions"
     duplicate = research.import_source(
         project.book_id,
         SourceImportRequest(
@@ -549,30 +590,23 @@ def test_online_courses_linked_deterministic_acceptance_cycle(tmp_path: Path) ->
         ),
     )
     assert duplicate.source_id == used_source.source_id
-    claim = research.create_claim(
-        project.book_id,
-        ClaimCreateRequest(
-            chapter_id=str(unit["chapter_id"]),
-            unit_id=str(unit["unit_id"]),
-            manuscript_revision_id=str(unit["revision_id"]),
-            manuscript_revision_hash=str(unit["revision_hash"]),
-            normalized_text="Покупатель оценивает обещание результата до содержания уроков",
-            claim_type="EMPIRICAL",
-            materiality="HIGH",
-        ),
+    automatic_claims = [
+        claim for claim in research.list_claims(project.book_id) if claim.claim_type == "EMPIRICAL"
+    ]
+    assert len(automatic_claims) == 3
+    assert all(claim.verification_state == "SUPPORTED" for claim in automatic_claims)
+    assert all(
+        research.list_evidence(project.book_id, claim.claim_id)[0].pointer
+        == "fixture://course-sales/results#buyer-decisions"
+        for claim in automatic_claims
     )
-    research.add_evidence(
-        project.book_id,
-        claim.claim_id,
-        EvidenceCreateRequest(
-            source_id=used_source.source_id,
-            relationship="SUPPORTS",
-            pointer="Deterministic fixture, section results",
-            strength="STRONG",
-            actor="OWNER",
-        ),
-    )
-    assert research.get_claim(project.book_id, claim.claim_id).verification_state == "SUPPORTED"
+    current_claim = automatic_claims[0]
+    unit = {
+        "chapter_id": current_claim.chapter_id,
+        "unit_id": current_claim.unit_id,
+        "revision_id": current_claim.manuscript_revision_id,
+        "revision_hash": current_claim.manuscript_revision_hash,
+    }
 
     unused_source = research.import_source(
         project.book_id,
@@ -648,15 +682,6 @@ def test_online_courses_linked_deterministic_acceptance_cycle(tmp_path: Path) ->
     assert unused_source.title not in bibliography
     assert inactive_source.title not in bibliography
 
-    blocked_state = state.model_copy(update={"midbook_audit_completed": False})
-    with pytest.raises(AutoBookGateError, match="mandatory MID_BOOK audit"):
-        AutoBookFinalizer(tmp_path, gateway).finalize(
-            project.book_id, blocked_state, prepare_litres_docx=True
-        )
-
-    final = AutoBookFinalizer(tmp_path, gateway).finalize(
-        project.book_id, state, prepare_litres_docx=True
-    )
     master = LiteraryMasterService(tmp_path).get_master(project.book_id, final.master_id)
     assert master.manifest["bibliography"]["integrity_gate"] == "PASS"
     assert master.manifest["bibliography"]["public_entries"] == bibliography
@@ -738,3 +763,76 @@ def test_online_courses_linked_deterministic_acceptance_cycle(tmp_path: Path) ->
     assert after_opt_out == before_opt_out
     restored = contexts.set_public_bibliography(project.book_id, include=True)
     assert restored.include_bibliography is True
+
+    # A saved targeted change is executed against only chapter 3. Its dependent QA,
+    # evidence, visuals and final candidate are rebuilt without touching other chapters.
+    finalizer = AutoBookFinalizer(tmp_path, gateway)
+    units = finalizer._current_units(project.book_id)
+    engine = create_database(project_dir / "project.sqlite")
+    try:
+        with engine.connect() as connection:
+            before_heads = {
+                str(row["unit_id"]): (str(row["revision_id"]), str(row["revision_hash"]))
+                for row in connection.execute(
+                    text(
+                        "SELECT mu.unit_id,h.revision_id,h.revision_hash FROM manuscript_units mu "
+                        "JOIN authority_heads h ON h.entity_id=mu.authority_entity_id"
+                    )
+                ).mappings()
+            }
+    finally:
+        engine.dispose()
+    change_id = service.runtime.request_change(
+        project.book_id,
+        state.run_id,
+        "Уточни объяснение цены в главе 3, не меняя остальные главы.",
+    )
+    change = finalizer.execute_change(project.book_id, state, change_id)
+    assert change["status"] == "DONE"
+    assert change["result"]["affected_chapter"] == 3
+    chapter_three_units = {
+        str(item["unit_id"]) for item in units if int(item["chapter_ordinal"]) == 3
+    }
+    engine = create_database(project_dir / "project.sqlite")
+    try:
+        with engine.connect() as connection:
+            after_heads = {
+                str(row["unit_id"]): (str(row["revision_id"]), str(row["revision_hash"]))
+                for row in connection.execute(
+                    text(
+                        "SELECT mu.unit_id,h.revision_id,h.revision_hash FROM manuscript_units mu "
+                        "JOIN authority_heads h ON h.entity_id=mu.authority_entity_id"
+                    )
+                ).mappings()
+            }
+            stale_outputs = connection.execute(
+                text("SELECT COUNT(*) FROM auto_book_output_artifacts WHERE status='STALE'")
+            ).scalar_one()
+            superseded_audio = connection.execute(
+                text("SELECT COUNT(*) FROM audio_scripts WHERE status='SUPERSEDED'")
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert chapter_three_units
+    assert all(after_heads[unit_id] != before_heads[unit_id] for unit_id in chapter_three_units)
+    assert all(
+        after_heads[unit_id] == before_heads[unit_id]
+        for unit_id in before_heads
+        if unit_id not in chapter_three_units
+    )
+    assert set(change["result"]["changed_unit_ids"]) == chapter_three_units
+    assert stale_outputs > 0
+    assert superseded_audio == 1
+    next_candidate = finalizer._final_candidate(project.book_id, state.run_id)
+    assert next_candidate["status"] == "AWAITING"
+    finalizer.decide_final_candidate(
+        project.book_id,
+        state,
+        accept=True,
+        human_actor="Елена Дым",
+        reason="Принят точный кандидат после адресной доработки главы 3",
+    )
+    rebuilt = finalizer.finalize(project.book_id, state, prepare_litres_docx=True)
+    assert rebuilt.master_id != final.master_id
+    assert rebuilt.output_files
+    assert all(item["status"] == "READY" for item in rebuilt.output_files)

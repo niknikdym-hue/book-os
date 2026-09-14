@@ -8,6 +8,11 @@ import pytest
 from sqlalchemy import text
 
 from book_os_core.book_context import ProfileCreateRequest, ProfileRegistry
+from book_os_core.auto_book_runtime import (
+    AutoBookIntent,
+    AutoBookOutputSelection,
+    DurableAutoBookRuntime,
+)
 from book_os_core.db import create_database
 from book_os_core.projects import BookArchitecturePayload, BookContractPayload, ProjectService
 from book_os_core.series_workspace import (
@@ -428,3 +433,72 @@ def test_selected_series_export_does_not_start_planned_books(tmp_path: Path) -> 
     assert any(path.endswith("План-следующих-книг.json") for path in result.files)
     assert service.books(series_id)[1].book_id == planned.book_id
     assert service.books(series_id)[1].status == "IDEA"
+
+
+def test_series_export_physically_packages_only_selected_derivatives_with_relative_manifest(
+    tmp_path: Path,
+) -> None:
+    service, series_id = new_series(tmp_path)
+    entry = service.add_book(series_id, book("Готовая книга", 1, "Проверить package"))
+    runtime = DurableAutoBookRuntime(tmp_path)
+    run = runtime.create_run(
+        entry.book_id,
+        AutoBookIntent(
+            idea="Собрать существующие производные книги в пакет серии.",
+            author_name="Елена Дым",
+            outputs=AutoBookOutputSelection(
+                full_manuscript_docx=True,
+                voice_text_txt=True,
+            ),
+        ),
+    )
+    project_dir = tmp_path / "projects" / entry.book_id
+    manuscript = project_dir / "exports" / "book" / "manuscript.docx"
+    audio = project_dir / "exports" / "audio" / "voice.txt"
+    visual = project_dir / "exports" / "visuals" / "scheme.png"
+    for path, payload in (
+        (manuscript, b"DOCX fixture"),
+        (audio, "Текст для озвучки".encode()),
+        (visual, b"PNG fixture"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    for kind, path in (
+        ("FULL_MANUSCRIPT_DOCX", manuscript),
+        ("VOICE_TEXT_TXT", audio),
+    ):
+        runtime.register_artifact(
+            entry.book_id,
+            run.run_id,
+            output_kind=kind,
+            master_hash="a" * 64,
+            profile_version="test-v1",
+            exporter_version="test-v1",
+            relative_path=path.relative_to(project_dir).as_posix(),
+            payload=path.read_bytes(),
+            qa={"passed": True},
+        )
+
+    result = service.export_series(
+        series_id,
+        SeriesExportSelection(
+            complete_manuscripts=True,
+            audio_editions=True,
+            descriptions=False,
+            series_and_book_passports=False,
+            difference_map=False,
+            visual_materials=False,
+            sources_and_freshness=False,
+            next_books_plan=False,
+        ),
+    )
+    output = Path(result.output_directory)
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    packaged = manifest["packaged_book_outputs"][entry.book_id]
+    assert packaged
+    assert all(not Path(item).is_absolute() for item in packaged)
+    assert all((output / item).is_file() for item in packaged)
+    assert any(item.endswith("manuscript.docx") for item in packaged)
+    assert any(item.endswith("voice.txt") for item in packaged)
+    assert not any(item.endswith("scheme.png") for item in packaged)
+    assert not (output / "books" / f"001-{entry.book_id}" / "visual_materials").exists()

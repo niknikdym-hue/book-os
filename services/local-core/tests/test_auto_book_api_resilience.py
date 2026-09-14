@@ -104,15 +104,20 @@ def test_provider_disconnect_pauses_auto_book_without_losing_progress(tmp_path: 
     state = client.get(f"/api/projects/{book_id}/auto-book", headers=headers)
     assert state.status_code == 200
     payload = state.json()
-    assert payload["status"] == "RUNNING"
+    assert payload["status"] == "STOPPED"
     assert payload["phase"] == "CONCEPT_DEVELOPMENT"
     assert payload["requests_used"] == 1
-    assert payload["authorized_cost_usd"] == 1.0
+    assert payload["reserved_cost_usd"] == 2.5
+    assert payload["unknown_cost_usd"] == 1.0
+    assert payload["authorized_cost_usd"] == 3.5
     assert "Server disconnected" in payload["error"]
-    assert (
-        payload["last_action"]
-        == "Temporary model connection interruption; progress and budget saved"
+    assert "слепой повтор заблокирован" in payload["last_action"]
+    retry = client.post(
+        f"/api/projects/{book_id}/auto-book/resume",
+        headers=headers,
     )
+    assert retry.status_code == 409
+    assert "Нельзя слепо повторить" in retry.json()["detail"]
 
 
 def test_local_core_worker_marks_unknown_outcome_and_refuses_blind_retry(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ from enum import StrEnum
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, model_validator
@@ -219,6 +220,19 @@ class AutoBookArtifactView(BaseModel):
     status: Literal["READY", "FAILED", "STALE"]
     qa: dict[str, Any]
     created_at: str
+
+
+class AutoBookChangeView(BaseModel):
+    change_id: str
+    run_id: str
+    request_text: str
+    affected: list[str]
+    status: Literal["QUEUED", "ANALYZING", "NEEDS_CLARIFICATION", "RUNNING", "DONE", "FAILED"]
+    clarification: dict[str, Any] | None = None
+    audit: list[dict[str, Any]] = Field(default_factory=list)
+    result: dict[str, Any] | None = None
+    created_at: str
+    updated_at: str
 
 
 def _hash(value: object) -> str:
@@ -449,6 +463,27 @@ class DurableAutoBookRuntime:
         now = utc_now()
         try:
             with engine.begin() as connection:
+                existing = (
+                    connection.execute(
+                        text(
+                            "SELECT * FROM auto_book_operations WHERE run_id=:run_id AND "
+                            "idempotency_key=:idempotency_key"
+                        ),
+                        {"run_id": run_id, "idempotency_key": idempotency_key},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is not None:
+                    return self._row_to_operation(existing)
+                max_ordinal = connection.execute(
+                    text(
+                        "SELECT COALESCE(MAX(ordinal),-1) FROM auto_book_operations "
+                        "WHERE run_id=:run_id"
+                    ),
+                    {"run_id": run_id},
+                ).scalar_one()
+                allocated_ordinal = max(ordinal, int(max_ordinal) + 1)
                 connection.execute(
                     text(
                         "INSERT OR IGNORE INTO auto_book_operations(operation_id,run_id,ordinal,"
@@ -461,7 +496,7 @@ class DurableAutoBookRuntime:
                     {
                         "operation_id": new_ulid(),
                         "run_id": run_id,
-                        "ordinal": ordinal,
+                        "ordinal": allocated_ordinal,
                         "stage": stage.value,
                         "operation": operation,
                         "idempotency_key": idempotency_key,
@@ -488,6 +523,28 @@ class DurableAutoBookRuntime:
         finally:
             engine.dispose()
         return self._row_to_operation(row)
+
+    def authorization(self, book_id: str, run_id: str) -> dict[str, Any]:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        text("SELECT * FROM auto_book_authorizations WHERE run_id=:run_id"),
+                        {"run_id": run_id},
+                    )
+                    .mappings()
+                    .one()
+                )
+        finally:
+            engine.dispose()
+        return {
+            "authorization_id": str(row["authorization_id"]),
+            "run_id": str(row["run_id"]),
+            "scope": json.loads(str(row["scope_json"])),
+            "authorized_by": str(row["authorized_by"]),
+            "authorized_by_kind": str(row["authorized_by_kind"]),
+        }
 
     def list_operations(self, book_id: str, run_id: str) -> list[AutoBookOperationView]:
         """Return the durable operation ledger in stable execution order."""
@@ -1025,7 +1082,14 @@ class DurableAutoBookRuntime:
             raise AutoBookRuntimeError("change request must not be blank")
         lowered = cleaned.casefold()
         broad = any(word in lowered for word in ("вся книга", "обещание книги", "другая аудитория"))
-        affected = ["BOOK_CONTRACT", "ARCHITECTURE", "ALL_CHAPTERS"] if broad else ["TARGETED_TEXT"]
+        chapter_match = re.search(r"(?:глав(?:е|а|у|ы)|chapter)\s*(\d+)", lowered)
+        affected = (
+            ["BOOK_CONTRACT", "ARCHITECTURE", "ALL_CHAPTERS"]
+            if broad
+            else [f"CHAPTER:{chapter_match.group(1)}"]
+            if chapter_match
+            else ["UNRESOLVED_TARGET"]
+        )
         change_id = new_ulid()
         now = utc_now()
         engine = self._engine(book_id)
@@ -1042,7 +1106,9 @@ class DurableAutoBookRuntime:
                         "run_id": run_id,
                         "request_text": cleaned,
                         "affected_json": json.dumps(affected, ensure_ascii=False),
-                        "status": "NEEDS_CLARIFICATION" if broad else "PROPOSED",
+                        "status": (
+                            "NEEDS_CLARIFICATION" if broad or chapter_match is None else "QUEUED"
+                        ),
                         "created_at": now,
                         "updated_at": now,
                     },
@@ -1050,3 +1116,105 @@ class DurableAutoBookRuntime:
         finally:
             engine.dispose()
         return change_id
+
+    @staticmethod
+    def _row_to_change(row: Any) -> AutoBookChangeView:
+        return AutoBookChangeView(
+            change_id=str(row["change_id"]),
+            run_id=str(row["run_id"]),
+            request_text=str(row["request_text"]),
+            affected=cast(list[str], json.loads(str(row["affected_json"]))),
+            status=cast(Any, str(row["status"])),
+            clarification=(
+                cast(dict[str, Any], json.loads(str(row["clarification_json"])))
+                if row["clarification_json"]
+                else None
+            ),
+            audit=cast(list[dict[str, Any]], json.loads(str(row["audit_json"]))),
+            result=(
+                cast(dict[str, Any], json.loads(str(row["result_json"])))
+                if row["result_json"]
+                else None
+            ),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def change(self, book_id: str, change_id: str) -> AutoBookChangeView:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        text("SELECT * FROM auto_book_change_requests WHERE change_id=:change_id"),
+                        {"change_id": change_id},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        finally:
+            engine.dispose()
+        if row is None:
+            raise AutoBookRuntimeError(f"change request not found: {change_id}")
+        return self._row_to_change(row)
+
+    def list_changes(self, book_id: str, run_id: str) -> list[AutoBookChangeView]:
+        engine = self._engine(book_id)
+        try:
+            with engine.connect() as connection:
+                rows = list(
+                    connection.execute(
+                        text(
+                            "SELECT * FROM auto_book_change_requests WHERE run_id=:run_id "
+                            "ORDER BY created_at,change_id"
+                        ),
+                        {"run_id": run_id},
+                    ).mappings()
+                )
+        finally:
+            engine.dispose()
+        return [self._row_to_change(row) for row in rows]
+
+    def update_change(
+        self,
+        book_id: str,
+        change_id: str,
+        *,
+        status: str,
+        event: dict[str, Any],
+        affected: list[str] | None = None,
+        clarification: dict[str, Any] | None = None,
+        result: dict[str, Any] | None = None,
+    ) -> AutoBookChangeView:
+        current = self.change(book_id, change_id)
+        audit = [*current.audit, {**event, "at": utc_now()}]
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE auto_book_change_requests SET status=:status,affected_json=:affected,"
+                        "clarification_json=:clarification,audit_json=:audit,result_json=:result,"
+                        "updated_at=:updated_at WHERE change_id=:change_id"
+                    ),
+                    {
+                        "status": status,
+                        "affected": json.dumps(affected or current.affected, ensure_ascii=False),
+                        "clarification": (
+                            json.dumps(clarification, ensure_ascii=False, sort_keys=True)
+                            if clarification is not None
+                            else None
+                        ),
+                        "audit": json.dumps(audit, ensure_ascii=False, sort_keys=True),
+                        "result": (
+                            json.dumps(result, ensure_ascii=False, sort_keys=True)
+                            if result is not None
+                            else None
+                        ),
+                        "updated_at": utc_now(),
+                        "change_id": change_id,
+                    },
+                )
+        finally:
+            engine.dispose()
+        return self.change(book_id, change_id)

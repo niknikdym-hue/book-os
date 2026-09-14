@@ -6,7 +6,8 @@ from html import escape as html_escape
 import json
 import hashlib
 from pathlib import Path
-from typing import Any, Literal, cast
+from collections.abc import Callable
+from typing import Any, Literal, TypeVar, cast
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 import httpx
@@ -34,7 +35,7 @@ from .book_context import (
 )
 from .auto_book_gates import AutoBookEvidenceGates
 from .context_planning import ContextAwarePlanningService
-from .drafting import DraftSectionRequest, DraftingService
+from .drafting import DraftRunView, DraftSectionRequest, DraftingService
 from .editorial import EditorialService
 from .editorial_diagnostics import EditorialDiagnostics
 from .model_gateway import BookConceptProposalOutput, ModelGateway, ReasoningEffort
@@ -42,6 +43,7 @@ from .model_routing import ModelRoutingService, RoutingChoice
 from .planning import (
     ArchitecturePlanningRequest,
     BookConceptPlanningRequest,
+    BookConceptProposalView,
     BookContractPlanningRequest,
     ChapterContractPlanningRequest,
     PlanningProposalView,
@@ -65,6 +67,8 @@ from .series_production import (
 )
 from .series_workspace import SeriesWorkspaceGateError, SeriesWorkspaceService
 
+_PaidResult = TypeVar("_PaidResult", bound=BaseModel)
+
 AutoBookChoice = Literal["AUTO", "ASTRA_MEDIUM", "ASTRA_HIGH", "ASTRA_XHIGH", "SOL"]
 AutoBookStatus = Literal[
     "RUNNING",
@@ -72,6 +76,7 @@ AutoBookStatus = Literal[
     "FAILED",
     "STOPPED",
     "AWAITING_CONCEPT_APPROVAL",
+    "AWAITING_FINAL_ACCEPTANCE",
     "AWAITING_AUDIO_APPROVAL",
 ]
 AutoBookPhase = Literal[
@@ -120,6 +125,7 @@ class AutoBookStartRequest(BaseModel):
     visuals: AutoBookVisualPolicy = Field(default_factory=AutoBookVisualPolicy)
     attachments: list[AutoBookAttachment] = Field(default_factory=list, max_length=40)
     owner_authorizes_auto_progress: Literal[True]
+    final_human_acceptance_required: bool = True
 
 
 class AutoBookRunView(BaseModel):
@@ -173,6 +179,7 @@ class _DelegatedProjectService(ProjectService):
     def __init__(self, data_dir: Path, run_id: str) -> None:
         super().__init__(data_dir)
         self.run_id = run_id
+        self.runtime = DurableAutoBookRuntime(data_dir)
 
     def _approve_entity(self, engine: Engine, entity_id: str) -> DocumentView:
         authority = AuthorityService(engine)
@@ -186,7 +193,8 @@ class _DelegatedProjectService(ProjectService):
             ).scalar_one_or_none()
         source_revision_id = cast(str, working) if working is not None else head.revision_id
         source = authority.get_revision(source_revision_id)
-        reason = f"Owner pre-authorized automatic progress for Auto Book run {self.run_id}"
+        authorization = self.runtime.authorization(self._book_id(engine), self.run_id)
+        reason = f"System execution under durable Auto Book authorization {authorization['authorization_id']}"
         proposal_id = authority.create_proposal(
             entity_id=entity_id,
             base_revision_id=head.revision_id,
@@ -195,18 +203,19 @@ class _DelegatedProjectService(ProjectService):
             schema_name=cast(str, source["schema_name"]),
             schema_version=cast(str, source["schema_version"]),
             rationale=reason,
-            actor="owner",
-            origin="HUMAN_WRITTEN",
+            actor=f"system:auto-book:{self.run_id}",
+            origin="SYSTEM_DERIVED",
             task_id=f"auto-book:{self.run_id}",
             input_revision_ids=(source_revision_id,),
         )
         authority.accept_proposal(
             proposal_id,
-            actor="owner",
-            actor_kind="HUMAN",
+            actor=f"system:auto-book:{self.run_id}",
+            actor_kind="SYSTEM",
             reason=reason,
             gates={
-                "owner_auto_book_authorization": True,
+                "delegated_authorization_id": authorization["authorization_id"],
+                "delegated_authorization_scope": authorization["scope"],
                 "per_step_human_review": False,
                 "auto_book_run_id": self.run_id,
             },
@@ -220,6 +229,14 @@ class _DelegatedProjectService(ProjectService):
         if view is None:
             raise AutoBookError("approved document disappeared")
         return view
+
+    @staticmethod
+    def _book_id(engine: Engine) -> str:
+        with engine.connect() as connection:
+            value = connection.execute(
+                text("SELECT book_id FROM book_projects LIMIT 1")
+            ).scalar_one()
+        return str(value)
 
 
 class AutoBookService:
@@ -378,6 +395,8 @@ class AutoBookService:
         runtime_status = (
             "PACKAGE_READY"
             if state.status == "DONE"
+            else "MANUSCRIPT_READY"
+            if state.status in {"AWAITING_FINAL_ACCEPTANCE", "AWAITING_AUDIO_APPROVAL"}
             else "PAUSED"
             if state.status == "STOPPED"
             else "FAILED"
@@ -385,17 +404,27 @@ class AutoBookService:
             else "RUNNING"
         )
         try:
-            runtime = self.runtime.set_stage(
-                state.book_id,
-                state.run_id,
-                phase_stage[state.phase],
-                message=state.last_action or "BOOK OS продолжает Auto Book",
-                status=cast(Any, runtime_status),
+            existing_runtime = self.runtime.get(state.book_id, state.run_id)
+            runtime = (
+                existing_runtime
+                if existing_runtime.status == "UNKNOWN_OUTCOME"
+                else self.runtime.set_stage(
+                    state.book_id,
+                    state.run_id,
+                    phase_stage[state.phase],
+                    message=state.last_action or "BOOK OS продолжает Auto Book",
+                    status=cast(Any, runtime_status),
+                )
             )
             state.estimated_cost_usd = runtime.estimated_cost_usd
             state.reserved_cost_usd = runtime.reserved_cost_usd
             state.confirmed_cost_usd = runtime.confirmed_cost_usd
             state.unknown_cost_usd = runtime.unknown_cost_usd
+            state.requests_used = runtime.requests_used
+            state.authorized_cost_usd = round(
+                runtime.confirmed_cost_usd + runtime.reserved_cost_usd + runtime.unknown_cost_usd,
+                6,
+            )
             state.current_stage = runtime.current_stage
             state.progress_completed = runtime.progress_completed
             state.progress_total = runtime.progress_total
@@ -419,6 +448,13 @@ class AutoBookService:
                 state.reserved_cost_usd = runtime.reserved_cost_usd
                 state.confirmed_cost_usd = runtime.confirmed_cost_usd
                 state.unknown_cost_usd = max(state.unknown_cost_usd, runtime.unknown_cost_usd)
+                state.requests_used = runtime.requests_used
+                state.authorized_cost_usd = round(
+                    runtime.confirmed_cost_usd
+                    + runtime.reserved_cost_usd
+                    + runtime.unknown_cost_usd,
+                    6,
+                )
             except AutoBookRuntimeError:
                 pass
             return state
@@ -605,6 +641,7 @@ class AutoBookService:
                 max_cost_usd_per_request=request.max_cost_usd_per_request,
                 max_total_cost_usd=request.max_total_cost_usd,
                 max_requests=request.max_requests,
+                final_human_acceptance_required=request.final_human_acceptance_required,
             ),
             run_id=run_id,
         )
@@ -704,6 +741,94 @@ class AutoBookService:
         return cap
 
     @staticmethod
+    def _confirmed_cost(usage: dict[str, Any]) -> float:
+        direct = usage.get("cost_usd")
+        guard = usage.get("cost_guard")
+        nested = guard.get("estimated_actual_cost_usd") if isinstance(guard, dict) else None
+        value = direct if isinstance(direct, (int, float)) else nested
+        return max(0.0, float(value)) if isinstance(value, (int, float)) else 0.0
+
+    def _paid_operation(
+        self,
+        state: AutoBookRunView,
+        *,
+        stage: AutoBookStage,
+        operation: str,
+        input_payload: dict[str, Any],
+        provider: str,
+        model: str,
+        effort: ReasoningEffort | None,
+        cap: float,
+        result_type: type[_PaidResult],
+        execute: Callable[[], _PaidResult],
+    ) -> _PaidResult:
+        ledger = self.runtime.ensure_operation(
+            state.book_id,
+            state.run_id,
+            ordinal=len(self.runtime.list_operations(state.book_id, state.run_id)),
+            stage=stage,
+            operation=operation,
+            input_payload=input_payload,
+            provider=provider,
+            model=model,
+            reasoning_effort=effort,
+            estimated_cost_usd=cap,
+        )
+        if ledger.state == "SUCCEEDED":
+            if not ledger.output or "result" not in ledger.output:
+                raise AutoBookGateError("confirmed operation has no reusable output")
+            return result_type.model_validate(ledger.output["result"])
+        if ledger.state in {"RESERVED", "RUNNING"}:
+            self.runtime.mark_unknown(
+                state.book_id,
+                state.run_id,
+                ledger.operation_id,
+                provider_run_id=ledger.provider_run_id,
+            )
+            raise AutoBookGateError(
+                f"paid operation {ledger.operation_id} has UNKNOWN_OUTCOME; blind retry blocked"
+            )
+        if ledger.state == "UNKNOWN":
+            raise AutoBookGateError(
+                f"paid operation {ledger.operation_id} has UNKNOWN_OUTCOME; blind retry blocked"
+            )
+        self.runtime.reserve(state.book_id, state.run_id, ledger.operation_id, cap)
+        try:
+            result = execute()
+            usage = cast(dict[str, Any], getattr(result, "usage", {}) or {})
+            provider_run_id = cast(str | None, getattr(result, "provider_run_id", None))
+            self.runtime.complete_operation(
+                state.book_id,
+                state.run_id,
+                ledger.operation_id,
+                output={
+                    "result": result.model_dump(mode="json"),
+                    "output_identity": hashlib.sha256(
+                        result.model_dump_json().encode("utf-8")
+                    ).hexdigest(),
+                    "usage": usage,
+                },
+                confirmed_cost_usd=min(cap, self._confirmed_cost(usage)),
+                provider_run_id=provider_run_id,
+            )
+        except BaseException:
+            current = self.runtime.operation(state.book_id, ledger.operation_id)
+            if current.state != "SUCCEEDED":
+                self.runtime.mark_unknown(
+                    state.book_id,
+                    state.run_id,
+                    ledger.operation_id,
+                    provider_run_id=cast(
+                        str | None, getattr(locals().get("result"), "provider_run_id", None)
+                    ),
+                )
+            raise
+        hook = getattr(self, "_after_paid_operation_commit", None)
+        if callable(hook):
+            hook(operation, ledger.operation_id)
+        return result
+
+    @staticmethod
     def _consume_call(state: AutoBookRunView, cap: float) -> None:
         state.requests_used += 1
         state.authorized_cost_usd = round(state.authorized_cost_usd + cap, 6)
@@ -739,46 +864,64 @@ class AutoBookService:
 
     def _book_contract(self, state: AutoBookRunView, cap: float) -> PlanningProposalView:
         choice, effort = self._planning_choice(state, "BOOK_CONTRACT_PROPOSAL")
-        result = self.planning.propose_book_contract(
-            state.book_id,
-            BookContractPlanningRequest(
-                idea=(
-                    state.idea
-                    + "\n\nAUTHOR-APPROVED CONCEPT:\n"
-                    + json.dumps(
-                        state.concept.model_dump(mode="json") if state.concept else {},
-                        ensure_ascii=False,
-                        sort_keys=True,
-                    )
-                    + self._delivery_instruction(state)
-                ),
-                reader_hint=state.reader_hint,
-                provider=choice.provider,
-                model=choice.model,
-                reasoning_effort=effort,
-                max_output_tokens=2600,
-                max_cost_usd=cap,
-                untrusted_context=self._attachment_excerpts(state),
+        request = BookContractPlanningRequest(
+            idea=(
+                state.idea
+                + "\n\nAUTHOR-APPROVED CONCEPT:\n"
+                + json.dumps(
+                    state.concept.model_dump(mode="json") if state.concept else {},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + self._delivery_instruction(state)
             ),
+            reader_hint=state.reader_hint,
+            provider=choice.provider,
+            model=choice.model,
+            reasoning_effort=effort,
+            max_output_tokens=2600,
+            max_cost_usd=cap,
+            untrusted_context=self._attachment_excerpts(state),
+        )
+        result = self._paid_operation(
+            state,
+            stage=AutoBookStage.DEFINITION,
+            operation="BOOK_CONTRACT_PROPOSAL",
+            input_payload=request.model_dump(mode="json"),
+            provider=choice.provider,
+            model=choice.model,
+            effort=effort,
+            cap=cap,
+            result_type=PlanningProposalView,
+            execute=lambda: self.planning.propose_book_contract(state.book_id, request),
         )
         self.routing.record_run(state.book_id, result.run_id, choice)
         return result
 
     def _concept(self, state: AutoBookRunView, cap: float) -> None:
         choice, effort = self._planning_choice(state, "BOOK_CONCEPT_PROPOSAL")
-        result = self.planning.propose_book_concept(
-            state.book_id,
-            BookConceptPlanningRequest(
-                idea=state.idea,
-                reader_hint=state.reader_hint,
-                feedback=state.concept_feedback,
-                provider=choice.provider,
-                model=choice.model,
-                reasoning_effort=effort,
-                max_output_tokens=2800,
-                max_cost_usd=cap,
-                untrusted_context=self._attachment_excerpts(state),
-            ),
+        request = BookConceptPlanningRequest(
+            idea=state.idea,
+            reader_hint=state.reader_hint,
+            feedback=state.concept_feedback,
+            provider=choice.provider,
+            model=choice.model,
+            reasoning_effort=effort,
+            max_output_tokens=2800,
+            max_cost_usd=cap,
+            untrusted_context=self._attachment_excerpts(state),
+        )
+        result = self._paid_operation(
+            state,
+            stage=AutoBookStage.DEFINITION,
+            operation=f"BOOK_CONCEPT_PROPOSAL:{state.concept_revision + 1}",
+            input_payload=request.model_dump(mode="json"),
+            provider=choice.provider,
+            model=choice.model,
+            effort=effort,
+            cap=cap,
+            result_type=BookConceptProposalView,
+            execute=lambda: self.planning.propose_book_concept(state.book_id, request),
         )
         self.routing.record_run(state.book_id, result.run_id, choice)
         state.concept = result.concept
@@ -823,20 +966,29 @@ class AutoBookService:
 
     def _architecture(self, state: AutoBookRunView, cap: float) -> PlanningProposalView:
         choice, effort = self._planning_choice(state, "ARCHITECTURE_PROPOSAL")
-        result = self.planning.propose_architecture(
-            state.book_id,
-            ArchitecturePlanningRequest(
-                planning_note=(
-                    "Auto Book: build the strongest complete architecture "
-                    "for the approved book contract." + self._delivery_instruction(state)
-                ),
-                provider=choice.provider,
-                model=choice.model,
-                reasoning_effort=effort,
-                max_output_tokens=5000,
-                max_cost_usd=cap,
-                untrusted_context=self._attachment_excerpts(state),
+        request = ArchitecturePlanningRequest(
+            planning_note=(
+                "Auto Book: build the strongest complete architecture "
+                "for the approved book contract." + self._delivery_instruction(state)
             ),
+            provider=choice.provider,
+            model=choice.model,
+            reasoning_effort=effort,
+            max_output_tokens=5000,
+            max_cost_usd=cap,
+            untrusted_context=self._attachment_excerpts(state),
+        )
+        result = self._paid_operation(
+            state,
+            stage=AutoBookStage.ARCHITECTURE,
+            operation="ARCHITECTURE_PROPOSAL",
+            input_payload=request.model_dump(mode="json"),
+            provider=choice.provider,
+            model=choice.model,
+            effort=effort,
+            cap=cap,
+            result_type=PlanningProposalView,
+            execute=lambda: self.planning.propose_architecture(state.book_id, request),
         )
         self.routing.record_run(state.book_id, result.run_id, choice)
         return result
@@ -845,20 +997,30 @@ class AutoBookService:
         if state.current_chapter_id is None:
             raise AutoBookError("current chapter is missing")
         choice, effort = self._planning_choice(state, "CHAPTER_CONTRACT_PROPOSAL")
-        result = self.planning.propose_chapter_contract(
-            state.book_id,
-            state.current_chapter_id,
-            ChapterContractPlanningRequest(
-                planning_note=(
-                    "Auto Book: make this chapter distinct, necessary, and non-repetitive."
-                    + self._delivery_instruction(state)
-                ),
-                provider=choice.provider,
-                model=choice.model,
-                reasoning_effort=effort,
-                max_output_tokens=3200,
-                max_cost_usd=cap,
-                untrusted_context=self._attachment_excerpts(state),
+        request = ChapterContractPlanningRequest(
+            planning_note=(
+                "Auto Book: make this chapter distinct, necessary, and non-repetitive."
+                + self._delivery_instruction(state)
+            ),
+            provider=choice.provider,
+            model=choice.model,
+            reasoning_effort=effort,
+            max_output_tokens=3200,
+            max_cost_usd=cap,
+            untrusted_context=self._attachment_excerpts(state),
+        )
+        result = self._paid_operation(
+            state,
+            stage=AutoBookStage.CHAPTER_CONTEXT,
+            operation=f"CHAPTER_CONTRACT_PROPOSAL:{state.current_chapter_id}",
+            input_payload=request.model_dump(mode="json"),
+            provider=choice.provider,
+            model=choice.model,
+            effort=effort,
+            cap=cap,
+            result_type=PlanningProposalView,
+            execute=lambda: self.planning.propose_chapter_contract(
+                state.book_id, cast(str, state.current_chapter_id), request
             ),
         )
         self.routing.record_run(state.book_id, result.run_id, choice)
@@ -888,26 +1050,44 @@ class AutoBookService:
             )
             model = choice.model
             effort = choice.reasoning_effort
-        self.drafting.generate_section_draft(
+        request = DraftSectionRequest(
+            section_objective=(
+                f"Write the complete publication-ready text of chapter {chapter.ordinal}: "
+                f"{chapter.working_title}. Follow the approved chapter contract and "
+                "book context. "
+                f"Aim for about {per_chapter} characters with spaces. Avoid repetition, "
+                "filler, meta-commentary, author instructions, and placeholders. "
+                "Return only coherent book prose." + self._delivery_instruction(state)
+            ),
+            provider="openai",
+            model=model,
+            selection_mode=cast(Any, mode),
+            selection_scope="OPERATION" if mode == "MANUAL" else None,
+            reasoning_effort=effort,
+            max_output_tokens=12_000,
+            max_cost_usd=cap,
+            untrusted_context=self._attachment_excerpts(state),
+        )
+        choice = self.routing.resolve(
             state.book_id,
-            chapter.chapter_id,
-            DraftSectionRequest(
-                section_objective=(
-                    f"Write the complete publication-ready text of chapter {chapter.ordinal}: "
-                    f"{chapter.working_title}. Follow the approved chapter contract and "
-                    "book context. "
-                    f"Aim for about {per_chapter} characters with spaces. Avoid repetition, "
-                    "filler, meta-commentary, author instructions, and placeholders. "
-                    "Return only coherent book prose." + self._delivery_instruction(state)
-                ),
-                provider="openai",
-                model=model,
-                selection_mode=cast(Any, mode),
-                selection_scope="OPERATION" if mode == "MANUAL" else None,
-                reasoning_effort=effort,
-                max_output_tokens=12_000,
-                max_cost_usd=cap,
-                untrusted_context=self._attachment_excerpts(state),
+            "SECTION_DRAFT",
+            provider="openai",
+            selection_mode=cast(Any, mode),
+            selection_scope="OPERATION" if mode == "MANUAL" else None,
+            model=model,
+        )
+        self._paid_operation(
+            state,
+            stage=AutoBookStage.WRITING,
+            operation=f"SECTION_DRAFT:{chapter.chapter_id}",
+            input_payload=request.model_dump(mode="json"),
+            provider=choice.provider,
+            model=choice.model,
+            effort=effort,
+            cap=cap,
+            result_type=DraftRunView,
+            execute=lambda: self.drafting.generate_section_draft(
+                state.book_id, chapter.chapter_id, request
             ),
         )
 
@@ -921,6 +1101,11 @@ class AutoBookService:
         return "PASS" if status == "PASS" else "REWORK"
 
     def _series_gate_evidence(self, state: AutoBookRunView) -> dict[str, Any]:
+        authorization = self.runtime.authorization(state.book_id, state.run_id)
+        delegated_actor = (
+            f"SYSTEM:DELEGATED:auto-book:{state.run_id}:"
+            f"authorization:{authorization['authorization_id']}"
+        )
         context = self.contexts.get_context(state.book_id)
         if context.series_profile is None:
             return {
@@ -945,6 +1130,7 @@ class AutoBookService:
                 state.book_id,
                 membership.passport_hash,
                 f"Owner pre-authorized Book Passport for Auto Book run {state.run_id}",
+                actor=delegated_actor,
             )
         result = self.series_workspaces.analyze(series_id)
         if result.status == "BLOCKING":
@@ -962,6 +1148,7 @@ class AutoBookService:
             series_id,
             result.map_hash,
             f"Owner pre-authorized current difference map for Auto Book run {state.run_id}",
+            actor=delegated_actor,
         )
         self.series_workspaces.require_current_map(series_id)
         evidence: dict[str, Any] = {
@@ -996,7 +1183,8 @@ class AutoBookService:
             raise AutoBookGateError("Auto pre-writing admission requires accepted concept evidence")
         definition_evidence = AutoBookEvidenceGates.definition(book_contract, state.concept)
         state.quality_gate_evidence["definition"] = definition_evidence.model_dump(mode="json")
-        actor = f"Owner Auto Book {state.run_id}"
+        authorization = self.runtime.authorization(state.book_id, state.run_id)
+        actor = f"system:auto-book:{state.run_id}:authorization:{authorization['authorization_id']}"
         definition = self.series_production.latest_approved_definition(state.book_id)
         if definition is None or not definition.content.gate_evidence:
             definition = self.series_production.create_definition_pack(
@@ -1079,7 +1267,7 @@ class AutoBookService:
             definition = self.series_production.approve_definition_pack(
                 state.book_id,
                 definition.definition_id,
-                DefinitionPackApprovalRequest(actor_kind="OWNER", actor=actor),
+                DefinitionPackApprovalRequest(actor_kind="SYSTEM", actor=actor),
             )
         production_contract = self.series_production.latest_approved_production_contract(
             state.book_id, chapter_id
@@ -1173,7 +1361,7 @@ class AutoBookService:
                 state.book_id,
                 chapter_id,
                 production_contract.production_contract_id,
-                ChapterProductionContractApprovalRequest(actor_kind="OWNER", actor=actor),
+                ChapterProductionContractApprovalRequest(actor_kind="SYSTEM", actor=actor),
             )
 
         series_evidence = self._series_gate_evidence(state)
@@ -1227,7 +1415,7 @@ class AutoBookService:
                         and series_evidence["status"] == "PASS"
                     ),
                 ),
-                actor_kind="OWNER",
+                actor_kind="SYSTEM",
                 actor=actor,
                 reason=(
                     "Owner pre-authorized the exact Auto Book run; current authority, uniqueness "
@@ -1271,7 +1459,6 @@ class AutoBookService:
             if state.phase == "CONCEPT_DEVELOPMENT":
                 cap = self._remaining_call_cap(state)
                 self._concept(state, cap)
-                self._consume_call(state, cap)
                 state.phase = "CONCEPT_REVIEW"
                 state.status = "AWAITING_CONCEPT_APPROVAL"
                 state.last_action = "Concept proposal is ready for author confirmation"
@@ -1282,7 +1469,6 @@ class AutoBookService:
             elif state.phase == "BOOK_CONTRACT":
                 cap = self._remaining_call_cap(state)
                 result = self._book_contract(state, cap)
-                self._consume_call(state, cap)
                 state.phase = "APPROVE_BOOK_CONTRACT"
                 state.last_action = f"Book Contract proposed by {result.model}"
 
@@ -1305,9 +1491,10 @@ class AutoBookService:
                         "in this execution environment"
                     )
                 else:
+                    research_query = (state.idea + " " + state.reader_hint).strip()[:1000]
                     candidates = self.research.search(
                         ResearchSearchRequest(
-                            query=(state.idea + " " + state.reader_hint).strip()[:1000],
+                            query=research_query,
                             limit_per_provider=3,
                         )
                     )
@@ -1319,6 +1506,19 @@ class AutoBookService:
                         for item in candidates
                     }
                     state.research_source_count = len(source_ids)
+                    state.quality_gate_evidence["research_plan"] = {
+                        "question": research_query,
+                        "source_categories": sorted({item.source_type for item in candidates}),
+                        "freshness_years": sorted(
+                            {item.publication_year for item in candidates if item.publication_year}
+                        ),
+                        "source_ids": sorted(source_ids),
+                        "fully_inspected": sum(
+                            bool(item.inspected_excerpt and item.inspected_pointer)
+                            for item in candidates
+                        ),
+                        "provider_or_model_calls": 0,
+                    }
                     state.last_action = (
                         f"Research map imported {len(source_ids)} source identities; "
                         "claims still require exact evidence"
@@ -1328,7 +1528,6 @@ class AutoBookService:
             elif state.phase == "ARCHITECTURE":
                 cap = self._remaining_call_cap(state)
                 result = self._architecture(state, cap)
-                self._consume_call(state, cap)
                 state.phase = "APPROVE_ARCHITECTURE"
                 state.last_action = f"Architecture proposed by {result.model}"
 
@@ -1372,7 +1571,6 @@ class AutoBookService:
                     else:
                         cap = self._remaining_call_cap(state)
                         result = self._chapter_contract(state, cap)
-                        self._consume_call(state, cap)
                         state.phase = "APPROVE_CHAPTER"
                         state.last_action = (
                             f"Chapter {chapter.ordinal} contract proposed by {result.model}"
@@ -1408,7 +1606,6 @@ class AutoBookService:
                 else:
                     cap = self._remaining_call_cap(state)
                     self._draft_chapter(state, cap)
-                    self._consume_call(state, cap)
                     project = self.projects.get_project(book_id)
                     current_ordinal = state.current_chapter_ordinal
                     pending = self._first_pending_chapter(project)

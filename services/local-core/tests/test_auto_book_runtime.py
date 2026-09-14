@@ -18,7 +18,23 @@ from book_os_core.auto_book_runtime import (
 from book_os_core.auto_book import AutoBookService, AutoBookStartRequest
 from book_os_core.db import create_database
 from book_os_core.model_gateway import DeterministicFakeAdapter, ModelGateway
+from book_os_core.model_gateway import ModelAdapterResult, ModelTaskRequest
 from book_os_core.projects import NewBookRequest, ProjectService
+from book_os_core.prompts import PromptTemplate
+
+
+class SimulatedProcessCrash(BaseException):
+    pass
+
+
+class CountingFakeAdapter(DeterministicFakeAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple[str, str, str]] = []
+
+    def generate(self, request: ModelTaskRequest, prompt: PromptTemplate) -> ModelAdapterResult:
+        self.calls.append((request.task_type, prompt.prompt_id, request.task_id))
+        return super().generate(request, prompt)
 
 
 def project(tmp_path: Path) -> str:
@@ -221,3 +237,69 @@ def test_browser_attachment_is_persisted_without_base64_in_runtime(tmp_path: Pat
     assert attachment.content_hash is not None
     assert attachment.path.startswith(f"inputs/{state.run_id}/")
     assert (tmp_path / "projects" / book_id / attachment.path).read_bytes() == payload
+
+
+@pytest.mark.parametrize(
+    ("phase", "operation_prefix"),
+    [
+        ("CONCEPT_DEVELOPMENT", "BOOK_CONCEPT_PROPOSAL:"),
+        ("BOOK_CONTRACT", "BOOK_CONTRACT_PROPOSAL"),
+        ("ARCHITECTURE", "ARCHITECTURE_PROPOSAL"),
+        ("CHAPTER_CONTRACT", "CHAPTER_CONTRACT_PROPOSAL:"),
+        ("CHAPTER_DRAFT", "SECTION_DRAFT:"),
+    ],
+)
+def test_confirmed_provider_result_is_reused_after_process_crash_without_second_call(
+    tmp_path: Path,
+    phase: str,
+    operation_prefix: str,
+) -> None:
+    book_id = project(tmp_path)
+    adapter = CountingFakeAdapter()
+    gateway = ModelGateway({"openai": adapter})
+    service = AutoBookService(tmp_path, gateway)
+    state = service.start(
+        book_id,
+        AutoBookStartRequest(
+            idea="Проверить восстановление каждой платной операции Auto Book после crash window.",
+            author_name="Тестовый автор",
+            max_cost_usd_per_request=1,
+            max_total_cost_usd=30,
+            max_requests=50,
+            owner_authorizes_auto_progress=True,
+        ),
+    )
+    for _ in range(30):
+        if state.phase == phase:
+            break
+        if state.status == "AWAITING_CONCEPT_APPROVAL":
+            state = service.accept_concept(book_id)
+        else:
+            state = service.advance(book_id)
+    assert state.phase == phase
+    assert state.status == "RUNNING"
+
+    def crash_after_commit(operation: str, operation_id: str) -> None:
+        del operation_id
+        if operation.startswith(operation_prefix):
+            raise SimulatedProcessCrash(operation)
+
+    setattr(service, "_after_paid_operation_commit", crash_after_commit)
+    with pytest.raises(SimulatedProcessCrash):
+        service.advance(book_id)
+    matching = [
+        item
+        for item in service.runtime.list_operations(book_id, state.run_id)
+        if item.operation.startswith(operation_prefix)
+    ]
+    assert len(matching) == 1
+    assert matching[0].state == "SUCCEEDED"
+    assert matching[0].output is not None
+    call_count = len(adapter.calls)
+
+    recovered = AutoBookService(tmp_path, gateway).advance(book_id)
+    assert recovered.phase != phase
+    assert len(adapter.calls) == call_count
+    reused = service.runtime.operation(book_id, matching[0].operation_id)
+    assert reused.state == "SUCCEEDED"
+    assert reused.confirmed_cost_usd == matching[0].confirmed_cost_usd

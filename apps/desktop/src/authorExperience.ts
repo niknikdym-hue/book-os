@@ -13,7 +13,7 @@ export type BookStageState = "done" | "current" | "locked";
 
 export type AutoBookSummary = {
   run_id: string;
-  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_AUDIO_APPROVAL";
+  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_FINAL_ACCEPTANCE" | "AWAITING_AUDIO_APPROVAL";
   phase: string;
   current_stage?: string;
   progress_completed?: number;
@@ -86,7 +86,7 @@ export function bookStageStates(project: ProjectView, autoBook: AutoBookSummary 
         ? "done"
         : "current",
     check: rank < 4 && !runDone ? "locked" : rank >= 5 || runDone ? "done" : "current",
-    release: rank < 5 && !runDone && autoBook?.status !== "AWAITING_AUDIO_APPROVAL"
+    release: rank < 5 && !runDone && !["AWAITING_FINAL_ACCEPTANCE", "AWAITING_AUDIO_APPROVAL"].includes(autoBook?.status ?? "")
       ? "locked"
       : "current",
   };
@@ -105,6 +105,7 @@ export function currentBookStage(
 export function bookProgress(project: ProjectView, autoBook: AutoBookSummary | null): number {
   if (autoBook?.status === "DONE") return 100;
   if (autoBook?.status === "AWAITING_AUDIO_APPROVAL") return 96;
+  if (autoBook?.status === "AWAITING_FINAL_ACCEPTANCE") return 94;
   if (autoBook?.progress_total && autoBook.progress_total > 0) {
     return Math.min(
       99,

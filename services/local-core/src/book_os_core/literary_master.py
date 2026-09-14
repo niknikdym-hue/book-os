@@ -50,6 +50,7 @@ class LiteraryMasterView(BaseModel):
     canonical_content_hash: str
     book_title: str
     human_actor: str
+    acceptance_actor_kind: str = "HUMAN"
     created_at: str
     status: str
     manifest: dict[str, Any]
@@ -566,6 +567,7 @@ class LiteraryMasterService:
         book_id: str,
         *,
         human_actor: str,
+        acceptance_actor_kind: str = "HUMAN",
         bibliography_evidence: dict[str, Any] | None = None,
     ) -> LiteraryMasterView:
         actor = human_actor.strip()
@@ -605,11 +607,13 @@ class LiteraryMasterService:
                             "master_id,book_id,manifest_version,manifest_json,manifest_hash,book_title,"
                             "book_contract_revision_id,book_contract_revision_hash,"
                             "architecture_revision_id,architecture_revision_hash,ordered_manifest_json,"
-                            "canonical_content_hash,release_gate_json,human_actor,created_at,status) VALUES "
+                            "canonical_content_hash,release_gate_json,human_actor,acceptance_actor_kind,"
+                            "created_at,status) VALUES "
                             "(:master_id,:book_id,:manifest_version,:manifest_json,:manifest_hash,:book_title,"
                             ":book_contract_revision_id,:book_contract_revision_hash,"
                             ":architecture_revision_id,:architecture_revision_hash,:ordered_manifest_json,"
-                            ":canonical_content_hash,:release_gate_json,:human_actor,:created_at,'LOCKED')"
+                            ":canonical_content_hash,:release_gate_json,:human_actor,:actor_kind,"
+                            ":created_at,'LOCKED')"
                         ),
                         {
                             "master_id": master_id,
@@ -638,6 +642,7 @@ class LiteraryMasterService:
                                 )
                             ),
                             "human_actor": actor,
+                            "actor_kind": acceptance_actor_kind,
                             "created_at": now,
                         },
                     )
@@ -663,6 +668,7 @@ class LiteraryMasterService:
             canonical_content_hash=str(row["canonical_content_hash"]),
             book_title=str(row["book_title"]),
             human_actor=str(row["human_actor"]),
+            acceptance_actor_kind=str(row["acceptance_actor_kind"]),
             created_at=str(row["created_at"]),
             status=str(row["status"]),
             manifest=cast(dict[str, Any], json.loads(str(row["manifest_json"]))),
