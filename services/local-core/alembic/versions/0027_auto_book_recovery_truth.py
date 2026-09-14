@@ -92,6 +92,11 @@ def upgrade() -> None:
         batch.create_check_constraint(
             "ck_auto_book_visual_assets_status", "status IN ('READY','STALE','FAILED')"
         )
+
+    # Literary Master is append-only in normal product operation. Temporarily remove its guards so
+    # the migration can rebuild the SQLite table and truthfully classify legacy Auto Book masters.
+    op.execute("DROP TRIGGER IF EXISTS protect_literary_masters_update")
+    op.execute("DROP TRIGGER IF EXISTS protect_literary_masters_delete")
     with op.batch_alter_table("literary_masters") as batch:
         batch.add_column(
             sa.Column(
@@ -105,6 +110,21 @@ def upgrade() -> None:
             "ck_literary_master_acceptance_actor_kind",
             "acceptance_actor_kind IN ('HUMAN','DELEGATED')",
         )
+    # Older Auto Book code wrote a technical placeholder into human_actor. Preserve the record but
+    # do not rewrite that system execution as a historical human click.
+    op.execute(
+        "UPDATE literary_masters SET acceptance_actor_kind='DELEGATED' "
+        "WHERE human_actor LIKE 'OWNER Auto Book %' OR human_actor LIKE 'SYSTEM:%'"
+    )
+    op.execute(
+        "CREATE TRIGGER protect_literary_masters_update BEFORE UPDATE ON literary_masters "
+        "BEGIN SELECT RAISE(ABORT, 'literary_masters is append-only'); END"
+    )
+    op.execute(
+        "CREATE TRIGGER protect_literary_masters_delete BEFORE DELETE ON literary_masters "
+        "BEGIN SELECT RAISE(ABORT, 'literary_masters is append-only'); END"
+    )
+
     op.add_column("sources", sa.Column("inspected_excerpt", sa.Text(), nullable=True))
     op.add_column("sources", sa.Column("inspected_pointer", sa.Text(), nullable=True))
     op.create_table(
@@ -134,7 +154,10 @@ def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS protect_chapter_admissions_delete")
     with op.batch_alter_table("chapter_admissions") as batch:
         batch.drop_constraint("ck_admission_authorized_actor", type_="check")
-        batch.create_check_constraint("ck_admission_human_actor", "actor_kind IN ('HUMAN','OWNER')")
+        batch.create_check_constraint(
+            "ck_admission_human_actor",
+            "actor_kind IN ('HUMAN','OWNER')",
+        )
     op.execute(
         "CREATE TRIGGER IF NOT EXISTS protect_chapter_admissions_update BEFORE UPDATE ON "
         "chapter_admissions BEGIN SELECT RAISE(ABORT, 'chapter_admissions is append-only'); END"
@@ -164,9 +187,21 @@ def downgrade() -> None:
         "ON h.entity_id=c.chapter_contract_entity_id WHERE c.book_id=NEW.book_id "
         "AND c.chapter_id=NEW.chapter_id)) THEN RAISE(ABORT, 'WRITING_NOT_ALLOWED') END; END"
     )
+
+    op.execute("DROP TRIGGER IF EXISTS protect_literary_masters_update")
+    op.execute("DROP TRIGGER IF EXISTS protect_literary_masters_delete")
     with op.batch_alter_table("literary_masters") as batch:
         batch.drop_constraint("ck_literary_master_acceptance_actor_kind", type_="check")
         batch.drop_column("acceptance_actor_kind")
+    op.execute(
+        "CREATE TRIGGER protect_literary_masters_update BEFORE UPDATE ON literary_masters "
+        "BEGIN SELECT RAISE(ABORT, 'literary_masters is append-only'); END"
+    )
+    op.execute(
+        "CREATE TRIGGER protect_literary_masters_delete BEFORE DELETE ON literary_masters "
+        "BEGIN SELECT RAISE(ABORT, 'literary_masters is append-only'); END"
+    )
+
     op.drop_column("sources", "inspected_pointer")
     op.drop_column("sources", "inspected_excerpt")
     with op.batch_alter_table("auto_book_visual_assets") as batch:
