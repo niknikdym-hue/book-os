@@ -20,6 +20,8 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
+[tool.ruff.lint.per-file-ignores]
+"src/book_os_core/series_workspace.py" = ["F401", "F405"]
 [tool.mypy]
 strict = true
 files = ["src"]
