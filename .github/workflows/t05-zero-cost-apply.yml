@@ -1,0 +1,55 @@
+name: T05 Zero-Cost Apply
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/t05-zero-cost-apply.yml'
+      - 'tools/agents_api/apply_t05_series_uniqueness.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Preserve T05 patcher
+        run: cp tools/agents_api/apply_t05_series_uniqueness.py /tmp/apply_t05.py
+      - name: Checkout exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "6b1c0f979286f348f64ebfa22a3db3d7a8f0a50a"
+      - name: Apply T05 F08 hardening
+        run: |
+          python /tmp/apply_t05.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Format/Ruff/Mypy
+        working-directory: services/local-core
+        run: |
+          ruff format src/book_os_core/series_similarity.py tests/test_series_semantic_overlap.py
+          ruff check .
+          mypy src
+      - name: Targeted T05 regressions
+        working-directory: services/local-core
+        run: pytest -q tests/test_series_semantic_overlap.py tests/test_series_studio.py tests/test_series_production.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/series_similarity.py services/local-core/tests/test_series_semantic_overlap.py
+          git commit -m 'Harden series uniqueness across reordered architectures'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
