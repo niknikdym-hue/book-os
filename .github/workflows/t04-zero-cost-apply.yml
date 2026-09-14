@@ -1,0 +1,67 @@
+name: T04 Zero-Cost Apply
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t04-zero-cost-apply.yml'
+      - 'tools/agents_api/apply_t04_semantic_quality.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve T04 patcher
+        run: cp tools/agents_api/apply_t04_semantic_quality.py /tmp/apply_t04.py
+      - name: Checkout exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="75e1498b56b93c5ef70e1b9681f6e77073a050a6"
+          echo "actual=$ACTUAL expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+      - name: Apply T04 F06/F07 hardening
+        run: |
+          python /tmp/apply_t04.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install Local Core test dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Format T04 changes
+        working-directory: services/local-core
+        run: ruff format src/book_os_core/auto_book_gates.py src/book_os_core/auto_book_finalizer.py tests/test_auto_book_finalizer.py tests/test_auto_book_gate_semantics.py
+      - name: Ruff
+        working-directory: services/local-core
+        run: ruff check .
+      - name: Mypy
+        working-directory: services/local-core
+        run: mypy src
+      - name: Targeted T04 regressions
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_gate_semantics.py tests/test_auto_book_finalizer.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T04 change to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_gates.py \
+                  services/local-core/src/book_os_core/auto_book_finalizer.py \
+                  services/local-core/tests/test_auto_book_finalizer.py \
+                  services/local-core/tests/test_auto_book_gate_semantics.py
+          git commit -m 'Clarify semantic quality gates and whole-book review context'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
