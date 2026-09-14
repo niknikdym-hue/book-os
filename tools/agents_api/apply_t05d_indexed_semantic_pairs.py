@@ -23,7 +23,6 @@ replace_once(
 )
 
 append_test = r'''
-
 def test_marked_pair_index_preserves_full_import_late_match() -> None:
     noise_left = "\n".join(
         f"Пример {index}: локальная история без общего механизма и без повторяемого решения."
@@ -62,6 +61,6 @@ text = text.replace(
     "from book_os_core.series_similarity import _CASE_RE, _best_marked_pair, semantic_series_findings\n",
     1,
 )
-path.write_text(text.rstrip() + append_test + "\n", encoding="utf-8")
+path.write_text(text.rstrip() + "\n\n" + append_test.strip() + "\n", encoding="utf-8")
 
 print("T05d indexed semantic pair matching applied")
