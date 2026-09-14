@@ -134,9 +134,7 @@ def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS protect_chapter_admissions_delete")
     with op.batch_alter_table("chapter_admissions") as batch:
         batch.drop_constraint("ck_admission_authorized_actor", type_="check")
-        batch.create_check_constraint(
-            "ck_admission_human_actor", "actor_kind IN ('HUMAN','OWNER')"
-        )
+        batch.create_check_constraint("ck_admission_human_actor", "actor_kind IN ('HUMAN','OWNER')")
     op.execute(
         "CREATE TRIGGER IF NOT EXISTS protect_chapter_admissions_update BEFORE UPDATE ON "
         "chapter_admissions BEGIN SELECT RAISE(ABORT, 'chapter_admissions is append-only'); END"
@@ -198,4 +196,4 @@ def downgrade() -> None:
         "FROM auto_book_change_requests_v2"
     )
     op.drop_table("auto_book_change_requests_v2")
-    op.execute("DELETE FROM schema_metadata WHERE version='0027'")
+    op.execute("DELETE FROM schema_metadata WHERE version='0027')")
