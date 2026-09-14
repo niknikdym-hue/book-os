@@ -34,13 +34,16 @@ product layer:
 - selected DOCX/LitRes/PDF/EPUB/audio/TXT/pronunciation/extras/publisher outputs are generated
   independently and become stale when their exact master changes;
 - audio outputs require a separately versioned exact-source AudioScript, source/semantic and
-  listenability checks, explicit HUMAN approval, one clean UTF-8 recording TXT and an immutable
-  Audiobook Studio handoff; AUDIO_FIRST/DUAL constraints propagate upstream and existing-text audio
-  adaptation remains a separate workflow;
+  listenability checks, explicit HUMAN approval, exact per-finding human disposition of every
+  ATTENTION finding, one clean UTF-8 recording TXT and an immutable Audiobook Studio handoff;
+  AUDIO_FIRST/DUAL constraints propagate upstream and existing-text audio adaptation remains a
+  separate workflow;
 - Series Studio supports new series, external import and continuation of a saved BOOK OS series,
   including 3–5 proposed concepts for a new series, Series Bible, Book Passports, immutable sources,
   explicit rights, semantic/structural difference maps, Topic Ownership, overlap disposition and
   fail-closed writing/finalization gates;
+- Series Map freshness depends on material comparison inputs (Series Bible, passports, architecture,
+  source hashes and archive inclusion), not volatile workflow status/timestamps;
 - the Owner-authorized «Секреты продвижения услуг» preset preserves its fixed existing titles/order
   and planned directions without starting manuscript generation;
 - Author Experience v2 exposes the author workflow as `Главная / Серии / Книги / Библиотека /
@@ -73,9 +76,10 @@ reviewing the actual application.
 Deterministic implementation/CI work must make zero production provider/model/TTS calls and zero
 paid calls. Private manuscripts, API keys and credentials must not be committed.
 
-The current Owner gate is to finish exact-head free verification first. Only after all assignments
-from the 2026-09-13/14 work package are verified may a checked macOS build be used for the Owner's
-hands-on application review. That review does not itself authorize merge or production release.
+The current Owner gate is to finish every assignment from the 2026-09-13/14 work package and exact-head
+free verification. **After that verification, stop before any installation, replacement, update or
+other change to the application on the Owner's Desktop.** Application changes require a separate
+explicit Owner instruction after the completion report.
 
 ## Known bounded limitations — do not overclaim
 
@@ -83,24 +87,22 @@ hands-on application review. That review does not itself authorize merge or prod
   claimed;
 - DOCX/PDF/EPUB QA is structural/reopen/reference QA, not pixel-level platform certification;
 - LitRes output must keep platform-acceptance claims false until actual platform acceptance exists;
-- the current audio ATTENTION surface does not prove per-location human review when multiple hidden
-  findings share an aggregate code; this is a bounded P2 UX/audit limitation;
 - deterministic fixtures prove workflow and safety invariants, not final literary quality.
 
-These limitations do not authorize weakening quality gates and do not by themselves block a private
-Owner review of the application.
+These limitations do not authorize weakening quality gates. They are not evidence of platform
+certification or literary-quality acceptance.
 
 ## Next safe action
 
-1. Finish the current exact-head deterministic regression fix without weakening Series Duplication.
-2. Run canonical free CI on that exact head and perform a fresh Central Brain review.
+1. Run canonical free CI on the exact final candidate head and perform a fresh Central Brain review.
+2. Verify the complete 2026-09-13/14 assignment checklist against the repository, not only PR prose.
 3. Keep PR Draft and unmerged.
-4. If the work package is fully verified, prepare the exact checked macOS application build for
-   Owner hands-on review, preserving rollback and user data.
-5. Stop after Owner review setup and wait for the Owner's next instruction.
+4. Publish the completion status to the Owner.
+5. **STOP. Do not install, replace, update, open a replacement build, or otherwise modify the
+   Owner's Desktop application until the Owner gives a new explicit instruction.**
 
-No paid literary-quality run, merge, deploy, notarization or production release is authorized by
-this state document.
+No paid literary-quality run, merge, deploy, notarization, application update or production release
+is authorized by this state document.
 
 ## Non-negotiable invariants
 
