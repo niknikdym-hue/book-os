@@ -41,7 +41,14 @@ jobs:
           mypy src
       - name: Targeted T05 regressions
         working-directory: services/local-core
-        run: pytest -q tests/test_series_semantic_overlap.py tests/test_series_studio.py tests/test_series_production.py
+        run: |
+          pytest -q \
+            tests/test_series_semantic_overlap.py \
+            tests/test_series_studio.py \
+            tests/test_series_workspace.py \
+            tests/test_series_governance_completion.py \
+            tests/test_series_map_freshness.py \
+            tests/test_support_task017.py
       - name: Full Local Core pytest
         working-directory: services/local-core
         run: pytest
