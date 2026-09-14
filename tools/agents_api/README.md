@@ -48,6 +48,10 @@ The runner deliberately uses `BOOK_OS_AGENTS_API_KEY`, not the standard `OPENAI_
 
 Load the dedicated development key into the local process through a secure secret mechanism. Never commit it to the repository and never include it in a prompt.
 
+## Model policy
+
+Pass the model explicitly on every controlled run. For the initial engineering smoke, use the current coding-optimized `gpt-5.3-codex`; changing the model is a reviewed cost/quality decision and must not reuse BOOK OS production routing implicitly.
+
 ## Smoke test
 
 The first authorized task should be read-only and tiny, for example:
@@ -56,7 +60,7 @@ The first authorized task should be read-only and tiny, for example:
 BOOK_OS_AGENTS_API_KEY='***' \
 .venv-agents-api/bin/python tools/agents_api/safe_development_agent.py \
   --ref main \
-  --model gpt-5.6-sol \
+  --model gpt-5.3-codex \
   --task 'Inspect README.md and report the repository components. Make no code changes.' \
   --out-dir /tmp/book-os-agents-smoke
 ```
@@ -75,12 +79,13 @@ For a no-change smoke test, `book-os.patch` should be empty.
 
 ## Engineering task
 
-Use a task file for substantial work:
+Use a task file for substantial work and pass an explicitly reviewed model:
 
 ```bash
 BOOK_OS_AGENTS_API_KEY='***' \
 .venv-agents-api/bin/python tools/agents_api/safe_development_agent.py \
   --ref <approved-sha-or-branch> \
+  --model gpt-5.3-codex \
   --task-file /path/to/task.md \
   --out-dir /tmp/book-os-agent-result
 ```
