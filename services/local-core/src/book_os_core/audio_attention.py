@@ -37,9 +37,7 @@ def accepted_attention_values(
     accepted = set(accepted_finding_keys)
     missing = [required[key] for key in sorted(required.keys() - accepted)]
     if missing:
-        sample = "; ".join(
-            f"{item.code} @ {item.location}: {item.detail}" for item in missing[:5]
-        )
+        sample = "; ".join(f"{item.code} @ {item.location}: {item.detail}" for item in missing[:5])
         raise AudioScriptGateError(
             "human must explicitly disposition every ATTENTION finding by exact location"
             + (f": {sample}" if sample else "")
