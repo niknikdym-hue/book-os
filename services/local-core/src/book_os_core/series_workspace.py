@@ -163,12 +163,17 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
                 document = Document(BytesIO(payload))
                 paragraphs = [item.text for item in document.paragraphs]
                 tables = [
-                    "\n".join(" | ".join(cell.text for cell in table_row.cells) for table_row in table.rows)
+                    "\n".join(
+                        " | ".join(cell.text for cell in table_row.cells)
+                        for table_row in table.rows
+                    )
                     for table in document.tables
                 ]
                 return "\n".join([*paragraphs, *tables])
             if fmt == "PDF":
-                return "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(payload)).pages)
+                return "\n".join(
+                    page.extract_text() or "" for page in PdfReader(BytesIO(payload)).pages
+                )
             if fmt == "EPUB":
                 with ZipFile(BytesIO(payload)) as archive:
                     html_parts = [
@@ -359,7 +364,9 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
             None,
         )
         if owner is None:
-            raise SeriesWorkspaceGateError("topic owner must be an active book in this exact series")
+            raise SeriesWorkspaceGateError(
+                "topic owner must be an active book in this exact series"
+            )
         anchor = self._anchor_book(series_profile_id)
         topic_label = request.topic_label.strip()
         topic_key = self._topic_key(topic_label)
@@ -461,7 +468,9 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
     ) -> SeriesOverlapDispositionView:
         current = self.current_map(series_profile_id)
         if current is None or not current.current:
-            raise SeriesWorkspaceGateError("build the current difference map before resolving overlap")
+            raise SeriesWorkspaceGateError(
+                "build the current difference map before resolving overlap"
+            )
         anchor = self._anchor_book(series_profile_id)
         engine = self._engine(anchor.book_id)
         try:
