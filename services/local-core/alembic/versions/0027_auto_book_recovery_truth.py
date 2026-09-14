@@ -1,4 +1,4 @@
-"""Close Auto Book recovery, acceptance, change, visual, and series-governance audit gaps.
+"""Close Auto Book recovery, acceptance, change, and visual audit gaps.
 
 Revision ID: 0027
 Revises: 0026
@@ -144,52 +144,10 @@ def upgrade() -> None:
         sa.CheckConstraint("status IN ('AWAITING','ACCEPTED','REWORK_REQUESTED','STALE')"),
         sa.CheckConstraint("actor_kind IS NULL OR actor_kind IN ('HUMAN','SYSTEM','DELEGATED')"),
     )
-
-    # Series governance is part of the same unreleased Task 021 schema head. Keep ownership
-    # decisions append-only so topic boundaries cannot be silently rewritten after the fact.
-    op.create_table(
-        "series_topic_ownership",
-        sa.Column("ownership_id", sa.String(26), primary_key=True),
-        sa.Column("series_profile_id", sa.String(26), nullable=False),
-        sa.Column("topic_key", sa.String(64), nullable=False),
-        sa.Column("topic_label", sa.Text(), nullable=False),
-        sa.Column("owner_book_id", sa.String(26), nullable=False),
-        sa.Column("reason", sa.Text(), nullable=False),
-        sa.Column("actor", sa.String(255), nullable=False),
-        sa.Column("supersedes_ownership_id", sa.String(26), nullable=True),
-        sa.Column("created_at", sa.String(32), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["supersedes_ownership_id"],
-            ["series_topic_ownership.ownership_id"],
-        ),
-    )
-    op.create_index(
-        "ix_series_topic_ownership_series_topic",
-        "series_topic_ownership",
-        ["series_profile_id", "topic_key", "created_at"],
-    )
-    op.execute(
-        "CREATE TRIGGER protect_series_topic_ownership_update BEFORE UPDATE ON "
-        "series_topic_ownership BEGIN SELECT RAISE(ABORT, "
-        "'series_topic_ownership is append-only'); END"
-    )
-    op.execute(
-        "CREATE TRIGGER protect_series_topic_ownership_delete BEFORE DELETE ON "
-        "series_topic_ownership BEGIN SELECT RAISE(ABORT, "
-        "'series_topic_ownership is append-only'); END"
-    )
-
     op.execute("INSERT INTO schema_metadata (version) VALUES ('0027')")
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS protect_series_topic_ownership_delete")
-    op.execute("DROP TRIGGER IF EXISTS protect_series_topic_ownership_update")
-    op.drop_index(
-        "ix_series_topic_ownership_series_topic",
-        table_name="series_topic_ownership",
-    )
-    op.drop_table("series_topic_ownership")
     op.drop_table("auto_book_final_acceptances")
     op.execute("DROP TRIGGER IF EXISTS require_current_writing_admission")
     op.execute("DROP TRIGGER IF EXISTS protect_chapter_admissions_update")
