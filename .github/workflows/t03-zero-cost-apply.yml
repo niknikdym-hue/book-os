@@ -1,0 +1,65 @@
+name: T03 Zero-Cost Apply
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t03-zero-cost-apply.yml'
+      - 'tools/agents_api/apply_t03_change_correction.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve T03 patcher
+        run: cp tools/agents_api/apply_t03_change_correction.py /tmp/apply_t03.py
+      - name: Checkout exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="36460b80ca2326f619ad5120465b11b46112e6f6"
+          echo "actual=$ACTUAL expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+      - name: Apply T03 F04/F05 hardening
+        run: |
+          python /tmp/apply_t03.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install Local Core test dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Format T03 changes
+        working-directory: services/local-core
+        run: ruff format src/book_os_core/auto_book_finalizer.py tests/test_auto_book_finalizer.py
+      - name: Ruff
+        working-directory: services/local-core
+        run: ruff check .
+      - name: Mypy
+        working-directory: services/local-core
+        run: mypy src
+      - name: Targeted T03 regressions
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_finalizer.py tests/test_auto_book_api_resilience.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T03 change to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_finalizer.py \
+                  services/local-core/tests/test_auto_book_finalizer.py
+          git commit -m 'Harden correction targeting and post-change admission'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
