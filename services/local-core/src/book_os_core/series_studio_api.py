@@ -6,20 +6,23 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from .book_context import BookContextError, BookContextGateError, ProfileNotFound
-from .model_gateway import ModelBudgetError, ModelOutputError, ModelProviderError, ModelGateway
+from .model_gateway import ModelBudgetError, ModelGateway, ModelOutputError, ModelProviderError
+from .series_costs import SeriesCostLedger
 from .series_reference import (
     SeriesReferenceError,
     SeriesReferenceService,
     SeriesReferenceUploadRequest,
 )
 from .series_studio import SeriesCreateWithAIRequest, SeriesStudioError, SeriesStudioService
-from .series_costs import SeriesCostLedger
 from .series_workspace import (
     SeriesBookCreateRequest,
+    SeriesBookScopeRequest,
     SeriesCreateRequest,
     SeriesExportSelection,
     SeriesImportRequest,
+    SeriesOverlapDispositionRequest,
     SeriesPresetRequest,
+    SeriesTopicOwnershipRequest,
     SeriesWorkspaceError,
     SeriesWorkspaceGateError,
     SeriesWorkspaceService,
@@ -116,15 +119,45 @@ def build_series_studio_router(
         except SeriesWorkspaceError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @router.post("/api/series/{series_profile_id}/books/scope-check")
+    def check_series_book_scope(
+        series_profile_id: str,
+        payload: SeriesBookScopeRequest,
+    ) -> dict[str, object]:
+        try:
+            return workspaces.assess_book_scope(series_profile_id, payload).model_dump(mode="json")
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @router.post("/api/series/{series_profile_id}/books")
     def add_series_book(
         series_profile_id: str,
         payload: SeriesBookCreateRequest,
     ) -> dict[str, object]:
         try:
+            # Imported books already exist as books outside BOOK OS. New/planned ideas, however,
+            # must pass the explicit "new book or chapter of an existing one?" gate first.
+            if payload.source_kind != "IMPORTED":
+                assessment = workspaces.assess_book_scope(
+                    series_profile_id,
+                    SeriesBookScopeRequest(
+                        idea=payload.unique_idea,
+                        reader_problem=payload.reader_problem,
+                        reader_result=payload.reader_result,
+                        unique_mechanism=payload.unique_mechanism,
+                    ),
+                )
+                if assessment.recommendation != "NEW_BOOK":
+                    raise SeriesWorkspaceGateError(
+                        "new-book scope is not clear: "
+                        f"{assessment.recommendation}; compare with "
+                        f"«{assessment.candidate_book_title or 'existing series book'}» before adding"
+                    )
             return workspaces.add_book(series_profile_id, payload).model_dump(mode="json")
         except ProfileNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except SeriesWorkspaceError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -168,10 +201,51 @@ def build_series_studio_router(
         except SeriesWorkspaceError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @router.get("/api/series/{series_profile_id}/topic-ownership")
+    def list_topic_ownership(series_profile_id: str) -> list[dict[str, object]]:
+        try:
+            return [
+                item.model_dump(mode="json")
+                for item in workspaces.topic_ownerships(series_profile_id)
+            ]
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/topic-ownership")
+    def assign_topic_ownership(
+        series_profile_id: str,
+        payload: SeriesTopicOwnershipRequest,
+    ) -> dict[str, object]:
+        try:
+            return workspaces.assign_topic_ownership(series_profile_id, payload).model_dump(
+                mode="json"
+            )
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @router.post("/api/series/{series_profile_id}/analyze")
     def analyze_series(series_profile_id: str) -> dict[str, object]:
         try:
             return workspaces.analyze(series_profile_id).model_dump(mode="json")
+        except SeriesWorkspaceGateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SeriesWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/api/series/{series_profile_id}/findings/{finding_id}/disposition")
+    def dispose_series_overlap(
+        series_profile_id: str,
+        finding_id: str,
+        payload: SeriesOverlapDispositionRequest,
+    ) -> dict[str, object]:
+        try:
+            return workspaces.dispose_overlap(
+                series_profile_id,
+                finding_id,
+                payload,
+            ).model_dump(mode="json")
         except SeriesWorkspaceGateError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except SeriesWorkspaceError as exc:
