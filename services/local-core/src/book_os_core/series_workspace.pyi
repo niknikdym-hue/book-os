@@ -36,17 +36,17 @@ OverlapClassification = Literal[
 
 class SeriesBookScopeRequest(BaseModel):
     idea: str
-    reader_problem: str
-    reader_result: str
-    unique_mechanism: str
+    reader_problem: str = ...
+    reader_result: str = ...
+    unique_mechanism: str = ...
 
 class SeriesBookScopeAssessment(BaseModel):
     series_profile_id: str
     recommendation: SeriesScopeRecommendation
     confidence: float
-    candidate_book_id: str | None
-    candidate_book_title: str | None
-    evidence: dict[str, Any]
+    candidate_book_id: str | None = ...
+    candidate_book_title: str | None = ...
+    evidence: dict[str, Any] = ...
 
 class SeriesTopicOwnershipRequest(BaseModel):
     topic_label: str
@@ -62,14 +62,14 @@ class SeriesTopicOwnershipView(BaseModel):
     owner_book_title: str
     reason: str
     actor: str
-    supersedes_ownership_id: str | None
+    supersedes_ownership_id: str | None = ...
     created_at: str
 
 class SeriesOverlapDispositionRequest(BaseModel):
     classification: OverlapClassification
     reason: str
-    topic_label: str | None
-    owner_book_id: str | None
+    topic_label: str | None = ...
+    owner_book_id: str | None = ...
 
 class SeriesOverlapDispositionView(BaseModel):
     finding_id: str
