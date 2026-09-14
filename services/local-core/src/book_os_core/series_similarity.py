@@ -111,6 +111,168 @@ _FAMILIES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "канва",
         ),
     ),
+    (
+        "assess",
+        (
+            "оцен",
+            "провер",
+            "измер",
+            "тестир",
+            "аудит",
+            "inspect",
+            "assess",
+            "measure",
+            "audit",
+            "test",
+        ),
+    ),
+    (
+        "plan",
+        (
+            "план",
+            "стратег",
+            "маршрут",
+            "приоритет",
+            "очеред",
+            "этап",
+            "schedule",
+            "plan",
+            "strateg",
+            "priorit",
+            "roadmap",
+        ),
+    ),
+    ("prepare", ("подготов", "настро", "готов", "setup", "prepar", "configur")),
+    (
+        "organize",
+        (
+            "организ",
+            "структур",
+            "системат",
+            "регламент",
+            "процесс",
+            "organize",
+            "structur",
+            "process",
+        ),
+    ),
+    (
+        "create",
+        (
+            "созда",
+            "постро",
+            "разработ",
+            "проектир",
+            "формир",
+            "состав",
+            "design",
+            "build",
+            "creat",
+            "develop",
+        ),
+    ),
+    (
+        "execute",
+        (
+            "выполн",
+            "внедр",
+            "примен",
+            "запуск",
+            "провод",
+            "практик",
+            "реализ",
+            "implement",
+            "execut",
+            "apply",
+            "practic",
+            "launch",
+        ),
+    ),
+    ("monitor", ("контрол", "отслеж", "наблюд", "монитор", "учет", "track", "monitor", "control")),
+    (
+        "improve",
+        (
+            "улучш",
+            "оптимиз",
+            "коррект",
+            "исправ",
+            "адапт",
+            "совершен",
+            "improv",
+            "optimiz",
+            "correct",
+            "adapt",
+        ),
+    ),
+    (
+        "communicate",
+        (
+            "коммуникац",
+            "переговор",
+            "объясн",
+            "обсужд",
+            "сообщ",
+            "диалог",
+            "разговор",
+            "communicat",
+            "negot",
+            "explain",
+            "discuss",
+        ),
+    ),
+    ("learn", ("обуч", "изуч", "осво", "понима", "запом", "learn", "study", "understand")),
+    (
+        "document",
+        (
+            "документ",
+            "запис",
+            "фиксац",
+            "протокол",
+            "реестр",
+            "журнал",
+            "record",
+            "document",
+            "protocol",
+        ),
+    ),
+    (
+        "constraint",
+        (
+            "огранич",
+            "границ",
+            "услов",
+            "правил",
+            "критер",
+            "constraint",
+            "boundary",
+            "rule",
+            "criter",
+        ),
+    ),
+    (
+        "safety",
+        (
+            "безопас",
+            "защит",
+            "предотвращ",
+            "ошиб",
+            "сбо",
+            "авари",
+            "secure",
+            "safe",
+            "prevent",
+            "error",
+            "failure",
+        ),
+    ),
+    (
+        "resource",
+        ("ресурс", "врем", "бюджет", "мощност", "нагруз", "capacity", "resource", "budget", "time"),
+    ),
+    (
+        "progress",
+        ("прогресс", "динамик", "рост", "снижен", "изменен", "progress", "change", "growth"),
+    ),
     ("case", ("кейс", "пример", "истори", "ситуац", "сценари")),
 )
 
@@ -121,6 +283,11 @@ _PROFESSION_RE = re.compile(
     re.IGNORECASE,
 )
 _CASE_RE = re.compile(r"\b(?:например|кейс|пример|истори\w*|ситуаци\w*|сценари\w*)\b", re.I)
+_ANALOGY_RE = re.compile(
+    r"(?:\bаналог\w*\b|\bметафор\w*\b|\bсловно\b|\bподобн\w*\b|"
+    r"\bпредставьте\b|как будто|\bнапомина\w*\b)",
+    re.I,
+)
 _TOOL_RE = re.compile(
     r"\b(?:матриц\w*|карт\w*|чек-?лист\w*|алгоритм\w*|модел\w*|формул\w*|"
     r"таблиц\w*|схем\w*|шкал\w*|канва\w*)\b",
@@ -241,7 +408,7 @@ def _sequence_score(
 
     if count_ratio < 0.6:
         return None
-    if semantic_coverage < 0.8 or mean_score < 0.62 or aggregate_score < 0.58:
+    if semantic_coverage < 0.75 or mean_score < 0.62 or aggregate_score < 0.58:
         return None
     if function_pairs < required_function_pairs:
         return None
@@ -269,16 +436,50 @@ def _best_marked_pair(
     marker: re.Pattern[str],
     threshold: float,
 ) -> tuple[str, str, float] | None:
-    left_values = [value for value in _sentences(left_sample) if marker.search(value)]
-    right_values = [value for value in _sentences(right_sample) if marker.search(value)]
+    """Find the best marked semantic pair without a full corpus cross-product.
+
+    A material finding already requires at least four shared semantic families. Build an inverted
+    index over those families first, then score only candidate pairs that can satisfy that exact
+    requirement. This preserves the previous decision rule while bounding work on long imports
+    containing hundreds of marked sentences.
+    """
+    left_rows: list[tuple[str, set[str], set[str]]] = []
+    right_rows: list[tuple[str, set[str], set[str]]] = []
+    for value in _sentences(left_sample):
+        if not marker.search(value):
+            continue
+        families = semantic_families(value)
+        if len(families) < 4:
+            continue
+        left_rows.append((value, families, semantic_tokens(value)))
+    for value in _sentences(right_sample):
+        if not marker.search(value):
+            continue
+        families = semantic_families(value)
+        if len(families) < 4:
+            continue
+        right_rows.append((value, families, semantic_tokens(value)))
+
+    inverted: dict[str, set[int]] = {}
+    for index, (_, families, _) in enumerate(right_rows):
+        for family in families:
+            inverted.setdefault(family, set()).add(index)
+
     best: tuple[str, str, float] | None = None
-    for left in left_values:
-        for right in right_values:
-            score = semantic_score(left, right)
-            if score < threshold:
+    for left, left_families, left_tokens in left_rows:
+        counts: dict[int, int] = {}
+        for family in left_families:
+            for index in inverted.get(family, set()):
+                counts[index] = counts.get(index, 0) + 1
+        for index, shared_count in counts.items():
+            if shared_count < 4:
                 continue
-            shared = semantic_families(left) & semantic_families(right)
-            if len(shared) < 4:
+            right, right_families, right_tokens = right_rows[index]
+            score = max(
+                _jaccard(left_tokens, right_tokens),
+                _jaccard(left_families, right_families),
+            )
+            if score < threshold:
                 continue
             if best is None or score > best[2]:
                 best = (left, right, score)
@@ -306,6 +507,55 @@ def _profession_swapped_template(
                 continue
             if best is None or score > best[2]:
                 best = (left, right, score)
+    return best
+
+
+def _domain_independent_template(
+    left_sample: str, right_sample: str
+) -> tuple[str, str, float] | None:
+    """Find a repeated functional sentence template without assuming a profession/domain list."""
+    left_rows = [
+        (value, semantic_families(value))
+        for value in _sentences(left_sample)
+        if len(semantic_families(value)) >= 4
+    ]
+    right_rows = [
+        (value, semantic_families(value))
+        for value in _sentences(right_sample)
+        if len(semantic_families(value)) >= 4
+    ]
+    inverted: dict[str, set[int]] = {}
+    for index, (_, families) in enumerate(right_rows):
+        for family in families:
+            inverted.setdefault(family, set()).add(index)
+
+    best: tuple[str, str, float] | None = None
+    for left_text, left_families in left_rows:
+        counts: dict[int, int] = {}
+        for family in left_families:
+            for index in inverted.get(family, set()):
+                counts[index] = counts.get(index, 0) + 1
+        for index, shared_count in counts.items():
+            if shared_count < 4:
+                continue
+            right_text, right_families = right_rows[index]
+            if left_text.casefold() == right_text.casefold():
+                continue
+            family_score = _jaccard(left_families, right_families)
+            if family_score < 0.60:
+                continue
+            token_score = semantic_score(left_text, right_text)
+            left_canonical = " ".join(sorted(left_families))
+            right_canonical = " ".join(sorted(right_families))
+            structure_score = SequenceMatcher(None, left_canonical, right_canonical).ratio()
+            score = max(token_score, family_score, structure_score)
+            if score < 0.72:
+                continue
+            lexical_overlap = len(semantic_tokens(left_text) & semantic_tokens(right_text))
+            if lexical_overlap < 3 and family_score < 0.75:
+                continue
+            if best is None or score > best[2]:
+                best = (left_text, right_text, score)
     return best
 
 
@@ -385,6 +635,20 @@ def semantic_series_findings(
         evidence["semantic_signature"] = _signature("EXAMPLE", left_id, right_id, evidence)
         findings.append(SemanticSeriesFinding("EXAMPLE", "BLOCKING", evidence))
 
+    repeated_analogy = _best_marked_pair(
+        left_sample, right_sample, marker=_ANALOGY_RE, threshold=0.44
+    )
+    if repeated_analogy is not None:
+        left_text, right_text, score = repeated_analogy
+        evidence = {
+            "semantic_analogy_score": round(score, 4),
+            "left_excerpt": left_text[:500],
+            "right_excerpt": right_text[:500],
+            "comparison_basis": "PARAPHRASED_ANALOGY_V1",
+        }
+        evidence["semantic_signature"] = _signature("ANALOGY", left_id, right_id, evidence)
+        findings.append(SemanticSeriesFinding("ANALOGY", "BLOCKING", evidence))
+
     renamed_tool = _best_marked_pair(left_sample, right_sample, marker=_TOOL_RE, threshold=0.52)
     if renamed_tool is not None:
         left_text, right_text, score = renamed_tool
@@ -399,14 +663,19 @@ def semantic_series_findings(
         findings.append(SemanticSeriesFinding("TOOL", "BLOCKING", evidence))
 
     template = _profession_swapped_template(left_sample, right_sample)
+    template_basis = "PROFESSION_SWAPPED_TEMPLATE_V1"
+    if template is None:
+        template = _domain_independent_template(left_sample, right_sample)
+        template_basis = "DOMAIN_INDEPENDENT_FUNCTION_TEMPLATE_V2"
     if template is not None:
         left_text, right_text, score = template
         evidence = {
             "template_similarity_score": round(score, 4),
             "left_excerpt": left_text[:500],
             "right_excerpt": right_text[:500],
-            "profession_terms_neutralized": True,
-            "comparison_basis": "PROFESSION_SWAPPED_TEMPLATE_V1",
+            "profession_terms_neutralized": template_basis == "PROFESSION_SWAPPED_TEMPLATE_V1",
+            "domain_terms_neutralized": True,
+            "comparison_basis": template_basis,
         }
         evidence["semantic_signature"] = _signature("LANGUAGE", left_id, right_id, evidence)
         findings.append(SemanticSeriesFinding("LANGUAGE", "BLOCKING", evidence))

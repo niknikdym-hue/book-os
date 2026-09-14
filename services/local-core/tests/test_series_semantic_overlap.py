@@ -7,10 +7,11 @@ import pytest
 
 from book_os_core.book_context import ProfileCreateRequest, ProfileRegistry
 from book_os_core.projects import BookArchitecturePayload, BookContractPayload, ProjectService
-from book_os_core.series_similarity import semantic_series_findings
+from book_os_core.series_similarity import _CASE_RE, _best_marked_pair, semantic_series_findings
 from book_os_core.series_workspace import (
     SeriesBookCreateRequest,
     SeriesCreateRequest,
+    SeriesOverlapDispositionRequest,
     SeriesWorkspaceGateError,
     SeriesWorkspaceService,
 )
@@ -487,3 +488,195 @@ def test_genuinely_different_architectures_in_same_field_are_not_blocked() -> No
         right_sources=[],
     )
     assert "ARCHITECTURE" not in _dimensions(findings)
+
+
+def test_domain_independent_reordered_architecture_clone_is_blocked() -> None:
+    left = _book(
+        "K" * 26,
+        idea="Самостоятельная практика музыканта",
+        problem="Нет системы занятий",
+        result="Измеримый прогресс",
+        mechanism="Цикл диагностики, плана, практики и обратной связи",
+    )
+    right = _book(
+        "M" * 26,
+        idea="Самостоятельный ремонт квартиры",
+        problem="Работы идут хаотично",
+        result="Контролируемый ремонт",
+        mechanism="Цикл оценки, плана, выполнения и контроля",
+    )
+    music = [
+        {
+            "purpose": "Оценить исходный уровень музыканта",
+            "new_contribution": "Шкала критериев стартового уровня",
+        },
+        {
+            "purpose": "Составить план ежедневной практики",
+            "new_contribution": "Календарь приоритетов упражнений",
+        },
+        {
+            "purpose": "Выполнить цикл практики по плану",
+            "new_contribution": "Протокол действий на занятии",
+        },
+        {
+            "purpose": "Отслеживать прогресс и корректировать ошибки",
+            "new_contribution": "Шкала контроля и исправления",
+        },
+    ]
+    renovation = [
+        {
+            "purpose": "Контролировать результат и исправлять отклонения ремонта",
+            "new_contribution": "Шкала контроля и корректировки",
+        },
+        {
+            "purpose": "Проверить исходное состояние квартиры",
+            "new_contribution": "Матрица критериев стартового состояния",
+        },
+        {
+            "purpose": "Предотвратить аварийные риски до начала работ",
+            "new_contribution": "Короткий контроль безопасности",
+        },
+        {
+            "purpose": "Подготовить план последовательности работ",
+            "new_contribution": "Календарь приоритетов этапов",
+        },
+        {
+            "purpose": "Выполнить работы по утверждённому плану",
+            "new_contribution": "Протокол действий на этапе",
+        },
+    ]
+    findings = semantic_series_findings(
+        left,
+        right,
+        left_architecture=music,
+        right_architecture=renovation,
+        left_sources=[],
+        right_sources=[],
+    )
+    architecture = next(item for item in findings if item.dimension == "ARCHITECTURE")
+    assert architecture.severity == "BLOCKING"
+    assert architecture.evidence["order_independent"] is True
+    assert architecture.evidence["left_chapter_count"] == 4
+    assert architecture.evidence["right_chapter_count"] == 5
+
+
+def test_reworded_analogy_is_blocked_across_unrelated_domains() -> None:
+    left = _book("N" * 26, idea="Музыка", problem="Хаос", result="Прогресс", mechanism="Практика")
+    right = _book("P" * 26, idea="Ремонт", problem="Хаос", result="Контроль", mechanism="Этапы")
+    left_text = (
+        "Представьте обучение как навигацию: сначала оцениваем точку старта, затем строим план "
+        "маршрута, отслеживаем прогресс и корректируем курс при ошибке."
+    )
+    right_text = (
+        "Словно ремонт — это путешествие: сперва проверяем исходное состояние, потом составляем "
+        "план пути, контролируем изменения и исправляем отклонения."
+    )
+    findings = semantic_series_findings(
+        left,
+        right,
+        left_architecture=[],
+        right_architecture=[],
+        left_sources=[_source(left_text)],
+        right_sources=[_source(right_text)],
+    )
+    analogy = next(item for item in findings if item.dimension == "ANALOGY")
+    assert analogy.severity == "BLOCKING"
+    assert analogy.evidence["comparison_basis"] == "PARAPHRASED_ANALOGY_V1"
+
+
+def test_domain_independent_function_template_is_blocked_without_profession_terms() -> None:
+    left = _book("Q" * 26, idea="Музыка", problem="Хаос", result="Прогресс", mechanism="Практика")
+    right = _book("S" * 26, idea="Ремонт", problem="Хаос", result="Контроль", mechanism="Этапы")
+    left_text = (
+        "Сначала оцените исходное состояние, затем подготовьте план, выполните действия, "
+        "отслеживайте прогресс и корректируйте ошибки по критериям результата."
+    )
+    right_text = (
+        "Сначала проверьте стартовое состояние, затем составьте план, примените действия, "
+        "контролируйте изменения и исправляйте отклонения по критериям результата."
+    )
+    findings = semantic_series_findings(
+        left,
+        right,
+        left_architecture=[],
+        right_architecture=[],
+        left_sources=[_source(left_text)],
+        right_sources=[_source(right_text)],
+    )
+    language = next(item for item in findings if item.dimension == "LANGUAGE")
+    assert language.severity == "BLOCKING"
+    assert language.evidence["comparison_basis"] == "DOMAIN_INDEPENDENT_FUNCTION_TEMPLATE_V2"
+
+
+def test_overlap_exception_requires_explicit_human_actor(tmp_path: Path) -> None:
+    service, series_id = _approved_series(tmp_path)
+    service.add_book(
+        series_id,
+        SeriesBookCreateRequest(
+            title="Первая книга",
+            ordinal=1,
+            unique_idea="Спрос, доверие, доказательства, риск, цена и решение",
+            reader_problem="Клиент сомневается в выборе, цене, риске и результате",
+            reader_result="Клиент принимает решение на основе доказательств",
+            unique_mechanism="Диагностика спроса, доказательства доверия, оценка риска, цены и решения",
+        ),
+    )
+    service.add_book(
+        series_id,
+        SeriesBookCreateRequest(
+            title="Вторая книга",
+            ordinal=2,
+            unique_idea="Спрос, доверие, доказательства, риск, цена и решение",
+            reader_problem="Клиент сомневается в выборе, цене, риске и результате",
+            reader_result="Клиент принимает решение на основе доказательств",
+            unique_mechanism="Диагностика спроса, доказательства доверия, оценка риска, цены и решения",
+        ),
+    )
+    result = service.analyze(series_id)
+    thesis = next(item for item in result.findings if item["dimension"] == "THESIS")
+    with pytest.raises(SeriesWorkspaceGateError, match="explicit HUMAN actor"):
+        service.dispose_overlap(
+            series_id,
+            thesis["finding_id"],
+            SeriesOverlapDispositionRequest(
+                classification="NEW_CONTEXT_APPLICATION",
+                reason="Попытка автоматического исключения должна быть запрещена",
+            ),
+            actor="AI:AUTO",
+        )
+
+
+def test_new_series_records_strict_cross_book_uniqueness_policy(tmp_path: Path) -> None:
+    service, series_id = _approved_series(tmp_path)
+    profile = service.profiles.get_profile(series_id)
+    rules = profile.content["cross_book_uniqueness_rules"]
+    assert any("аналогий" in value and "шаблонов" in value for value in rules)
+    assert any("HUMAN" in value and "finding" in value for value in rules)
+
+
+def test_marked_pair_index_preserves_full_import_late_match() -> None:
+    noise_left = "\n".join(
+        f"Пример {index}: локальная история без общего механизма и без повторяемого решения."
+        for index in range(250)
+    )
+    noise_right = "\n".join(
+        f"Кейс {index}: отдельная ситуация без общего механизма и без повторяемого решения."
+        for index in range(250)
+    )
+    repeated_left = (
+        "Например, сначала оцените спрос и риск, затем соберите доказательства доверия, "
+        "сравните цену и примите решение по проверяемым критериям результата."
+    )
+    repeated_right = (
+        "Кейс: сначала проверьте спрос и риск, затем соберите подтверждения доверия, "
+        "сопоставьте цену и примите решение по измеримым критериям результата."
+    )
+    pair = _best_marked_pair(
+        noise_left + "\n" + repeated_left,
+        noise_right + "\n" + repeated_right,
+        marker=_CASE_RE,
+        threshold=0.56,
+    )
+    assert pair is not None
+    assert "спрос" in pair[0]
+    assert "спрос" in pair[1]

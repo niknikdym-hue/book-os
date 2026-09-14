@@ -557,6 +557,10 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
             )
 
         accepted = request.classification != "UNACCEPTABLE_DUPLICATE"
+        if accepted and not actor.startswith("HUMAN:"):
+            raise SeriesWorkspaceGateError(
+                "overlap exceptions require an explicit HUMAN actor for this exact finding"
+            )
         finding_status = "ACCEPTED_EXCEPTION" if accepted else "OPEN"
         decision = "APPROVED" if accepted else "REVISE"
         input_hash = hashlib.sha256(
