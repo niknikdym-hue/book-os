@@ -4,12 +4,13 @@ from collections import Counter, defaultdict
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .auto_book_exports import StructuredBookMaster
 
 
 QualitySeverity = Literal["ATTENTION", "BLOCKING"]
+ReviewVerdict = Literal["PASS", "ATTENTION", "BLOCKING"]
 
 
 class AutoQualityFinding(BaseModel):
@@ -33,6 +34,9 @@ class IndependentBookReview(BaseModel):
     writer_identity: str = Field(min_length=1, max_length=255)
     independent: bool
     summary: str = Field(min_length=40)
+    verdict: ReviewVerdict
+    rationale: str = Field(min_length=1)
+    confidence: float = Field(ge=0, le=1)
     findings: list[AutoQualityFinding]
 
 
@@ -40,10 +44,32 @@ class AutoQualityReport(BaseModel):
     master_hash: str
     claim_coverage: list[ClaimCoverageItem]
     findings: list[AutoQualityFinding]
+    finding_counts: dict[QualitySeverity, int]
     independent_review: IndependentBookReview
     status: Literal["PASS", "REWORK"]
-    attempts_used: int = 0
-    max_attempts: int = 2
+    attempts_used: int = Field(default=0, ge=0)
+    max_attempts: int = Field(default=2, ge=1)
+
+    @model_validator(mode="after")
+    def validate_report_evidence(self) -> AutoQualityReport:
+        expected_counts: dict[QualitySeverity, int] = {
+            "ATTENTION": sum(item.severity == "ATTENTION" for item in self.findings),
+            "BLOCKING": sum(item.severity == "BLOCKING" for item in self.findings),
+        }
+        if self.finding_counts != expected_counts:
+            raise ValueError("finding counts must match the exact unresolved findings")
+        if self.independent_review.master_hash != self.master_hash:
+            raise ValueError("independent review must match the report exact snapshot")
+        if self.independent_review.findings != self.findings:
+            raise ValueError("independent review findings must match the report findings")
+        if self.attempts_used > self.max_attempts:
+            raise ValueError("correction attempts exceed the bounded correction budget")
+        expected_status: Literal["PASS", "REWORK"] = (
+            "REWORK" if self.findings or self.independent_review.verdict != "PASS" else "PASS"
+        )
+        if self.status != expected_status:
+            raise ValueError("quality status must reflect every unresolved review finding")
+        return self
 
 
 class AutoBookQualityEngine:
@@ -225,6 +251,9 @@ class AutoBookQualityEngine:
         writer_identity: str,
         reviewer_identity: str,
         additional_findings: list[AutoQualityFinding] | None = None,
+        critic_verdict: ReviewVerdict | None = None,
+        critic_rationale: str | None = None,
+        critic_confidence: float | None = None,
         attempts_used: int = 0,
         max_attempts: int = 2,
     ) -> AutoQualityReport:
@@ -236,12 +265,24 @@ class AutoBookQualityEngine:
             *self._cross_book_findings(master),
             *(additional_findings or []),
         ]
+        counts: dict[QualitySeverity, int] = {
+            "ATTENTION": sum(finding.severity == "ATTENTION" for finding in findings),
+            "BLOCKING": sum(finding.severity == "BLOCKING" for finding in findings),
+        }
         blocking = [finding for finding in findings if finding.severity == "BLOCKING"]
+        attention = [finding for finding in findings if finding.severity == "ATTENTION"]
         if blocking:
             summary = (
                 f"Независимый разбор exact snapshot {master.manifest_hash[:12]} нашёл "
                 f"{len(blocking)} блокирующих замечаний. Нужна адресная доработка и повторная "
                 "проверка затронутых мест и сквозных инвариантов."
+            )
+        elif attention:
+            summary = (
+                "Независимый разбор exact snapshot "
+                f"{master.manifest_hash[:12]} сохранил {len(attention)} незакрытых замечаний "
+                "ATTENTION. Нужна адресная доработка и повторная проверка exact snapshot до "
+                "допуска к финальному кандидату."
             )
         else:
             summary = (
@@ -249,26 +290,68 @@ class AutoBookQualityEngine:
                 "детерминированных блокирующих дефектов; это не заменяет человеческую оценку "
                 "литературного качества и сравнительный реальный trial."
             )
+        effective_verdict: ReviewVerdict = critic_verdict or (
+            "BLOCKING" if blocking else "ATTENTION" if attention else "PASS"
+        )
         review = IndependentBookReview(
             master_hash=master.manifest_hash,
             reviewer_identity=reviewer_identity,
             writer_identity=writer_identity,
             independent=True,
             summary=summary,
+            verdict=effective_verdict,
+            rationale=critic_rationale or summary,
+            confidence=1.0 if critic_confidence is None else critic_confidence,
             findings=findings,
         )
         return AutoQualityReport(
             master_hash=master.manifest_hash,
             claim_coverage=coverage,
             findings=findings,
+            finding_counts=counts,
             independent_review=review,
-            status="REWORK" if blocking else "PASS",
+            status="REWORK" if findings or effective_verdict != "PASS" else "PASS",
             attempts_used=attempts_used,
             max_attempts=max_attempts,
         )
 
     @staticmethod
-    def may_complete(report: AutoQualityReport) -> bool:
+    def may_admit_candidate(
+        report: AutoQualityReport,
+        *,
+        current_master_hash: str | None = None,
+    ) -> bool:
+        """Allow a HUMAN-review candidate with ATTENTION, never blockers or stale evidence."""
+        if current_master_hash is not None and report.master_hash != current_master_hash:
+            return False
+        if report.independent_review.master_hash != report.master_hash:
+            return False
+        if not report.independent_review.independent:
+            return False
+        if report.attempts_used > report.max_attempts:
+            return False
+        if report.finding_counts["BLOCKING"]:
+            return False
+        if report.independent_review.verdict == "BLOCKING":
+            return False
+        return True
+
+    @staticmethod
+    def may_complete(
+        report: AutoQualityReport,
+        *,
+        current_master_hash: str | None = None,
+    ) -> bool:
         if report.status != "PASS":
             return False
-        return not any(finding.severity == "BLOCKING" for finding in report.findings)
+        if current_master_hash is not None and report.master_hash != current_master_hash:
+            return False
+        if report.independent_review.master_hash != report.master_hash:
+            return False
+        if not report.independent_review.independent:
+            return False
+        if report.independent_review.verdict != "PASS":
+            return False
+        if report.attempts_used > report.max_attempts:
+            return False
+        return not report.findings

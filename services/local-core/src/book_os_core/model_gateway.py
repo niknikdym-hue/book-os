@@ -5,7 +5,7 @@ from typing import Any, Literal, Protocol
 import json
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .prompts import PromptTemplate
 from .secrets import SecretStore
@@ -102,16 +102,28 @@ class ChapterContractProposalOutput(BaseModel):
 
 
 class JudgeFindingOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     location: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
     recommended_action: str = Field(min_length=1)
 
 
 class BookBenchJudgeOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     verdict: Literal["PASS", "ATTENTION", "BLOCKING"]
-    findings: list[JudgeFindingOutput] = Field(default_factory=list)
+    findings: list[JudgeFindingOutput]
     confidence: float = Field(ge=0, le=1)
     rationale: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_verdict_findings(self) -> BookBenchJudgeOutput:
+        if self.verdict in {"ATTENTION", "BLOCKING"} and not self.findings:
+            raise ValueError(f"{self.verdict} verdict requires at least one finding")
+        if self.verdict == "PASS" and self.findings:
+            raise ValueError("PASS verdict cannot contain unresolved findings")
+        return self
 
 
 class BookBenchPairwiseOutput(BaseModel):

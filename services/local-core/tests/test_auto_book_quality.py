@@ -1,7 +1,9 @@
 import pytest
+from pydantic import ValidationError
 
 from book_os_core.auto_book_exports import MasterChapter, StructuredBookMaster
-from book_os_core.auto_book_quality import AutoBookQualityEngine
+from book_os_core.auto_book_quality import AutoBookQualityEngine, AutoQualityFinding
+from book_os_core.model_gateway import BookBenchJudgeOutput
 
 
 def master(*paragraphs_by_chapter: list[str]) -> StructuredBookMaster:
@@ -145,3 +147,129 @@ def test_exhausted_revision_attempts_never_turn_rework_into_pass() -> None:
     assert report.status == "REWORK"
     assert report.attempts_used == report.max_attempts
     assert AutoBookQualityEngine.may_complete(report) is False
+
+
+def test_blocking_critic_result_with_empty_findings_fails_closed() -> None:
+    with pytest.raises(ValidationError, match="requires at least one finding"):
+        BookBenchJudgeOutput.model_validate(
+            {
+                "verdict": "BLOCKING",
+                "findings": [],
+                "confidence": 0.91,
+                "rationale": "The exact snapshot is not ready for release.",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        {
+            "verdict": "ATTENTION",
+            "confidence": 0.72,
+            "rationale": "A material concern remains unresolved.",
+        },
+        {
+            "verdict": "BLOCKING",
+            "findings": [
+                {
+                    "location": "chapter:1",
+                    "evidence": "The claim has no current source.",
+                }
+            ],
+            "confidence": 0.88,
+            "rationale": "The evidence gate is incomplete.",
+        },
+    ],
+)
+def test_malformed_or_incomplete_critic_result_fails_closed(result: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        BookBenchJudgeOutput.model_validate(result)
+
+
+def test_attention_findings_remain_unresolved_and_preserve_review_evidence() -> None:
+    book = master(["Глава объясняет конкретный механизм без внешних утверждений."])
+    attention = AutoQualityFinding(
+        code="INDEPENDENT_MODEL_CRITIQUE",
+        severity="ATTENTION",
+        location="chapter:1:paragraph:1",
+        evidence="The practical boundary remains ambiguous.",
+        required_action="Clarify the boundary and run the exact-snapshot review again.",
+    )
+    report = AutoBookQualityEngine().review(
+        book,
+        writer_identity="writer/openai/run-1",
+        reviewer_identity="critic/openai/review-1",
+        additional_findings=[attention],
+        critic_verdict="ATTENTION",
+        critic_rationale="One location-specific concern remains unresolved.",
+        critic_confidence=0.83,
+    )
+
+    assert report.status == "REWORK"
+    assert report.finding_counts == {"ATTENTION": 1, "BLOCKING": 0}
+    assert report.independent_review.verdict == "ATTENTION"
+    assert report.independent_review.rationale == (
+        "One location-specific concern remains unresolved."
+    )
+    assert report.independent_review.confidence == 0.83
+    assert report.independent_review.reviewer_identity == "critic/openai/review-1"
+    assert (
+        AutoBookQualityEngine.may_complete(report, current_master_hash=book.manifest_hash) is False
+    )
+    assert (
+        AutoBookQualityEngine.may_admit_candidate(report, current_master_hash=book.manifest_hash)
+        is True
+    )
+
+
+def test_stale_review_cannot_admit_a_changed_candidate() -> None:
+    reviewed = master(["Первая версия объясняет границы механизма."])
+    report = AutoBookQualityEngine().review(
+        reviewed,
+        writer_identity="writer/openai/run-1",
+        reviewer_identity="critic/openai/review-1",
+        critic_verdict="PASS",
+        critic_rationale="No release-blocking or attention findings remain.",
+        critic_confidence=0.94,
+    )
+    changed = master(["Изменённая версия иначе объясняет границы механизма."])
+
+    assert report.master_hash != changed.manifest_hash
+    assert (
+        AutoBookQualityEngine.may_complete(report, current_master_hash=changed.manifest_hash)
+        is False
+    )
+
+
+def test_exhausted_correction_budget_with_unresolved_attention_fails_closed() -> None:
+    book = master(["Глава сохраняет незакрытое замечание критика."])
+    report = AutoBookQualityEngine().review(
+        book,
+        writer_identity="writer/openai/run-1",
+        reviewer_identity="critic/openai/review-2",
+        additional_findings=[
+            AutoQualityFinding(
+                code="INDEPENDENT_MODEL_CRITIQUE",
+                severity="ATTENTION",
+                location="chapter:1",
+                evidence="The requested correction is still absent.",
+                required_action="Correct the passage before release.",
+            )
+        ],
+        critic_verdict="ATTENTION",
+        critic_rationale="The previous correction did not resolve the finding.",
+        critic_confidence=0.89,
+        attempts_used=2,
+        max_attempts=2,
+    )
+
+    assert report.attempts_used == report.max_attempts
+    assert report.finding_counts == {"ATTENTION": 1, "BLOCKING": 0}
+    assert (
+        AutoBookQualityEngine.may_complete(report, current_master_hash=book.manifest_hash) is False
+    )
+    assert (
+        AutoBookQualityEngine.may_admit_candidate(report, current_master_hash=book.manifest_hash)
+        is True
+    )

@@ -39,6 +39,18 @@ class PublishingAdapter(DeterministicFakeAdapter):
         self.task_calls = [*getattr(self, "task_calls", []), request.task_id]
         if prompt.prompt_id == AUDIO_SCRIPT_EDITOR_V1.prompt_id:
             self.audio_prompt_calls = getattr(self, "audio_prompt_calls", 0) + 1
+        if request.task_type == "BOOKBENCH_JUDGE":
+            self.last_request = request
+            return ModelAdapterResult(
+                provider_run_id="finalizer-happy-path-critic",
+                output={
+                    "verdict": "PASS",
+                    "findings": [],
+                    "confidence": 0.75,
+                    "rationale": "Finalizer happy-path fixture has no unresolved findings.",
+                },
+                usage={"input_tokens": 40, "output_tokens": 20},
+            )
         if request.task_type != "SECTION_DRAFT":
             return super().generate(request, prompt)
 
@@ -491,6 +503,17 @@ def test_final_candidate_requires_real_human_acceptance_before_master_lock(
     candidate_view = finalizer.finalize(book_id, state, prepare_litres_docx=False)
     assert candidate_view.awaiting_final_acceptance is True
     assert candidate_view.master_id is None
+    stored_candidate = finalizer._final_candidate(book_id, state.run_id)
+    assert stored_candidate is not None
+    candidate_payload = stored_candidate["candidate"]
+    assert "findings_remaining" not in candidate_payload
+    quality_evidence = candidate_payload["quality_report"]
+    assert quality_evidence["master_hash"] == candidate_payload["snapshot_hash"]
+    assert quality_evidence["finding_counts"] == {"ATTENTION": 0, "BLOCKING": 0}
+    assert quality_evidence["independent_review"]["verdict"] == "PASS"
+    assert quality_evidence["independent_review"]["rationale"]
+    assert quality_evidence["independent_review"]["confidence"] == 0.75
+    assert quality_evidence["independent_review"]["reviewer_identity"]
     engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
     try:
         with engine.connect() as connection:
@@ -500,6 +523,14 @@ def test_final_candidate_requires_real_human_acceptance_before_master_lock(
     finally:
         engine.dispose()
 
+    with pytest.raises(Exception, match="actual human actor"):
+        finalizer.decide_final_candidate(
+            book_id,
+            state,
+            accept=True,
+            human_actor="SYSTEM:DELEGATED",
+            reason="System must not fabricate a human acceptance.",
+        )
     accepted = finalizer.decide_final_candidate(
         book_id,
         state,
