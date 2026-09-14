@@ -1,0 +1,141 @@
+lizer:
+             visual_evidence = self._execute_visual_policy(book_id, state, target_units)
+             context = self._book_context(book_id)
+             snapshot = self._structured_current(book_id, context)
++            quality_report = self._independent_critique(
++                book_id,
++                state,
++                snapshot,
++                attempts_used=1,
++            )
++            if not self.quality.may_complete(
++                quality_report, current_master_hash=snapshot.manifest_hash
++            ):
++                raise AutoBookGateError(
++                    "targeted change has unresolved independent-critique findings"
++                )
+             candidate = self._record_final_candidate(
+                 book_id,
+                 state,
+                 snapshot=snapshot,
++                quality_report=quality_report,
+                 bookbench_snapshot_id=report.snapshot_id,
+                 bibliography_evidence=self._bibliography_evidence(book_id, context),
+                 prepare_litres_docx=state.prepare_litres_docx,
+@@ -2015,15 +2080,29 @@ class AutoBookFinalizer:
+     ) -> AutoBookFinalizationView:
+         actor = str(candidate.get("actor") or "").strip()
+         if candidate.get("status") != "ACCEPTED" or not actor:
+-            raise AutoBookGateError("Literary Master remains locked behind human final acceptance")
++            raise AutoBookGateError("Literary Master remains locked behind final acceptance")
++        actor_kind = str(candidate.get("actor_kind") or "")
++        runtime = self.runtime.get(book_id, state.run_id)
++        if actor_kind == "HUMAN":
++            if actor.casefold().startswith("system:"):
++                raise AutoBookGateError("SYSTEM identity cannot be recorded as HUMAN acceptance")
++        elif actor_kind == "DELEGATED":
++            if runtime.intent.final_human_acceptance_required or actor != "SYSTEM:DELEGATED":
++                raise AutoBookGateError("delegated acceptance does not satisfy the HUMAN gate")
++        else:
++            raise AutoBookGateError("final acceptance actor kind is invalid")
+         payload = cast(dict[str, Any], candidate["candidate"])
+         current_snapshot = self._structured_current(book_id, book_context)
+         if current_snapshot.manifest_hash != payload["snapshot_hash"]:
+             raise AutoBookGateError("accepted final candidate no longer matches current manuscript")
++        self._validated_candidate_quality(
++            payload,
++            current_master_hash=current_snapshot.manifest_hash,
++        )
+         master = self.literary.create_master(
+             book_id,
+             human_actor=actor,
+-            acceptance_actor_kind=str(candidate.get("actor_kind") or "HUMAN"),
++            acceptance_actor_kind=actor_kind,
+             bibliography_evidence=cast(dict[str, Any], payload["bibliography_evidence"]),
+         )
+         output_path = (
+@@ -2031,7 +2110,6 @@ class AutoBookFinalizer:
+             if bool(payload.get("prepare_litres_docx"))
+             else None
+         )
+-        runtime = self.runtime.get(book_id, state.run_id)
+         structured = self._structured_master(book_id, master.master_id, book_context)
+         audio_script: AudioScriptView | None = None
+         if runtime.intent.outputs.audio_version_requested:
+@@ -2198,6 +2276,8 @@ class AutoBookFinalizer:
+         blocking = self._run_editorial_gates(book_id)
+         correction_passes = 0
+         if blocking:
++            if correction_passes >= self._MAX_CORRECTION_PASSES:
++                raise AutoBookGateError("bounded correction budget exhausted before release")
+             self.runtime.set_stage(
+                 book_id,
+                 state.run_id,
+@@ -2239,8 +2319,19 @@ class AutoBookFinalizer:
+             message="Независимый содержательный разбор exact snapshot",
+         )
+         snapshot = self._structured_current(book_id, book_context)
+-        quality_report = self._independent_critique(book_id, state, snapshot)
+-        if not self.quality.may_complete(quality_report):
++        quality_report = self._independent_critique(
++            book_id,
++            state,
++            snapshot,
++            attempts_used=correction_passes,
++        )
++        if not self.quality.may_complete(
++            quality_report, current_master_hash=snapshot.manifest_hash
++        ):
++            if correction_passes >= self._MAX_CORRECTION_PASSES:
++                raise AutoBookGateError(
++                    "bounded correction budget exhausted with unresolved release findings"
++                )
+             self.runtime.set_stage(
+                 book_id,
+                 state.run_id,
+@@ -2263,18 +2354,31 @@ class AutoBookFinalizer:
+             report = self._run_bookbench(book_id)
+             self._record_adversarial_review(book_id, report)
+             snapshot = self._structured_current(book_id, book_context)
+-            quality_report = self._independent_critique(book_id, state, snapshot)
+-        if not self.quality.may_complete(quality_report):
+-            raise AutoBookGateError("bounded independent correction did not clear release findings")
++            quality_report = self._independent_critique(
++                book_id,
++                state,
++                snapshot,
++                attempts_used=correction_passes,
++            )
++        if not self.quality.may_complete(
++            quality_report, current_master_hash=snapshot.manifest_hash
++        ):
++            if correction_passes >= self._MAX_CORRECTION_PASSES:
++                raise AutoBookGateError(
++                    "bounded correction budget exhausted with unresolved release findings"
++                )
++            raise AutoBookGateError("independent correction did not clear release findings")
+         self.runtime.complete_stage(book_id, state.run_id, AutoBookStage.INDEPENDENT_CRITIQUE)
+         self.runtime.complete_stage(
+             book_id,
+             state.run_id,
+             AutoBookStage.CORRECTION,
+             evidence={
+-                "blocking_findings_remaining": 0,
++                "finding_counts": quality_report.finding_counts,
++                "review_verdict": quality_report.independent_review.verdict,
++                "reviewer_identity": quality_report.independent_review.reviewer_identity,
+                 "bounded_correction_passes": correction_passes,
+-                "maximum_correction_passes": 2,
++                "maximum_correction_passes": self._MAX_CORRECTION_PASSES,
+             },
+         )
+ 
+@@ -2290,6 +2394,7 @@ class AutoBookFinalizer:
+             book_id,
+             state,
+             snapshot=snapshot,
++            quality_report=quality_report,
+             bookbench_snapshot_id=report.snapshot_id,
+             bibliography_evidence=bibliography_evidence,
+             prepare_litres_docx=prepare_litres_docx,
+diff --git a/services/local-core/src/book_os_core/auto_book_quality.py b/ser
