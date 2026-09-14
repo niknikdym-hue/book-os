@@ -135,10 +135,7 @@ def test_profession_swapped_architecture_is_blocked() -> None:
     )
     architecture = next(item for item in findings if item.dimension == "ARCHITECTURE")
     assert architecture.severity == "BLOCKING"
-    assert (
-        architecture.evidence["comparison_basis"]
-        == "DOMAIN_NEUTRALIZED_CURRENT_ARCHITECTURE"
-    )
+    assert architecture.evidence["comparison_basis"] == "DOMAIN_NEUTRALIZED_CURRENT_ARCHITECTURE"
 
 
 def test_reworded_case_and_renamed_tool_are_blocked() -> None:
@@ -177,7 +174,11 @@ def test_reworded_case_and_renamed_tool_are_blocked() -> None:
         right_sources=[_source(right_sample)],
     )
     assert {"EXAMPLE", "TOOL"} <= _dimensions(findings)
-    assert all(item.severity == "BLOCKING" for item in findings if item.dimension in {"EXAMPLE", "TOOL"})
+    assert all(
+        item.severity == "BLOCKING"
+        for item in findings
+        if item.dimension in {"EXAMPLE", "TOOL"}
+    )
 
 
 def test_profession_swapped_template_is_blocked_even_when_words_are_not_identical() -> None:
@@ -277,15 +278,33 @@ def test_semantic_architecture_finding_is_persisted_and_blocks_map_approval(tmp_
     )
     left_arch = BookArchitecturePayload.model_validate(
         {
-            "parts": [{
-                "title": "Работа психолога",
-                "purpose": "От спроса к решению",
-                "chapters": [
-                    {"title": "Спрос", "purpose": "Диагностировать спрос на услуги психолога", "new_contribution": "Карта запросов и критериев клиента"},
-                    {"title": "Доверие", "purpose": "Собрать доказательства доверия к психологу", "new_contribution": "Матрица подтверждений для решения клиента", "dependencies": ["Спрос"], "transition": "От спроса к доверию"},
-                    {"title": "Цена", "purpose": "Объяснить цену психологической услуги до покупки", "new_contribution": "Схема риска, стоимости и результата клиента", "dependencies": ["Доверие"], "transition": "От доверия к цене"},
-                ],
-            }],
+            "parts": [
+                {
+                    "title": "Работа психолога",
+                    "purpose": "От спроса к решению",
+                    "chapters": [
+                        {
+                            "title": "Спрос",
+                            "purpose": "Диагностировать спрос на услуги психолога",
+                            "new_contribution": "Карта запросов и критериев клиента",
+                        },
+                        {
+                            "title": "Доверие",
+                            "purpose": "Собрать доказательства доверия к психологу",
+                            "new_contribution": "Матрица подтверждений для решения клиента",
+                            "dependencies": ["Спрос"],
+                            "transition": "От спроса к доверию",
+                        },
+                        {
+                            "title": "Цена",
+                            "purpose": "Объяснить цену психологической услуги до покупки",
+                            "new_contribution": "Схема риска, стоимости и результата клиента",
+                            "dependencies": ["Доверие"],
+                            "transition": "От доверия к цене",
+                        },
+                    ],
+                }
+            ],
             "intellectual_progression": "Спрос, доверие, цена",
             "concept_allocation": "Каждая глава выполняет отдельную функцию",
             "promise_thesis_coverage": "Архитектура покрывает обещание",
@@ -294,15 +313,33 @@ def test_semantic_architecture_finding_is_persisted_and_blocks_map_approval(tmp_
     )
     right_arch = BookArchitecturePayload.model_validate(
         {
-            "parts": [{
-                "title": "Работа юриста",
-                "purpose": "От потребности к договору",
-                "chapters": [
-                    {"title": "Потребность", "purpose": "Выявить потребность в юридических услугах", "new_contribution": "Схема запросов и критериев заказчика"},
-                    {"title": "Подтверждения", "purpose": "Укрепить доверие к юристу доказательствами", "new_contribution": "Карта подтверждений перед выбором заказчика", "dependencies": ["Потребность"], "transition": "От запроса к доверию"},
-                    {"title": "Стоимость", "purpose": "Объяснить стоимость юридической помощи до договора", "new_contribution": "Модель риска, цены и результата заказчика", "dependencies": ["Подтверждения"], "transition": "От доверия к стоимости"},
-                ],
-            }],
+            "parts": [
+                {
+                    "title": "Работа юриста",
+                    "purpose": "От потребности к договору",
+                    "chapters": [
+                        {
+                            "title": "Потребность",
+                            "purpose": "Выявить потребность в юридических услугах",
+                            "new_contribution": "Схема запросов и критериев заказчика",
+                        },
+                        {
+                            "title": "Подтверждения",
+                            "purpose": "Укрепить доверие к юристу доказательствами",
+                            "new_contribution": "Карта подтверждений перед выбором заказчика",
+                            "dependencies": ["Потребность"],
+                            "transition": "От запроса к доверию",
+                        },
+                        {
+                            "title": "Стоимость",
+                            "purpose": "Объяснить стоимость юридической помощи до договора",
+                            "new_contribution": "Модель риска, цены и результата заказчика",
+                            "dependencies": ["Подтверждения"],
+                            "transition": "От доверия к стоимости",
+                        },
+                    ],
+                }
+            ],
             "intellectual_progression": "Потребность, доверие, стоимость",
             "concept_allocation": "Каждая глава выполняет отдельную функцию",
             "promise_thesis_coverage": "Архитектура покрывает обещание",
