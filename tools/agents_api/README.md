@@ -71,11 +71,19 @@ For an agent run, the launcher removes both `OPENAI_API_KEY` and any plaintext `
 
 Deleting the local Keychain copy does not revoke the Platform key; revoke/expire the key in the `BOOK-OS-DEVELOPMENT` Platform project when the credential itself must be killed.
 
-## Model policy
+## Model and reasoning policy
 
-Pass the model explicitly on every controlled run. For the initial engineering smoke, use the current coding-optimized `gpt-5.3-codex`; changing the model is a reviewed cost/quality decision and must not reuse BOOK OS production routing implicitly.
+The engineering lane defaults to `gpt-5.6-sol`.
 
-Subagents are disabled by default. The smoke starts with `--reasoning low`; increasing reasoning is a deliberate cost/quality decision.
+Reasoning defaults to `auto`. Auto is deliberately local and deterministic: it makes **no additional model/API request** just to decide the reasoning level.
+
+- `medium` — normal engineering work, focused bug fixes, tests, documentation and bounded refactors;
+- `high` — only when the task is genuinely complex across modules, architecture, migrations, recovery, concurrency or comparable system logic;
+- `xhigh` — exceptional frontier/severe blockers only, such as a concrete unresolved problem after High or a serious corruption/security/concurrency failure where High is plausibly insufficient.
+
+An explicit Owner choice of `medium`, `high` or `xhigh` always overrides Auto. Do not increase reasoning “just in case”. The runner records both the requested reasoning mode and the resolved effort in session/local metadata.
+
+Subagents remain disabled by default.
 
 ## Smoke test
 
@@ -84,11 +92,13 @@ The first authorized task should be read-only and tiny. Run it through the Keych
 ```bash
 .venv-agents-api/bin/python tools/agents_api/keychain_runner.py run -- \
   --ref main \
-  --model gpt-5.3-codex \
-  --reasoning low \
+  --model gpt-5.6-sol \
+  --reasoning auto \
   --task 'Inspect README.md and report the repository components. Make no code changes.' \
   --out-dir /tmp/book-os-agents-smoke
 ```
+
+For this ordinary tiny task Auto should resolve to `medium`. That resolution is computed locally before the Agents API session; it does not consume a separate model call.
 
 The launcher strips the forwarding separator automatically. The agent sandbox has network access disabled and receives only a compressed `git archive` of the explicit ref.
 
@@ -104,16 +114,18 @@ For a no-change smoke test, `book-os.patch` should be empty.
 
 ## Engineering task
 
-Use a task file for substantial work and pass an explicitly reviewed model:
+Use a task file for substantial work. Keep Auto unless the Owner deliberately selects a level:
 
 ```bash
 .venv-agents-api/bin/python tools/agents_api/keychain_runner.py run -- \
   --ref <approved-sha-or-branch> \
-  --model gpt-5.3-codex \
-  --reasoning <approved-level> \
+  --model gpt-5.6-sol \
+  --reasoning auto \
   --task-file /path/to/task.md \
   --out-dir /tmp/book-os-agent-result
 ```
+
+For an explicit Owner override replace `auto` with `medium`, `high` or `xhigh`.
 
 The returned patch is a proposal only. Inspect it and run local/CI verification before applying it to any development branch.
 
