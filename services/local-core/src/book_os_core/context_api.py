@@ -56,6 +56,30 @@ def build_context_router(
     @router.post("/api/context/profiles/{profile_id}/approve")
     def approve_profile(profile_id: str) -> dict[str, object]:
         try:
+            current = profiles.get_profile(profile_id)
+            if current.kind == "SERIES" and current.status != "APPROVED":
+                # Manual/external Series workspaces are deliberately review-first. The legacy
+                # desktop import flow asks for approval once before it has uploaded the books;
+                # treat that first call as a deferred request so import can finish while the
+                # Series Profile remains DRAFT. A later explicit Owner approval is allowed only
+                # after a current non-blocking difference map exists.
+                from .series_workspace import SeriesWorkspaceService
+
+                workspaces = SeriesWorkspaceService(data_dir)
+                if workspaces.requires_series_review(profile_id):
+                    books = workspaces.books(profile_id)
+                    if not books:
+                        return current.model_dump(mode="json")
+                    current_map = workspaces.current_map(profile_id)
+                    if current_map is None or not current_map.current:
+                        raise BookContextGateError(
+                            "analyze the imported/manual series before approving its Series Bible"
+                        )
+                    if current_map.status == "BLOCKING":
+                        raise BookContextGateError(
+                            "resolve blocking series overlap/source findings before Series Bible approval"
+                        )
+                    workspaces.clear_series_review_requirement(profile_id)
             return profiles.approve_profile(profile_id).model_dump(mode="json")
         except ProfileNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
