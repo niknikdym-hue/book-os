@@ -172,7 +172,9 @@ def semantic_score(left: str, right: str) -> float:
     )
 
 
-def _sequence_score(left: list[dict[str, str]], right: list[dict[str, str]]) -> dict[str, Any] | None:
+def _sequence_score(
+    left: list[dict[str, str]], right: list[dict[str, str]]
+) -> dict[str, Any] | None:
     if len(left) != len(right) or len(left) < 2:
         return None
     scores: list[float] = []
@@ -223,7 +225,9 @@ def _best_marked_pair(
     return best
 
 
-def _profession_swapped_template(left_sample: str, right_sample: str) -> tuple[str, str, float] | None:
+def _profession_swapped_template(
+    left_sample: str, right_sample: str
+) -> tuple[str, str, float] | None:
     left_values = [value for value in _sentences(left_sample) if _PROFESSION_RE.search(value)]
     right_values = [value for value in _sentences(right_sample) if _PROFESSION_RE.search(value)]
     best: tuple[str, str, float] | None = None
@@ -302,12 +306,12 @@ def semantic_series_findings(
         architecture_evidence["semantic_signature"] = _signature(
             "ARCHITECTURE", left_id, right_id, architecture_evidence
         )
-        findings.append(
-            SemanticSeriesFinding("ARCHITECTURE", "BLOCKING", architecture_evidence)
-        )
+        findings.append(SemanticSeriesFinding("ARCHITECTURE", "BLOCKING", architecture_evidence))
 
     left_sample = "\n".join(str(row.get("analysis", {}).get("sample", "")) for row in left_sources)
-    right_sample = "\n".join(str(row.get("analysis", {}).get("sample", "")) for row in right_sources)
+    right_sample = "\n".join(
+        str(row.get("analysis", {}).get("sample", "")) for row in right_sources
+    )
 
     repeated_case = _best_marked_pair(left_sample, right_sample, marker=_CASE_RE, threshold=0.56)
     if repeated_case is not None:
