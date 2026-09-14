@@ -339,7 +339,7 @@ def run() -> int:
                 agent={
                     "model": args.model,
                     "instructions": _agent_instructions(sha),
-                    "multi_agent": {"enabled": False, "max_concurrent_subagents": 1},
+                    "multi_agent": {"enabled": False},
                     "reasoning": {"effort": args.reasoning, "summary": "concise"},
                 },
                 environment=environment,
