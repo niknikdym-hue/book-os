@@ -1,0 +1,66 @@
+name: T02 Zero-Cost Apply
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t02-zero-cost-apply.yml'
+      - 'tools/agents_api/apply_t02_evidence_claims.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve deterministic T02 patcher
+        run: cp tools/agents_api/apply_t02_evidence_claims.py /tmp/apply_t02.py
+      - name: Checkout exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="e6ab40c14c9fae5ca76ab9b5e9235c43136378d0"
+          echo "actual=$ACTUAL expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+      - name: Apply T02 F02/F03 hardening
+        run: |
+          python /tmp/apply_t02.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install Local Core test dependencies
+        working-directory: services/local-core
+        run: pip install -r requirements-dev.lock
+      - name: Format T02 changes
+        working-directory: services/local-core
+        run: ruff format src/book_os_core/auto_book_quality.py src/book_os_core/auto_book_finalizer.py tests/test_auto_book_quality.py tests/test_auto_book_finalizer.py
+      - name: Ruff
+        working-directory: services/local-core
+        run: ruff check .
+      - name: Mypy
+        working-directory: services/local-core
+        run: mypy src
+      - name: Targeted T02 regressions
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_quality.py tests/test_auto_book_finalizer.py tests/test_research.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T02 change to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_quality.py \
+                  services/local-core/src/book_os_core/auto_book_finalizer.py \
+                  services/local-core/tests/test_auto_book_quality.py \
+                  services/local-core/tests/test_auto_book_finalizer.py
+          git commit -m 'Harden evidence support and claim identity'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
