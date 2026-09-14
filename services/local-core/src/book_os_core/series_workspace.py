@@ -17,17 +17,19 @@ from sqlalchemy import text
 
 from .authority import new_ulid
 from .authority_types import utc_now
+from .book_context import ProfileView
 from .series_similarity import semantic_families, semantic_score, semantic_series_findings
 from .series_workspace_base import *  # noqa: F401,F403
 from .series_workspace_base import (
     SeriesBookCreateRequest,
+    SeriesBookLifecycle,
+    SeriesBookStatus,
     SeriesBookView,
     SeriesCreateRequest,
     SeriesMapView,
     SeriesWorkspaceGateError,
     SeriesWorkspaceService as _BaseSeriesWorkspaceService,
 )
-
 
 SeriesScopeRecommendation = Literal["NEW_BOOK", "EXISTING_BOOK_CHAPTER", "REVIEW"]
 OverlapClassification = Literal[
@@ -89,19 +91,11 @@ class SeriesOverlapDispositionView(BaseModel):
 
 
 class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-redef]
-    """Nonfiction-series workspace with durable governance and anti-clone gates.
-
-    The base workspace owns persistence, rights, exports, exact overlap checks and preset behavior.
-    This extension adds deterministic semantic duplicate detection, new-book-vs-chapter scope checks,
-    append-only topic ownership, explicit overlap disposition, whole-import duplicate scanning, and
-    a synchronized series lifecycle read model. None of these paths calls a model or provider.
-    """
+    """Durable nonfiction-series governance layered on the original workspace."""
 
     _SERIES_REVIEW_FILE = "series-review-pending.json"
+    _SEMANTIC_THESIS_BLOCK_SCORE = 0.70
 
-    # ------------------------------------------------------------------
-    # Series-profile review marker (used by external/manual import flows)
-    # ------------------------------------------------------------------
     def _review_path(self) -> Path:
         return self.data_dir / self._SERIES_REVIEW_FILE
 
@@ -140,16 +134,13 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
             values.remove(series_profile_id)
             self._write_review_pending(values)
 
-    def create_series(self, request: SeriesCreateRequest):  # type: ignore[no-untyped-def]
+    def create_series(self, request: SeriesCreateRequest) -> ProfileView:
         profile = super().create_series(request)
         values = self._review_pending()
         values.add(profile.profile_id)
         self._write_review_pending(values)
         return profile
 
-    # ------------------------------------------------------------------
-    # Whole-import duplicate material (not only the opening 20k sample)
-    # ------------------------------------------------------------------
     def _full_source_text(self, row: dict[str, Any]) -> str:
         candidate = self.projects.projects_dir / str(row["book_id"]) / str(row["relative_path"])
         if not candidate.is_file():
@@ -200,9 +191,6 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
             analysis["whole_book_duplicate_scan"] = True
         return rows
 
-    # ------------------------------------------------------------------
-    # New book vs chapter-of-existing gate
-    # ------------------------------------------------------------------
     def assess_book_scope(
         self,
         series_profile_id: str,
@@ -242,7 +230,7 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
             recommendation: SeriesScopeRecommendation = "NEW_BOOK"
         elif best_score >= 0.74 and len(best_families) >= 2:
             recommendation = "EXISTING_BOOK_CHAPTER"
-        elif best_score >= 0.56 and len(best_families) >= 1:
+        elif best_score >= 0.56 and best_families:
             recommendation = "REVIEW"
         else:
             recommendation = "NEW_BOOK"
@@ -287,9 +275,6 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
                 )
         return super().bind_existing_book(series_profile_id, book_id, idea=idea)
 
-    # ------------------------------------------------------------------
-    # Persisted topic ownership
-    # ------------------------------------------------------------------
     @staticmethod
     def _topic_key(topic_label: str) -> str:
         normalized = " ".join(re.findall(r"[а-яёa-z0-9]+", topic_label.casefold()))
@@ -370,9 +355,9 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
         anchor = self._anchor_book(series_profile_id)
         topic_label = request.topic_label.strip()
         topic_key = self._topic_key(topic_label)
-        engine = self._engine(anchor.book_id)
         ownership_id = new_ulid()
         now = utc_now()
+        engine = self._engine(anchor.book_id)
         try:
             with engine.begin() as connection:
                 prior = connection.execute(
@@ -409,13 +394,10 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
             if item.ownership_id == ownership_id
         )
 
-    # ------------------------------------------------------------------
-    # Explicit overlap classification / exception workflow
-    # ------------------------------------------------------------------
     def _append_effective_map_run(self, series_profile_id: str, map_hash: str) -> SeriesMapView:
         anchor = self._anchor_book(series_profile_id)
-        engine = self._engine(anchor.book_id)
         now = utc_now()
+        engine = self._engine(anchor.book_id)
         try:
             with engine.begin() as connection:
                 rows = list(
@@ -579,9 +561,6 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
             map=updated_map,
         )
 
-    # ------------------------------------------------------------------
-    # Lifecycle synchronization
-    # ------------------------------------------------------------------
     def _derived_series_state(
         self, book: SeriesBookView
     ) -> tuple[SeriesBookStatus, SeriesBookLifecycle]:
@@ -651,6 +630,7 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
         for book in books:
             status, lifecycle = self._derived_series_state(book)
             if status != book.status or lifecycle != book.lifecycle:
+                now = utc_now()
                 engine = self._engine(book.book_id)
                 try:
                     with engine.begin() as connection:
@@ -662,19 +642,21 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
                             {
                                 "status": status,
                                 "lifecycle": lifecycle,
-                                "updated": utc_now(),
+                                "updated": now,
                                 "membership": book.series_book_id,
                             },
                         )
                 finally:
                     engine.dispose()
-                book = book.model_copy(update={"status": status, "lifecycle": lifecycle})
+                # Map hashes include the book read model. Keep the returned read model byte-for-byte
+                # aligned with the just-persisted lifecycle timestamp so a new map is not stale on
+                # its first reload.
+                book = book.model_copy(
+                    update={"status": status, "lifecycle": lifecycle, "updated_at": now}
+                )
             result.append(book)
         return result
 
-    # ------------------------------------------------------------------
-    # Semantic findings integrated into the persisted Series Map
-    # ------------------------------------------------------------------
     def _semantic_findings(self, series_profile_id: str) -> list[dict[str, Any]]:
         books = self.books(series_profile_id)
         findings: list[dict[str, Any]] = []
@@ -698,6 +680,14 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
                     left_sources=left_sources,
                     right_sources=right_sources,
                 ):
+                    # A series shares vocabulary by design. A semantic-thesis hit becomes a hard
+                    # blocker only at high confidence; weaker thematic similarity remains governed
+                    # by the original lexical/boundary map. Structural/case/tool/template clones
+                    # remain hard blockers regardless of profession or domain wording.
+                    if candidate.dimension == "THESIS":
+                        score = float(candidate.evidence.get("semantic_paraphrase_score", 0.0))
+                        if score < self._SEMANTIC_THESIS_BLOCK_SCORE:
+                            continue
                     findings.append(
                         {
                             "finding_id": new_ulid(),
@@ -711,6 +701,8 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
         return findings
 
     def analyze(self, series_profile_id: str) -> SeriesMapView:
+        # Synchronize lifecycle before base map material/hash is built.
+        self.books(series_profile_id)
         exact = super().analyze(series_profile_id)
         semantic = self._semantic_findings(series_profile_id)
         if not semantic:
@@ -720,8 +712,8 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
         if not books:
             return exact
         anchor = books[0].book_id
-        engine = self._engine(anchor)
         now = utc_now()
+        engine = self._engine(anchor)
         persisted: list[dict[str, Any]] = []
         try:
             with engine.begin() as connection:
@@ -774,7 +766,6 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
                     persisted.append(item)
                     if signature:
                         existing_signatures.add(signature)
-
                 total_findings = connection.execute(
                     text(
                         "SELECT COUNT(*) FROM series_similarity_findings "
