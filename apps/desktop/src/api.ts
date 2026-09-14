@@ -130,7 +130,7 @@ export async function coreApi<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  let requestBody = body ?? null;
+  let requestBody: unknown = body ?? null;
   let consumeWorkLevel = false;
 
   // A newly launched Desktop app may render before the bundled Local Core has
