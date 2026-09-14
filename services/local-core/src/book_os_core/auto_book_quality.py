@@ -49,14 +49,35 @@ class AutoQualityReport(BaseModel):
 class AutoBookQualityEngine:
     """Deterministic whole-book coverage complement to Editorial and BookBench.
 
-    The engine intentionally does not pretend to be a literary model.  It catches provable
-    coverage failures and creates an exact-snapshot independent-review record.  Substantive model
+    The engine intentionally does not pretend to be a literary model. It catches provable
+    coverage failures and creates an exact-snapshot independent-review record. Substantive model
     criticism can add findings, but cannot silently erase these gates.
+
+    Material-claim detection deliberately stays conservative: it looks for explicit external-world
+    signals (quantification, research/data language, dated historical assertions, attribution,
+    legal/regulatory language, consensus language and time-sensitive platform/market/technology
+    assertions). This avoids treating every authorial causal explanation as a sourced fact while
+    ensuring those high-risk claim classes cannot silently bypass the evidence ledger.
     """
 
     _FACT_PATTERN = re.compile(
-        r"(?P<sentence>[^.!?\n]*(?:\d[\d\s.,]*\s*(?:%|процент|руб|дн|год|месяц)|"
-        r"согласно\s+(?:исследованию|данным)|исследовани[ея]\s+показыва)[^.!?\n]*[.!?])",
+        r"(?P<sentence>[^.!?\n]*(?:"
+        r"\d[\d\s.,]*\s*(?:%|процент|руб|дн|год|месяц)|"
+        r"согласно\s+(?:исследованию|данным|закону|правилам)|"
+        r"(?:исследовани[ея]|данные|опрос|наблюдени[ея])\s+"
+        r"(?:показыва\w*|свидетельств\w*|выяв\w*|обнаруж\w*)|"
+        r"(?:исследования|данные|наблюдения)[^.!?\n]{0,120}"
+        r"(?:приводит|влияет|вызывает|снижает|повышает)|"
+        r"(?:в\s+\d{4}\s+году|впервые\s+в\s+\d{4}|с\s+\d{4}\s+года)|"
+        r"(?:по\s+словам|по\s+оценке|как\s+утверждает|как\s+сообщает)\s+"
+        r"[^.!?\n]{2,100}|"
+        r"(?:закон|правила|требования|регламент)[^.!?\n]{0,100}"
+        r"(?:требу\w*|запрещ\w*|разреш\w*|обязыва\w*)|"
+        r"(?:консенсус|эксперты\s+(?:сходятся|согласны)|общепринято)"
+        r"[^.!?\n]{0,100}|"
+        r"(?:рынок|платформа|алгоритм|технология)[^.!?\n]{0,100}"
+        r"(?:сейчас|сегодня|в\s+настоящее\s+время|использует|требует|работает|изменил|изменяет)"
+        r")[^.!?\n]*[.!?])",
         re.IGNORECASE,
     )
     _MECHANISM_PATTERN = re.compile(r"\b(?:механизм|правило|матрица|модель|алгоритм)\b", re.I)
@@ -74,6 +95,20 @@ class AutoBookQualityEngine:
     def _claim_shape(cls, value: str) -> str:
         return re.sub(r"\b\d+(?:[.,]\d+)?\b", "#", cls._normalized(value))
 
+    @classmethod
+    def material_claims(cls, text: str) -> list[str]:
+        """Extract conservative material-claim candidates from exact manuscript prose."""
+
+        claims: list[str] = []
+        seen: set[str] = set()
+        for match in cls._FACT_PATTERN.finditer(text):
+            claim = match.group("sentence").strip()
+            normalized = cls._normalized(claim)
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                claims.append(claim)
+        return claims
+
     def _claim_coverage(
         self,
         master: StructuredBookMaster,
@@ -87,8 +122,7 @@ class AutoBookQualityEngine:
         ]
         for chapter in master.chapters:
             text = " ".join(chapter.paragraphs)
-            for match in self._FACT_PATTERN.finditer(text):
-                claim = match.group("sentence").strip()
+            for claim in self.material_claims(text):
                 normalized = self._normalized(claim)
                 ledger_match = next(
                     (
