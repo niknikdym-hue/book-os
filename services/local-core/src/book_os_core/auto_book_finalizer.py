@@ -567,6 +567,10 @@ class AutoBookFinalizer:
             entity_id = str(unit["authority_entity_id"])
             head = authority.get_head(entity_id)
             if head.status == "LOCKED":
+                if correction_findings:
+                    raise AutoBookGateError(
+                        f"manuscript unit {unit['unit_id']} is LOCKED; correction requires a new authorized revision"
+                    )
                 return
             revision = authority.get_revision(head.revision_id)
             content = cast(dict[str, Any], revision["content"])
@@ -792,6 +796,39 @@ class AutoBookFinalizer:
             for item in findings
         ]
 
+    @staticmethod
+    def _correction_chapter_scope(findings: list[dict[str, Any]]) -> set[str] | None:
+        chapter_ids: set[str] = set()
+        book_scope = False
+        for item in findings:
+            location = str(item.get("location", "")).strip()
+            if not location:
+                raise AutoBookGateError("correction finding has no resolvable location")
+            if location == "BOOK" or location.casefold().startswith("book:"):
+                book_scope = True
+                continue
+            parts = [part.strip() for part in location.split(":")]
+            if len(parts) >= 2 and parts[0].casefold() == "chapter" and parts[1]:
+                if len(parts) > 2:
+                    tail = parts[2:]
+                    if len(tail) % 2 != 0:
+                        raise AutoBookGateError(f"correction locator is malformed: {location}")
+                    allowed = {"paragraph", "unit", "span"}
+                    if any(
+                        tail[index].casefold() not in allowed for index in range(0, len(tail), 2)
+                    ):
+                        raise AutoBookGateError(f"correction locator is unsupported: {location}")
+                    if any(not tail[index] for index in range(1, len(tail), 2)):
+                        raise AutoBookGateError(f"correction locator is incomplete: {location}")
+                chapter_ids.add(parts[1])
+                continue
+            raise AutoBookGateError(f"correction locator is unresolved: {location}")
+        if book_scope:
+            return None
+        if not chapter_ids:
+            raise AutoBookGateError("correction findings resolve to no chapter or BOOK target")
+        return chapter_ids
+
     def _targeted_correction(
         self,
         book_id: str,
@@ -800,20 +837,25 @@ class AutoBookFinalizer:
         book_context: dict[str, Any],
         findings: list[dict[str, Any]],
     ) -> None:
-        chapter_ids = {
-            value.split(":", 1)[1]
-            for item in findings
-            if (value := str(item.get("location", ""))).startswith("chapter:")
-        }
+        chapter_ids = self._correction_chapter_scope(findings)
         targets = [
-            unit for unit in units if not chapter_ids or str(unit.get("chapter_id")) in chapter_ids
+            unit
+            for unit in units
+            if chapter_ids is None or str(unit.get("chapter_id")) in chapter_ids
         ]
+        if not targets:
+            requested = "BOOK" if chapter_ids is None else ", ".join(sorted(chapter_ids))
+            raise AutoBookGateError(
+                f"correction findings resolved to no current manuscript units: {requested}"
+            )
         for unit in targets:
             relevant = [
                 item
                 for item in findings
-                if not chapter_ids
-                or str(item.get("location", "")) in {f"chapter:{unit.get('chapter_id')}", "BOOK"}
+                if chapter_ids is None
+                or str(item.get("location", ""))
+                .strip()
+                .startswith(f"chapter:{unit.get('chapter_id')}")
             ]
             self._final_edit_unit(
                 book_id,

@@ -223,6 +223,26 @@ def ready_book(tmp_path: Path) -> str:
     return project.book_id
 
 
+def test_nested_correction_locator_targets_its_chapter() -> None:
+    assert AutoBookFinalizer._correction_chapter_scope(
+        [{"location": "chapter:c1:paragraph:3"}]
+    ) == {"c1"}
+    assert AutoBookFinalizer._correction_chapter_scope(
+        [{"location": "chapter:c1:unit:u2:span:4-9"}]
+    ) == {"c1"}
+
+
+def test_book_correction_locator_selects_whole_book() -> None:
+    assert AutoBookFinalizer._correction_chapter_scope([{"location": "BOOK"}]) is None
+
+
+def test_malformed_or_unresolved_correction_locator_fails_closed() -> None:
+    with pytest.raises(Exception, match="malformed|unresolved|incomplete"):
+        AutoBookFinalizer._correction_chapter_scope([{"location": "chapter:c1:paragraph"}])
+    with pytest.raises(Exception, match="unresolved"):
+        AutoBookFinalizer._correction_chapter_scope([{"location": "candidate:1"}])
+
+
 def test_inspected_excerpt_support_is_not_topic_overlap() -> None:
     supports = AutoBookFinalizer._excerpt_supports_claim
     claim = "Реклама увеличивает продажи на 20 процентов."
