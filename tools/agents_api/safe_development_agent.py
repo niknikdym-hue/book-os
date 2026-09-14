@@ -6,8 +6,11 @@ Security properties:
 - never copies the working tree, .git, Keychain, BOOK_OS_DATA_DIR, or local credentials;
 - keeps the application API key outside the agent sandbox;
 - disables sandbox network access;
+- disables subagents by default;
 - gives the agent no GitHub credentials and no push/merge capability;
-- retrieves only immutable output artifacts produced under /workspace/outputs.
+- retrieves only immutable output artifacts produced under /workspace/outputs;
+- scans returned artifacts for high-risk credential patterns before acceptance;
+- deletes the managed session by default after artifacts are retrieved.
 
 This is an engineering helper. It is not part of BOOK OS book-writing ModelGateway.
 """
@@ -16,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -29,15 +33,23 @@ from openai import OpenAI
 
 
 INLINE_LIMIT_BYTES = 5 * 1024 * 1024
-DEFAULT_MODEL = "gpt-5.6-sol"
+DEFAULT_MODEL = "gpt-5.3-codex"
 SENSITIVE_PATH_PATTERNS = (
     re.compile(r"(^|/)\.env(?:\.|$)"),
     re.compile(r"(^|/)(?:id_rsa|id_ed25519)$"),
     re.compile(r"\.(?:pem|p12|pfx|key|mobileprovision)$", re.IGNORECASE),
 )
-SECRET_CONTENT_PATTERN = re.compile(
-    r"(?:sk-proj-[A-Za-z0-9_\-]{16,}|ghp_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)"
+# POSIX ERE compatible because the same expression is passed to `git grep -E`.
+SECRET_CONTENT_ERE = (
+    r"(sk-proj-[A-Za-z0-9_-]{16,}|"
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"gh[pousr]_[A-Za-z0-9]{20,}|"
+    r"xox[baprs]-[A-Za-z0-9-]{20,}|"
+    r"AKIA[0-9A-Z]{16}|"
+    r"AIza[0-9A-Za-z_-]{30,}|"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----)"
 )
+SECRET_OUTPUT_PATTERN = re.compile(SECRET_CONTENT_ERE)
 
 
 def _git(repo: Path, *args: str, text: bool = True) -> subprocess.CompletedProcess[str]:
@@ -80,7 +92,7 @@ def _guard_snapshot(repo: Path, sha: str) -> None:
             "-I",
             "-n",
             "-E",
-            SECRET_CONTENT_PATTERN.pattern,
+            SECRET_CONTENT_ERE,
             sha,
             "--",
             ".",
@@ -171,6 +183,8 @@ def _download_artifacts(client: OpenAI, session_id: str, destination: Path) -> l
     downloaded: list[str] = []
     for artifact in client.beta.agents.sessions.artifacts.list(session_id):
         path = str(artifact.path)
+        if not path.startswith("/workspace/outputs/"):
+            continue
         filename = Path(path).name
         if not filename:
             continue
@@ -181,6 +195,22 @@ def _download_artifacts(client: OpenAI, session_id: str, destination: Path) -> l
             response.stream_to_file(target)
         downloaded.append(filename)
     return downloaded
+
+
+def _guard_downloaded_outputs(destination: Path, filenames: list[str]) -> None:
+    findings: list[str] = []
+    for filename in filenames:
+        candidate = destination / filename
+        if not candidate.is_file():
+            continue
+        text = candidate.read_bytes().decode("utf-8", errors="ignore")
+        if SECRET_OUTPUT_PATTERN.search(text):
+            findings.append(filename)
+    if findings:
+        raise SystemExit(
+            "Returned agent artifacts match a high-risk credential pattern: "
+            + ", ".join(sorted(findings))
+        )
 
 
 def _agent_instructions(snapshot_sha: str) -> str:
@@ -215,6 +245,12 @@ def run() -> int:
     parser.add_argument("--task")
     parser.add_argument("--task-file")
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--reasoning",
+        choices=("low", "medium", "high", "xhigh"),
+        default="low",
+        help="Explicit bounded reasoning effort for the development agent",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("agents-api-output"))
     parser.add_argument("--keep-session", action="store_true")
     args = parser.parse_args()
@@ -266,64 +302,85 @@ def run() -> int:
     session_id: str | None = None
     completed = False
     last_turn_id: str | None = None
+    downloaded: list[str] = []
+    cleanup_error: str | None = None
     out_dir = args.out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     event_log = out_dir / "events.jsonl"
+    task_hash = hashlib.sha256(task.encode("utf-8")).hexdigest()
 
     with OpenAI(api_key=api_key) as client:
-        with client.beta.agents.sessions.create(
-            agent={
+        try:
+            with client.beta.agents.sessions.create(
+                agent={
+                    "model": args.model,
+                    "instructions": _agent_instructions(sha),
+                    "multi_agent": {"enabled": False, "max_concurrent_subagents": 1},
+                    "reasoning": {"effort": args.reasoning, "summary": "concise"},
+                },
+                environment=environment,
+                input=task,
+                metadata={
+                    "purpose": "book-os-development",
+                    "source_sha": sha,
+                    "task_sha256": task_hash,
+                },
+                stream=True,
+            ) as events, event_log.open("w", encoding="utf-8") as log:
+                for event in events:
+                    payload = _event_json(event)
+                    log.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+                    log.flush()
+                    session_id = session_id or _find_prefixed_id(payload, "sess_")
+                    candidate_turn = _find_prefixed_id(payload, "turn_")
+                    if candidate_turn:
+                        last_turn_id = candidate_turn
+                    event_type = _event_type(payload)
+                    if event_type == "agent.session.turn.completed":
+                        completed = True
+                    if event_type in {
+                        "agent.session.turn.failed",
+                        "agent.session.turn.cancelled",
+                        "agent.session.failed",
+                    }:
+                        completed = False
+
+            if session_id is None:
+                raise SystemExit("Agents API did not expose a session id; inspect events.jsonl")
+
+            downloaded = _download_artifacts(client, session_id, out_dir)
+            _guard_downloaded_outputs(out_dir, downloaded)
+            metadata = {
+                "session_id": session_id,
+                "turn_id": last_turn_id,
+                "source_sha": sha,
+                "source_ref": args.ref,
+                "task_sha256": task_hash,
                 "model": args.model,
-                "instructions": _agent_instructions(sha),
-            },
-            environment=environment,
-            input=task,
-            stream=True,
-        ) as events, event_log.open("w", encoding="utf-8") as log:
-            for event in events:
-                payload = _event_json(event)
-                log.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
-                log.flush()
-                session_id = session_id or _find_prefixed_id(payload, "sess_")
-                candidate_turn = _find_prefixed_id(payload, "turn_")
-                if candidate_turn:
-                    last_turn_id = candidate_turn
-                event_type = _event_type(payload)
-                if event_type == "agent.session.turn.completed":
-                    completed = True
-                if event_type in {
-                    "agent.session.turn.failed",
-                    "agent.session.turn.cancelled",
-                    "agent.session.failed",
-                }:
-                    completed = False
-
-        if session_id is None:
-            raise SystemExit("Agents API did not expose a session id; inspect events.jsonl")
-
-        downloaded = _download_artifacts(client, session_id, out_dir)
-        metadata = {
-            "session_id": session_id,
-            "turn_id": last_turn_id,
-            "source_sha": sha,
-            "source_ref": args.ref,
-            "model": args.model,
-            "network_access": "disabled",
-            "github_credentials_in_sandbox": False,
-            "book_os_data_dir_in_sandbox": False,
-            "completed_turn_seen": completed,
-            "artifacts": downloaded,
-        }
-        (out_dir / "metadata.json").write_text(
-            json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-        if not args.keep_session:
-            client.beta.agents.sessions.delete(session_id)
+                "reasoning_effort": args.reasoning,
+                "multi_agent_enabled": False,
+                "network_access": "disabled",
+                "github_credentials_in_sandbox": False,
+                "book_os_data_dir_in_sandbox": False,
+                "completed_turn_seen": completed,
+                "artifacts": downloaded,
+            }
+            (out_dir / "metadata.json").write_text(
+                json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        finally:
+            if session_id is not None and not args.keep_session:
+                try:
+                    client.beta.agents.sessions.delete(session_id)
+                except Exception as exc:  # pragma: no cover - remote cleanup path
+                    cleanup_error = f"{type(exc).__name__}: {exc}"
 
     required = {"report.md", "book-os.patch", "result.zip"}
     missing = sorted(required - set(downloaded))
+    if cleanup_error is not None:
+        print(f"Session cleanup failed: {cleanup_error}", file=sys.stderr)
+        return 4
     if missing:
         print(f"Missing required artifacts: {', '.join(missing)}", file=sys.stderr)
         return 2
@@ -331,7 +388,8 @@ def run() -> int:
         print("No completed-turn event observed; inspect events.jsonl and report.md", file=sys.stderr)
         return 3
 
-    print(json.dumps(metadata, ensure_ascii=False, indent=2))
+    metadata_path = out_dir / "metadata.json"
+    print(metadata_path.read_text(encoding="utf-8"))
     return 0
 
 
