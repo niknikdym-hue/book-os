@@ -1,0 +1,79 @@
+name: T04 Sharded Apply
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t04-sharded-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Patch exact product candidate
+        run: |
+          cp tools/agents_api/apply_t04_semantic_quality.py /tmp/apply_t04.py
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B product origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "75e1498b56b93c5ef70e1b9681f6e77073a050a6"
+          python /tmp/apply_t04.py "$GITHUB_WORKSPACE"
+      - name: Install dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Run complete test shard
+        working-directory: services/local-core
+        env: {SHARD: "${{ matrix.shard }}"}
+        run: |
+          mapfile -t files < <(python - <<'PY'
+          from pathlib import Path
+          import os
+          s=int(os.environ['SHARD'])
+          for i,p in enumerate(sorted(Path('tests').glob('test_*.py'))):
+              if i % 8 == s: print(p)
+          PY
+          )
+          python -m pytest -q "${files[@]}"
+
+  commit:
+    needs: shard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Reapply exact tested T04 patch
+        run: |
+          cp tools/agents_api/apply_t04_semantic_quality.py /tmp/apply_t04.py
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "75e1498b56b93c5ef70e1b9681f6e77073a050a6"
+          python /tmp/apply_t04.py "$GITHUB_WORKSPACE"
+          cd services/local-core
+          pip install -q -r requirements-dev.lock
+          ruff format src/book_os_core/auto_book_gates.py src/book_os_core/auto_book_finalizer.py tests/test_auto_book_finalizer.py tests/test_auto_book_gate_semantics.py
+          ruff check .
+          mypy src
+          pytest -q tests/test_auto_book_gate_semantics.py tests/test_auto_book_finalizer.py
+          cd ../..
+          git diff --check
+      - name: Commit to existing PR 38 branch
+        run: |
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_gates.py services/local-core/src/book_os_core/auto_book_finalizer.py services/local-core/tests/test_auto_book_finalizer.py services/local-core/tests/test_auto_book_gate_semantics.py
+          git commit -m 'Clarify semantic quality gates and whole-book review context'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
