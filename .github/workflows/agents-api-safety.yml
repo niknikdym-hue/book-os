@@ -28,13 +28,17 @@ jobs:
             tools/agents_api/preflight_snapshot.py \
             tools/agents_api/keychain_runner.py \
             tools/agents_api/safe_development_agent.py
-      - name: Verify fail-closed source invariants
+      - name: Verify fail-closed source invariants and cost policy
         run: |
           python - <<'PY'
           from pathlib import Path
 
           runner = Path('tools/agents_api/safe_development_agent.py').read_text(encoding='utf-8')
           keychain = Path('tools/agents_api/keychain_runner.py').read_text(encoding='utf-8')
+          readme = Path('tools/agents_api/README.md').read_text(encoding='utf-8')
+          platform_gate = Path('docs/agents-api/BOOK_OS_AGENTS_API_PLATFORM_GATE.md').read_text(encoding='utf-8')
+          development_lane = Path('docs/agents-api/BOOK_OS_AGENTS_API_DEVELOPMENT_LANE.md').read_text(encoding='utf-8')
+
           required_runner = {
               'dedicated FD credential transport': 'BOOK_OS_AGENTS_API_KEY_FD',
               'production-key comparison': 'production == secret',
@@ -44,20 +48,29 @@ jobs:
               'artifact patch': '/workspace/outputs/book-os.patch',
               'subagents disabled': '"multi_agent": {"enabled": False',
               'session cleanup': 'client.beta.agents.sessions.delete(session_id)',
+              'Sol default': 'DEFAULT_MODEL = "gpt-5.6-sol"',
+              'local auto reasoning function': 'def _auto_reasoning(',
+              'Auto mode default': 'default="auto"',
+              'manual medium/high/xhigh choices': 'choices=("auto", "medium", "high", "xhigh")',
+              'requested reasoning metadata': '"reasoning_mode": reasoning_mode',
+              'resolved reasoning metadata': '"reasoning_effort": reasoning_effort',
+              'resolved effort passed to agent': '"effort": reasoning_effort',
           }
           missing = [label for label, needle in required_runner.items() if needle not in runner]
           if missing:
-              raise SystemExit('Missing runner safety invariants: ' + ', '.join(missing))
+              raise SystemExit('Missing runner safety/cost invariants: ' + ', '.join(missing))
 
           forbidden_runner = {
               'GitHub token lookup': 'os.environ.get("GITHUB_TOKEN")',
               'GitHub PAT lookup': 'os.environ.get("GH_TOKEN")',
               'BOOK OS data directory lookup': 'os.environ.get("BOOK_OS_DATA_DIR")',
               'Keychain host command': '/usr/bin/security',
+              'old Codex default': 'DEFAULT_MODEL = "gpt-5.3-codex"',
+              'old Low default': 'default="low"',
           }
           found = [label for label, needle in forbidden_runner.items() if needle in runner]
           if found:
-              raise SystemExit('Forbidden runner host access found: ' + ', '.join(found))
+              raise SystemExit('Forbidden runner behavior found: ' + ', '.join(found))
 
           required_keychain = {
               'isolated Keychain service': 'book-os.agents-development-api-key',
@@ -73,6 +86,34 @@ jobs:
               raise SystemExit('Missing Keychain safety invariants: ' + ', '.join(missing))
           if 'env["BOOK_OS_AGENTS_API_KEY"]' in keychain:
               raise SystemExit('Keychain launcher must not place the raw key in child environment')
+
+          for name, text in {
+              'runner README': readme,
+              'Platform gate': platform_gate,
+              'development lane': development_lane,
+          }.items():
+              if 'gpt-5.3-codex' in text:
+                  raise SystemExit(f'{name} still contains obsolete gpt-5.3-codex guidance')
+              if '--reasoning low' in text:
+                  raise SystemExit(f'{name} still contains obsolete low-reasoning guidance')
+              if 'gpt-5.6-sol' not in text:
+                  raise SystemExit(f'{name} does not state the approved gpt-5.6-sol policy')
+              if 'auto' not in text.casefold():
+                  raise SystemExit(f'{name} does not state the Auto reasoning policy')
+
+          # Unit-check the cost-conservative selector without importing the OpenAI SDK.
+          namespace = {}
+          selector_source = runner[
+              runner.index('def _auto_reasoning('):runner.index('\ndef _development_api_key(')
+          ]
+          exec(selector_source, namespace)
+          choose = namespace['_auto_reasoning']
+          assert choose('Fix one focused unit test and update its documentation.') == 'medium'
+          assert choose('Architecture migration across multiple subsystems with recovery semantics.') == 'high'
+          assert choose(
+              'Security vulnerability and data corruption persists after high; architecture recovery is still blocked.'
+          ) == 'xhigh'
+          print('Local reasoning policy PASS; selector_network_calls=0 selector_model_calls=0')
           PY
       - name: Run API-free exact-snapshot preflight
         run: python tools/agents_api/preflight_snapshot.py --ref HEAD
