@@ -36,6 +36,37 @@ def test_unregistered_material_claim_is_detected_even_with_empty_ledger() -> Non
     assert not AutoBookQualityEngine.may_complete(report)
 
 
+def test_material_claim_extractor_covers_required_external_world_categories() -> None:
+    text = " ".join(
+        [
+            "Исследования показывают, что более ясное обещание результата влияет на выбор клиента.",
+            "В 2025 году рынок профессионального обучения изменил структуру спроса.",
+            "По словам исследователя Иванова, доверие формируется до сравнения программы курса.",
+            "Закон о рекламе требует маркировать определённые рекламные сообщения.",
+            "Эксперты сходятся во мнении, что единый показатель без контекста недостаточен.",
+            "Платформа сейчас использует обновлённые правила ранжирования материалов.",
+            "Наблюдения выявили устойчивый ненумерический паттерн поведения покупателей.",
+        ]
+    )
+    claims = AutoBookQualityEngine.material_claims(text)
+    assert len(claims) == 7
+    assert any("влияет" in claim for claim in claims)
+    assert any("2025 году" in claim for claim in claims)
+    assert any("По словам" in claim for claim in claims)
+    assert any("Закон" in claim for claim in claims)
+    assert any("Эксперты сходятся" in claim for claim in claims)
+    assert any("Платформа сейчас" in claim for claim in claims)
+    assert any("Наблюдения выявили" in claim for claim in claims)
+
+
+def test_material_claim_extractor_does_not_treat_authorial_mechanism_as_external_fact() -> None:
+    text = (
+        "Эта глава предлагает авторскую матрицу выбора. "
+        "Сначала читатель формулирует задачу, затем проверяет границы решения."
+    )
+    assert AutoBookQualityEngine.material_claims(text) == []
+
+
 def test_evidence_becomes_blocking_after_semantic_revision() -> None:
     claim = "Срок проверки составляет 10 дней."
     book = master([claim])
