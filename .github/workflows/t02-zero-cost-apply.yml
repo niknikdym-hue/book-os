@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/t02-zero-cost-apply.yml'
       - 'tools/agents_api/apply_t02_evidence_claims.py'
+      - 'tools/agents_api/apply_t02_test_semantics.py'
 
 permissions:
   contents: write
@@ -21,8 +22,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Preserve deterministic T02 patcher
-        run: cp tools/agents_api/apply_t02_evidence_claims.py /tmp/apply_t02.py
+      - name: Preserve deterministic T02 patchers
+        run: |
+          cp tools/agents_api/apply_t02_evidence_claims.py /tmp/apply_t02.py
+          cp tools/agents_api/apply_t02_test_semantics.py /tmp/apply_t02_test_semantics.py
       - name: Checkout exact product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
@@ -34,6 +37,7 @@ jobs:
       - name: Apply T02 F02/F03 hardening
         run: |
           python /tmp/apply_t02.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t02_test_semantics.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install Local Core test dependencies
         working-directory: services/local-core
