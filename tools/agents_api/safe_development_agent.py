@@ -5,6 +5,7 @@ Security properties:
 - snapshots committed Git content only via `git archive`;
 - never copies the working tree, .git, Keychain, BOOK_OS_DATA_DIR, or local credentials;
 - keeps the application API key outside the agent sandbox;
+- accepts the preferred local credential transport through a one-shot file descriptor;
 - disables sandbox network access;
 - disables subagents by default;
 - gives the agent no GitHub credentials and no push/merge capability;
@@ -33,6 +34,7 @@ from openai import OpenAI
 
 
 INLINE_LIMIT_BYTES = 5 * 1024 * 1024
+MAX_SECRET_BYTES = 16_384
 DEFAULT_MODEL = "gpt-5.3-codex"
 SENSITIVE_PATH_PATTERNS = (
     re.compile(r"(^|/)\.env(?:\.|$)"),
@@ -82,7 +84,6 @@ def _guard_snapshot(repo: Path, sha: str) -> None:
             + "\n".join(f"- {path}" for path in unsafe_paths[:20])
         )
 
-    # Search only committed text at the exact SHA. Exit 1 means no matches.
     result = subprocess.run(
         [
             "git",
@@ -145,6 +146,38 @@ def _load_task(args: argparse.Namespace) -> str:
     if args.task:
         return args.task.strip()
     raise SystemExit("A task is required via --task or --task-file")
+
+
+def _development_api_key() -> str:
+    fd_value = os.environ.pop("BOOK_OS_AGENTS_API_KEY_FD", "").strip()
+    if fd_value:
+        try:
+            fd = int(fd_value)
+        except ValueError as exc:
+            raise SystemExit("BOOK_OS_AGENTS_API_KEY_FD must be an integer file descriptor") from exc
+        try:
+            payload = os.read(fd, MAX_SECRET_BYTES + 1)
+        finally:
+            os.close(fd)
+        if len(payload) > MAX_SECRET_BYTES:
+            raise SystemExit("Dedicated Agents API key payload is unexpectedly large")
+        secret = payload.decode("utf-8").strip()
+    else:
+        # Compatibility path for controlled non-Keychain environments. The macOS
+        # development workflow must use keychain_runner.py and the FD transport.
+        secret = os.environ.pop("BOOK_OS_AGENTS_API_KEY", "").strip()
+
+    if not secret:
+        raise SystemExit(
+            "Dedicated Agents API development key is required. On macOS use "
+            "tools/agents_api/keychain_runner.py; do not reuse the production BOOK OS key."
+        )
+    production = os.environ.get("OPENAI_API_KEY", "").strip()
+    if production and production == secret:
+        raise SystemExit(
+            "Safety stop: the dedicated development key must not equal OPENAI_API_KEY."
+        )
+    return secret
 
 
 def _walk_ids(value: Any) -> Iterable[tuple[str, str]]:
@@ -259,16 +292,7 @@ def run() -> int:
     if not (repo / ".git").exists():
         raise SystemExit(f"Not a Git checkout: {repo}")
 
-    api_key = os.environ.get("BOOK_OS_AGENTS_API_KEY", "").strip()
-    if not api_key:
-        raise SystemExit(
-            "BOOK_OS_AGENTS_API_KEY is required. Do not reuse the production BOOK OS key."
-        )
-    if os.environ.get("OPENAI_API_KEY") == api_key:
-        raise SystemExit(
-            "Safety stop: the dedicated development key must not be aliased to OPENAI_API_KEY."
-        )
-
+    api_key = _development_api_key()
     task = _load_task(args)
     sha = _resolve_snapshot(repo, args.ref)
     _guard_snapshot(repo, sha)
@@ -375,6 +399,7 @@ def run() -> int:
                     client.beta.agents.sessions.delete(session_id)
                 except Exception as exc:  # pragma: no cover - remote cleanup path
                     cleanup_error = f"{type(exc).__name__}: {exc}"
+            api_key = ""
 
     required = {"report.md", "book-os.patch", "result.zip"}
     missing = sorted(required - set(downloaded))
