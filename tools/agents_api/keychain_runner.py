@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Store and use the dedicated BOOK OS Agents API development key via macOS Keychain.
 
-The secret is never printed, written to the repository, or passed on the command
-line. `run` retrieves it only long enough to place it in the child process
-environment as BOOK_OS_AGENTS_API_KEY, while removing OPENAI_API_KEY to avoid
-accidental production-key aliasing.
+`store` lets macOS Keychain prompt for the secret itself, so the raw key is not
+placed in this helper's argv or shell history. `run` retrieves the key into this
+trusted launcher process and passes it to safe_development_agent.py through a
+one-shot inherited file descriptor. The raw key is not placed in the child
+process environment or command line.
 """
 
 from __future__ import annotations
 
 import argparse
-import getpass
 import os
 from pathlib import Path
 import subprocess
@@ -20,6 +20,7 @@ import sys
 SERVICE = "book-os.agents-development-api-key"
 ACCOUNT = "book-os-development"
 SECURITY = "/usr/bin/security"
+MAX_SECRET_BYTES = 16_384
 
 
 def _require_macos() -> None:
@@ -27,11 +28,10 @@ def _require_macos() -> None:
         raise SystemExit("This helper requires macOS Keychain (/usr/bin/security).")
 
 
-def _security(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def _security_capture(*args: str) -> subprocess.CompletedProcess[str]:
     _require_macos()
     return subprocess.run(
         [SECURITY, *args],
-        input=input_text,
         check=False,
         capture_output=True,
         text=True,
@@ -40,7 +40,7 @@ def _security(*args: str, input_text: str | None = None) -> subprocess.Completed
 
 
 def _read_secret() -> str:
-    result = _security(
+    result = _security_capture(
         "find-generic-password",
         "-a",
         ACCOUNT,
@@ -57,26 +57,30 @@ def _read_secret() -> str:
     secret = result.stdout.rstrip("\n")
     if not secret:
         raise SystemExit("Keychain returned an empty development key.")
+    if len(secret.encode("utf-8")) > MAX_SECRET_BYTES:
+        raise SystemExit("Keychain development credential is unexpectedly large.")
     return secret
 
 
 def _store_secret() -> int:
-    first = getpass.getpass("Paste dedicated BOOK-OS-DEVELOPMENT API key: ").strip()
-    if not first:
-        raise SystemExit("Refusing to store an empty key.")
-    second = getpass.getpass("Paste it again to confirm: ").strip()
-    if first != second:
-        raise SystemExit("Key confirmation did not match; nothing was stored.")
-
-    result = _security(
-        "add-generic-password",
-        "-U",
-        "-a",
-        ACCOUNT,
-        "-s",
-        SERVICE,
-        "-w",
-        first,
+    _require_macos()
+    print(
+        "macOS Keychain will securely prompt for the dedicated BOOK-OS-DEVELOPMENT API key. "
+        "The secret will not be passed on this command line."
+    )
+    result = subprocess.run(
+        [
+            SECURITY,
+            "add-generic-password",
+            "-U",
+            "-a",
+            ACCOUNT,
+            "-s",
+            SERVICE,
+            "-w",
+        ],
+        check=False,
+        timeout=60,
     )
     if result.returncode != 0:
         raise SystemExit("macOS Keychain refused the development-key update.")
@@ -85,7 +89,7 @@ def _store_secret() -> int:
 
 
 def _status() -> int:
-    result = _security(
+    result = _security_capture(
         "find-generic-password",
         "-a",
         ACCOUNT,
@@ -98,7 +102,7 @@ def _status() -> int:
 
 
 def _delete() -> int:
-    result = _security(
+    result = _security_capture(
         "delete-generic-password",
         "-a",
         ACCOUNT,
@@ -113,23 +117,38 @@ def _delete() -> int:
 
 
 def _run_agent(agent_args: list[str]) -> int:
+    if agent_args and agent_args[0] == "--":
+        agent_args = agent_args[1:]
     if not agent_args:
         raise SystemExit("`run` requires arguments for safe_development_agent.py")
+
     secret = _read_secret()
+    secret_bytes = secret.encode("utf-8")
+    read_fd, write_fd = os.pipe()
     script = Path(__file__).with_name("safe_development_agent.py")
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
-    env["BOOK_OS_AGENTS_API_KEY"] = secret
+    env.pop("BOOK_OS_AGENTS_API_KEY", None)
+    env["BOOK_OS_AGENTS_API_KEY_FD"] = str(read_fd)
+
     try:
+        os.write(write_fd, secret_bytes)
+        os.close(write_fd)
+        write_fd = -1
         completed = subprocess.run(
             [sys.executable, str(script), *agent_args],
             env=env,
+            pass_fds=(read_fd,),
             check=False,
         )
         return completed.returncode
     finally:
-        env.pop("BOOK_OS_AGENTS_API_KEY", None)
+        if write_fd >= 0:
+            os.close(write_fd)
+        os.close(read_fd)
+        env.pop("BOOK_OS_AGENTS_API_KEY_FD", None)
         secret = ""
+        secret_bytes = b""
 
 
 def main() -> int:
