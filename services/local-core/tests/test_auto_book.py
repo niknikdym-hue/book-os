@@ -142,21 +142,32 @@ def assert_completed_book(
         assert service.drafting.list_drafts(book_id, chapter.chapter_id)
 
 
+def _assert_delegated_system_approvals(tmp_path: Path, book_id: str) -> None:
+    engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
+    try:
+        with engine.connect() as connection:
+            rows = list(
+                connection.execute(
+                    text("SELECT approving_actor_kind,gates_json FROM approvals")
+                ).mappings()
+            )
+    finally:
+        engine.dispose()
+    system_rows = [row for row in rows if row["approving_actor_kind"] == "SYSTEM"]
+    assert system_rows
+    for row in system_rows:
+        gates = json.loads(str(row["gates_json"]))
+        assert gates.get("delegated_authorization_id")
+        assert gates.get("delegated_authorization_scope")
+        assert gates.get("auto_book_run_id")
+        assert gates.get("per_step_human_review") is False
+
+
 def test_auto_book_runs_end_to_end_and_creates_litres_docx(tmp_path: Path) -> None:
     book_id = ready_book(tmp_path)
     service, state = run_auto_book(tmp_path, book_id)
     assert_completed_book(tmp_path, book_id, service, state)
-
-    engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
-    try:
-        with engine.connect() as connection:
-            gates = [
-                json.loads(value)
-                for value in connection.execute(text("SELECT gates_json FROM approvals")).scalars()
-            ]
-    finally:
-        engine.dispose()
-    assert any(item.get("owner_auto_book_authorization") is True for item in gates)
+    _assert_delegated_system_approvals(tmp_path, book_id)
 
 
 def test_series_auto_book_materializes_current_task017_evidence_without_bypass(
@@ -183,10 +194,6 @@ def test_series_auto_book_materializes_current_task017_evidence_without_bypass(
                     text("SELECT COUNT(*) FROM book_uniqueness_ledger WHERE status='PASS'")
                 ).scalar_one(),
             }
-            gates = [
-                json.loads(value)
-                for value in connection.execute(text("SELECT gates_json FROM approvals")).scalars()
-            ]
     finally:
         engine.dispose()
 
@@ -196,4 +203,4 @@ def test_series_auto_book_materializes_current_task017_evidence_without_bypass(
         "chapter_admissions": 2,
         "uniqueness": 2,
     }
-    assert any(item.get("owner_auto_book_authorization") is True for item in gates)
+    _assert_delegated_system_approvals(tmp_path, book_id)
