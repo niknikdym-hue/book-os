@@ -133,7 +133,9 @@ def test_0027_preserves_human_vs_delegated_master_history_and_append_only_guard(
     with engine.begin() as connection:
         # This fixture represents historical masters written before the adversarial-review release
         # gate existed. Disable that current insert guard only while constructing the legacy state.
-        connection.execute(text("DROP TRIGGER IF EXISTS require_adversarial_review_for_literary_master"))
+        connection.execute(
+            text("DROP TRIGGER IF EXISTS require_adversarial_review_for_literary_master")
+        )
         connection.execute(
             text(
                 "INSERT INTO book_projects(book_id,working_title,mode,domain,primary_subtype,"
