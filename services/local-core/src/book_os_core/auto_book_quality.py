@@ -118,8 +118,8 @@ class AutoBookQualityEngine:
         return " ".join(re.findall(r"[а-яёa-z0-9]+", value.casefold()))
 
     @classmethod
-    def _claim_shape(cls, value: str) -> str:
-        return re.sub(r"\b\d+(?:[.,]\d+)?\b", "#", cls._normalized(value))
+    def _claims_same_fact(cls, current: str, registered: str) -> bool:
+        return cls._normalized(current) == cls._normalized(registered)
 
     @classmethod
     def material_claims(cls, text: str) -> list[str]:
@@ -142,24 +142,15 @@ class AutoBookQualityEngine:
     ) -> tuple[list[ClaimCoverageItem], list[AutoQualityFinding]]:
         coverage: list[ClaimCoverageItem] = []
         findings: list[AutoQualityFinding] = []
-        normalized_ledger = [
-            (self._normalized(claim), self._claim_shape(claim), current)
-            for claim, current in registered_claims.items()
-        ]
+        normalized_ledger = [(claim, current) for claim, current in registered_claims.items()]
         for chapter in master.chapters:
             text = " ".join(chapter.paragraphs)
             for claim in self.material_claims(text):
-                normalized = self._normalized(claim)
                 ledger_match = next(
                     (
                         (candidate, current)
-                        for candidate, shape, current in normalized_ledger
-                        if candidate
-                        and (
-                            candidate in normalized
-                            or normalized in candidate
-                            or shape == self._claim_shape(claim)
-                        )
+                        for candidate, current in normalized_ledger
+                        if self._claims_same_fact(claim, candidate)
                     ),
                     None,
                 )

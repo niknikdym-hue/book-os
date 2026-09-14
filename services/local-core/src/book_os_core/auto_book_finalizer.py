@@ -1430,6 +1430,91 @@ class AutoBookFinalizer:
             )
         )
 
+    @staticmethod
+    def _normalized_evidence_number(value: str) -> str:
+        return value.replace(" ", "").replace(",", ".")
+
+    @classmethod
+    def _excerpt_supports_claim(cls, claim_text: str, excerpt: str) -> bool:
+        claim = " ".join(re.findall(r"[а-яёa-z0-9.,%]+", claim_text.casefold()))
+        source = " ".join(re.findall(r"[а-яёa-z0-9.,%]+", excerpt.casefold()))
+        if not claim or not source:
+            return False
+
+        claim_numbers = {
+            cls._normalized_evidence_number(item)
+            for item in re.findall(r"\d+(?:[\s.,]\d+)*", claim_text)
+        }
+        source_numbers = {
+            cls._normalized_evidence_number(item)
+            for item in re.findall(r"\d+(?:[\s.,]\d+)*", excerpt)
+        }
+        if claim_numbers and not claim_numbers.issubset(source_numbers):
+            return False
+
+        negation = re.compile(r"\b(?:не|нет|никогда|без)\b", re.IGNORECASE)
+        if bool(negation.search(claim_text)) != bool(negation.search(excerpt)):
+            return False
+
+        strong_certainty = re.compile(
+            r"\b(?:доказан\w*|доказыва\w*|гарантир\w*|обязательно|всегда)\b",
+            re.IGNORECASE,
+        )
+        hedged = re.compile(
+            r"\b(?:может|могут|возможно|вероятно|предполага\w*|потенциально)\b",
+            re.IGNORECASE,
+        )
+        if strong_certainty.search(claim_text) and hedged.search(excerpt):
+            return False
+
+        causal = re.compile(
+            r"\b(?:вызыва\w*|приводит|увеличива\w*|снижа\w*|повыша\w*|влияет)\b",
+            re.IGNORECASE,
+        )
+        associative = re.compile(
+            r"\b(?:связан\w*|ассоциирован\w*|коррелир\w*)\b",
+            re.IGNORECASE,
+        )
+        if causal.search(claim_text) and associative.search(excerpt) and not causal.search(excerpt):
+            return False
+
+        stopwords = {
+            "это",
+            "эта",
+            "этот",
+            "эти",
+            "для",
+            "что",
+            "как",
+            "при",
+            "или",
+            "его",
+            "ее",
+            "она",
+            "они",
+            "оно",
+            "также",
+            "свой",
+            "свои",
+            "через",
+            "между",
+            "после",
+            "перед",
+            "процент",
+            "процента",
+            "процентов",
+        }
+        claim_tokens = {
+            token
+            for token in re.findall(r"[а-яёa-z]{4,}", claim_text.casefold())
+            if token not in stopwords
+        }
+        excerpt_tokens = set(re.findall(r"[а-яёa-z]{4,}", excerpt.casefold()))
+        if len(claim_tokens) < 2:
+            return False
+        coverage = len(claim_tokens & excerpt_tokens) / len(claim_tokens)
+        return coverage >= 0.8
+
     def _ensure_research_claims(self, book_id: str, state: AutoBookRunView) -> dict[str, Any]:
         sources = [
             source
@@ -1535,9 +1620,13 @@ class AutoBookFinalizer:
                         cutoff = datetime.now(UTC).year - 3
                         return any(
                             item.status == "ACTIVE"
-                            and item.relationship in {"SUPPORTS", "PARTIALLY_SUPPORTS"}
+                            and item.relationship == "SUPPORTS"
                             and bool(item.pointer.strip())
                             and (source := source_by_id.get(item.source_id)) is not None
+                            and item.pointer.strip() == cast(str, source.inspected_pointer).strip()
+                            and self._excerpt_supports_claim(
+                                claim_text, cast(str, source.inspected_excerpt)
+                            )
                             and (
                                 not freshness_required
                                 or (
@@ -1549,7 +1638,6 @@ class AutoBookFinalizer:
                         )
 
                     if not eligible_evidence():
-                        claim_tokens = set(re.findall(r"[а-яёa-z0-9]{4,}", claim_text.casefold()))
                         source = next(
                             (
                                 item
@@ -1561,12 +1649,8 @@ class AutoBookFinalizer:
                                         and item.publication_year >= datetime.now(UTC).year - 3
                                     )
                                 )
-                                if claim_tokens
-                                & set(
-                                    re.findall(
-                                        r"[а-яёa-z0-9]{4,}",
-                                        cast(str, item.inspected_excerpt).casefold(),
-                                    )
+                                if self._excerpt_supports_claim(
+                                    claim_text, cast(str, item.inspected_excerpt)
                                 )
                             ),
                             None,
@@ -1579,7 +1663,10 @@ class AutoBookFinalizer:
                                     source_id=source.source_id,
                                     relationship="SUPPORTS",
                                     pointer=cast(str, source.inspected_pointer),
-                                    note="Auto Book exact inspected-source match",
+                                    note=(
+                                        "Auto Book deterministic exact-value/polarity support check "
+                                        "against the inspected source excerpt"
+                                    ),
                                     strength="MODERATE",
                                     actor=f"system:auto-book-research:{state.run_id}",
                                 ),

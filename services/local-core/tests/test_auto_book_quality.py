@@ -88,7 +88,33 @@ def test_evidence_becomes_blocking_after_semantic_revision() -> None:
         reviewer_identity="critic/independent",
     )
     assert stale.status == "REWORK"
-    assert any(item.code == "STALE_CLAIM_EVIDENCE" for item in stale.findings)
+    assert any(item.code == "UNREGISTERED_MATERIAL_CLAIM" for item in stale.findings)
+
+
+def test_material_number_change_never_reuses_old_claim_identity() -> None:
+    old_claim = "Конверсия составляет 20 процентов."
+    changed = master(["Конверсия составляет 80 процентов."])
+    report = AutoBookQualityEngine().review(
+        changed,
+        registered_claims={old_claim: True},
+        writer_identity="writer/openai",
+        reviewer_identity="critic/independent",
+    )
+    assert report.status == "REWORK"
+    assert any(item.code == "UNREGISTERED_MATERIAL_CLAIM" for item in report.findings)
+
+
+def test_negation_change_never_reuses_old_claim_identity() -> None:
+    old_claim = "Реклама увеличивает продажи на 20 процентов."
+    changed = master(["Реклама не увеличивает продажи на 20 процентов."])
+    report = AutoBookQualityEngine().review(
+        changed,
+        registered_claims={old_claim: True},
+        writer_identity="writer/openai",
+        reviewer_identity="critic/independent",
+    )
+    assert report.status == "REWORK"
+    assert any(item.code == "UNREGISTERED_MATERIAL_CLAIM" for item in report.findings)
 
 
 def test_distant_repeat_and_quantified_contradiction_are_whole_book_findings() -> None:

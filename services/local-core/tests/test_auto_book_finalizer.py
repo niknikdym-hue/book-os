@@ -223,6 +223,34 @@ def ready_book(tmp_path: Path) -> str:
     return project.book_id
 
 
+def test_inspected_excerpt_support_is_not_topic_overlap() -> None:
+    supports = AutoBookFinalizer._excerpt_supports_claim
+    claim = "Реклама увеличивает продажи на 20 процентов."
+    assert supports(
+        claim,
+        "Исследование показало: реклама увеличивает продажи на 20 процентов в этой выборке.",
+    )
+    assert not supports(
+        claim,
+        "Исследование показало: реклама не увеличивает продажи на 20 процентов в этой выборке.",
+    )
+    assert not supports(
+        claim,
+        "Исследование показало: реклама увеличивает продажи на 80 процентов в этой выборке.",
+    )
+    assert not supports(
+        claim,
+        "Исследование обсуждает рекламу и продажи, но не подтверждает указанную величину.",
+    )
+
+
+def test_inspected_excerpt_cannot_upgrade_association_to_causation() -> None:
+    assert not AutoBookFinalizer._excerpt_supports_claim(
+        "Реклама увеличивает продажи на 20 процентов.",
+        "Реклама ассоциирована с продажами на уровне 20 процентов в исследованной группе.",
+    )
+
+
 def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> None:
     book_id = ready_book(tmp_path)
     adapter = PublishingAdapter()
