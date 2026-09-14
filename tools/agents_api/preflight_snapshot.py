@@ -23,13 +23,15 @@ SENSITIVE_PATH_PATTERNS = (
     re.compile(r"(^|/)(?:id_rsa|id_ed25519)$"),
     re.compile(r"\.(?:pem|p12|pfx|key|mobileprovision)$", re.IGNORECASE),
 )
-SECRET_CONTENT_PATTERN = re.compile(
-    r"(?:sk-proj-[A-Za-z0-9_\-]{16,}|"
+# This expression is intentionally POSIX ERE compatible because it is passed
+# directly to `git grep -E`. Avoid Python-only constructs such as `(?:...)`.
+SECRET_CONTENT_ERE = (
+    r"(sk-proj-[A-Za-z0-9_-]{16,}|"
     r"github_pat_[A-Za-z0-9_]{20,}|"
     r"gh[pousr]_[A-Za-z0-9]{20,}|"
     r"xox[baprs]-[A-Za-z0-9-]{20,}|"
     r"AKIA[0-9A-Z]{16}|"
-    r"AIza[0-9A-Za-z_\-]{30,}|"
+    r"AIza[0-9A-Za-z_-]{30,}|"
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----)"
 )
 
@@ -70,7 +72,7 @@ def _secret_matches(repo: Path, sha: str) -> list[str]:
             "-I",
             "-n",
             "-E",
-            SECRET_CONTENT_PATTERN.pattern,
+            SECRET_CONTENT_ERE,
             sha,
             "--",
             ".",
