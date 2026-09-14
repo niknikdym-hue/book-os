@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from alembic import command
+import pytest
 from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import IntegrityError
 
 from book_os_core.authority import AuthorityService
 from book_os_core.backup import create_backup, restore_backup
@@ -112,3 +114,113 @@ def test_0024_migration_separates_series_origin_from_lifecycle(tmp_path: Path) -
         ("BOOK_OS", "CURRENT_REWRITTEN", "COMPLETED", 0),
         ("PLANNED", "NEW", "WRITING", 0),
     ]
+
+
+def test_0027_preserves_human_vs_delegated_master_history_and_append_only_guard(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "master-0026.sqlite"
+    command.upgrade(alembic_config(database_path), "0026")
+    engine = create_engine(f"sqlite:///{database_path}")
+    now = "2026-09-14T00:00:00Z"
+    book_id = "L" * 26
+    contract_entity = "E" * 26
+    architecture_entity = "F" * 26
+    contract_revision = "R" * 26
+    architecture_revision = "S" * 26
+    contract_hash = "1" * 64
+    architecture_hash = "2" * 64
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO book_projects(book_id,working_title,mode,domain,primary_subtype,"
+                "profile_version,workflow_stage,created_at,updated_at) VALUES "
+                "(:book,'Migration fixture','BOOK_FROM_ZERO','BUSINESS_NONFICTION','Strategy',"
+                "'0.1','FINAL_REVIEW',:created,:updated)"
+            ),
+            {"book": book_id, "created": now, "updated": now},
+        )
+        for provenance_id, entity_id, revision_id, revision_hash, entity_type in (
+            ("P" * 26, contract_entity, contract_revision, contract_hash, "book.contract"),
+            ("Q" * 26, architecture_entity, architecture_revision, architecture_hash, "book.architecture"),
+        ):
+            connection.execute(
+                text(
+                    "INSERT INTO provenance_records(provenance_id,origin,actor,created_at) "
+                    "VALUES (:provenance,'HUMAN_WRITTEN','owner',:created)"
+                ),
+                {"provenance": provenance_id, "created": now},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO authority_entities(entity_id,entity_type,created_at) "
+                    "VALUES (:entity,:entity_type,:created)"
+                ),
+                {"entity": entity_id, "entity_type": entity_type, "created": now},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO revisions(revision_id,entity_id,entity_type,schema_name,"
+                    "schema_version,content_json,content_hash,provenance_id,created_at) VALUES "
+                    "(:revision,:entity,:entity_type,:entity_type,'1','{}',:hash,:provenance,:created)"
+                ),
+                {
+                    "revision": revision_id,
+                    "entity": entity_id,
+                    "entity_type": entity_type,
+                    "hash": revision_hash,
+                    "provenance": provenance_id,
+                    "created": now,
+                },
+            )
+        for master_id, manifest_hash, actor in (
+            ("A" * 64, "3" * 64, "OWNER Auto Book 01JLEGACYRUN00000000000000"),
+            ("B" * 64, "4" * 64, "Елена Дым"),
+        ):
+            connection.execute(
+                text(
+                    "INSERT INTO literary_masters(master_id,book_id,manifest_version,manifest_json,"
+                    "manifest_hash,book_title,book_contract_revision_id,book_contract_revision_hash,"
+                    "architecture_revision_id,architecture_revision_hash,ordered_manifest_json,"
+                    "canonical_content_hash,release_gate_json,human_actor,created_at,status) VALUES "
+                    "(:master,:book,'literary-master.v1','{}',:manifest,'Migration fixture',"
+                    ":contract_revision,:contract_hash,:architecture_revision,:architecture_hash,"
+                    "'[]',:canonical,'{}',:actor,:created,'LOCKED')"
+                ),
+                {
+                    "master": master_id,
+                    "book": book_id,
+                    "manifest": manifest_hash,
+                    "contract_revision": contract_revision,
+                    "contract_hash": contract_hash,
+                    "architecture_revision": architecture_revision,
+                    "architecture_hash": architecture_hash,
+                    "canonical": "5" * 64 if master_id.startswith("A") else "6" * 64,
+                    "actor": actor,
+                    "created": now,
+                },
+            )
+    engine.dispose()
+
+    command.upgrade(alembic_config(database_path), "0027")
+    upgraded = create_engine(f"sqlite:///{database_path}")
+    with upgraded.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT human_actor,acceptance_actor_kind FROM literary_masters "
+                "ORDER BY human_actor"
+            )
+        ).all()
+    assert rows == [
+        ("OWNER Auto Book 01JLEGACYRUN00000000000000", "DELEGATED"),
+        ("Елена Дым", "HUMAN"),
+    ]
+    with pytest.raises(IntegrityError, match="append-only"):
+        with upgraded.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE literary_masters SET book_title='forbidden' WHERE master_id=:master"
+                ),
+                {"master": "A" * 64},
+            )
+    upgraded.dispose()
