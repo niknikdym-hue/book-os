@@ -18,7 +18,7 @@ This lane is not part of the book-writing ModelGateway. It is a separate develop
   - `api.agents.write`
   - `api.responses.write`
 - Do not grant Files, Vaults, Assistants, fine-tuning, admin, or unrelated API permissions unless a later reviewed task proves they are required.
-- Configure a project spend limit and model/rate limits before authorizing non-smoke development work.
+- Configure a project spend limit and model/rate limits before authorizing paid development work.
 - Prefer an expiring key and rotate/revoke it independently of production BOOK OS credentials.
 
 ## Phase 1 security architecture — mandatory default
@@ -97,21 +97,32 @@ The following actions always require explicit Owner/Central Brain authorization:
 8. deployment, notarization, signing, release, or replacement of the installed application;
 9. production book/model runs as part of engineering work.
 
-## Model policy
+## Model and reasoning policy
 
-Use a coding-capable model selected for the engineering task. Model choice does not override cost gates, sandbox restrictions, branch restrictions, or authority rules.
+The engineering runner defaults to `gpt-5.6-sol`.
 
-A smoke test should use the minimum work necessary to prove the transport and sandbox. Do not use a production manuscript as smoke input.
+Reasoning defaults to `auto`. Auto is selected by a small deterministic local policy and must make zero additional model/API calls merely to choose effort:
+
+- Medium for ordinary engineering work and focused fixes;
+- High only for genuinely complex cross-module, architecture, migration, recovery, concurrency or comparable system logic;
+- Extra High only for a concrete severe/frontier blocker where High is plausibly insufficient, not as a precautionary default.
+
+An explicit Owner `medium | high | xhigh` selection always overrides Auto. The requested mode and resolved effort are recorded in execution metadata. Model/reasoning choice never overrides cost gates, sandbox restrictions, branch restrictions, authority rules or the no-merge rule.
+
+Subagents remain disabled.
 
 ## Cost policy
 
-Before the first real engineering run:
+Before a paid engineering run:
 
 - set a dedicated project spend limit;
-- keep the first smoke test extremely small;
-- log session id, model, usage and task identity;
+- keep smoke/proof tasks extremely small;
+- use the least expensive sufficient reasoning level;
+- log session id, model, requested reasoning mode, resolved effort, usage and task identity;
 - terminate/delete the sandbox after the test;
 - do not infer that a completed turn means all shell/test actions succeeded — verify artifacts and reported tool outcomes.
+
+A code/documentation correction to this lane does not require a paid smoke. API-free compile/preflight/safety CI is the correct acceptance path unless the Owner separately authorizes a live run.
 
 ## Artifact acceptance
 
