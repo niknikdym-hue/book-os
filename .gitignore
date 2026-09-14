@@ -1,5 +1,6 @@
 .DS_Store
 .venv/
+.venv-agents-api/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -15,3 +16,4 @@ apps/desktop/src-tauri/gen/
 .env
 .env.*
 !.env.example
+agents-api-output/
