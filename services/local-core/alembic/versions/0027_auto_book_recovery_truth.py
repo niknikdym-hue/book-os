@@ -196,4 +196,4 @@ def downgrade() -> None:
         "FROM auto_book_change_requests_v2"
     )
     op.drop_table("auto_book_change_requests_v2")
-    op.execute("DELETE FROM schema_metadata WHERE version='0027')")
+    op.execute("DELETE FROM schema_metadata WHERE version='0027'")
