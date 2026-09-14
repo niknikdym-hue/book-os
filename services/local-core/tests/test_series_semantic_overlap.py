@@ -175,9 +175,7 @@ def test_reworded_case_and_renamed_tool_are_blocked() -> None:
     )
     assert {"EXAMPLE", "TOOL"} <= _dimensions(findings)
     assert all(
-        item.severity == "BLOCKING"
-        for item in findings
-        if item.dimension in {"EXAMPLE", "TOOL"}
+        item.severity == "BLOCKING" for item in findings if item.dimension in {"EXAMPLE", "TOOL"}
     )
 
 
@@ -357,8 +355,7 @@ def test_semantic_architecture_finding_is_persisted_and_blocks_map_approval(tmp_
         item
         for item in result.findings
         if item["dimension"] == "ARCHITECTURE"
-        and item["evidence"].get("comparison_basis")
-        == "DOMAIN_NEUTRALIZED_CURRENT_ARCHITECTURE"
+        and item["evidence"].get("comparison_basis") == "DOMAIN_NEUTRALIZED_CURRENT_ARCHITECTURE"
     ]
     assert result.status == "BLOCKING"
     assert len(semantic) == 1
