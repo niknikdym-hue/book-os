@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/t05-zero-cost-apply.yml'
       - 'tools/agents_api/apply_t05_series_uniqueness.py'
+      - 'tools/agents_api/apply_t05b_universal_series.py'
 
 permissions:
   contents: write
@@ -13,22 +14,22 @@ permissions:
 jobs:
   verify-and-apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Preserve T05 patcher
-        run: cp tools/agents_api/apply_t05_series_uniqueness.py /tmp/apply_t05.py
+      - name: Preserve T05b patcher
+        run: cp tools/agents_api/apply_t05b_universal_series.py /tmp/apply_t05b.py
       - name: Checkout exact product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
           git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
-          test "$(git rev-parse HEAD)" = "6b1c0f979286f348f64ebfa22a3db3d7a8f0a50a"
-      - name: Apply T05 F08 hardening
+          test "$(git rev-parse HEAD)" = "98c0eaf51a4b96c10e0c2e20a3d8a6c2d49a230c"
+      - name: Apply T05b F08 universal hardening
         run: |
-          python /tmp/apply_t05.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t05b.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install dependencies
         working-directory: services/local-core
@@ -36,7 +37,11 @@ jobs:
       - name: Format/Ruff/Mypy
         working-directory: services/local-core
         run: |
-          ruff format src/book_os_core/series_similarity.py tests/test_series_semantic_overlap.py
+          ruff format \
+            src/book_os_core/series_similarity.py \
+            src/book_os_core/series_workspace.py \
+            src/book_os_core/series_workspace_base.py \
+            tests/test_series_semantic_overlap.py
           ruff check .
           mypy src
       - name: Targeted T05 regressions
@@ -57,6 +62,10 @@ jobs:
           git diff --check
           git config user.name 'BOOK OS Central Brain'
           git config user.email 'central-brain@invalid'
-          git add services/local-core/src/book_os_core/series_similarity.py services/local-core/tests/test_series_semantic_overlap.py
-          git commit -m 'Harden series uniqueness across reordered architectures'
+          git add \
+            services/local-core/src/book_os_core/series_similarity.py \
+            services/local-core/src/book_os_core/series_workspace.py \
+            services/local-core/src/book_os_core/series_workspace_base.py \
+            services/local-core/tests/test_series_semantic_overlap.py
+          git commit -m 'Generalize series uniqueness and human exception gates'
           git push origin HEAD:codex/auto-book-complete-cycle-20260913
