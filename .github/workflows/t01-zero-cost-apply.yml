@@ -8,6 +8,7 @@ on:
       - '.github/workflows/t01-zero-cost-apply.yml'
       - 'tools/agents_api/t01_line_*'
       - 'tools/agents_api/apply_t01_postprocess.py'
+      - 'tools/agents_api/apply_t01_fixture_fix.py'
 
 permissions:
   contents: write
@@ -26,6 +27,7 @@ jobs:
         run: |
           cat tools/agents_api/t01_line_* > /tmp/book-os-t01-agent.patch
           cp tools/agents_api/apply_t01_postprocess.py /tmp/apply_t01_postprocess.py
+          cp tools/agents_api/apply_t01_fixture_fix.py /tmp/apply_t01_fixture_fix.py
       - name: Checkout exact product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
@@ -39,6 +41,7 @@ jobs:
           git apply --check /tmp/book-os-t01-agent.patch
           git apply /tmp/book-os-t01-agent.patch
           python /tmp/apply_t01_postprocess.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t01_fixture_fix.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install Local Core test dependencies
         working-directory: services/local-core
@@ -52,6 +55,9 @@ jobs:
       - name: Mypy
         working-directory: services/local-core
         run: mypy src
+      - name: Targeted T01 regression tests
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_quality.py tests/test_auto_book_finalizer.py tests/test_model_gateway.py
       - name: Full Local Core pytest
         working-directory: services/local-core
         run: pytest
