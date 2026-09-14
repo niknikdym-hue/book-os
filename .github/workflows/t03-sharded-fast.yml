@@ -1,0 +1,56 @@
+name: T03 Sharded Fast
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t03-sharded-fast.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve T03 patcher
+        run: cp tools/agents_api/apply_t03_change_correction.py /tmp/apply_t03.py
+      - name: Checkout and patch exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B product origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "36460b80ca2326f619ad5120465b11b46112e6f6"
+          python /tmp/apply_t03.py "$GITHUB_WORKSPACE"
+      - name: Install dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Run shard with hard timeout
+        working-directory: services/local-core
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python - <<'PY' > /tmp/files.txt
+          from pathlib import Path
+          import os
+          files = sorted(Path('tests').glob('test_*.py'))
+          shard = int(os.environ['SHARD'])
+          for i, path in enumerate(files):
+              if i % 8 == shard:
+                  print(path)
+          PY
+          echo "SHARD=$SHARD"
+          cat /tmp/files.txt
+          mapfile -t files < /tmp/files.txt
+          timeout 240s python -m pytest -q "${files[@]}"
