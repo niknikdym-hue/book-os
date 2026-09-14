@@ -96,6 +96,59 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
     _SERIES_REVIEW_FILE = "series-review-pending.json"
     _SEMANTIC_THESIS_BLOCK_SCORE = 0.70
 
+    def _map_hash(self, series_profile_id: str, books: list[SeriesBookView]) -> str:
+        """Hash only material series-comparison inputs, not workflow bookkeeping.
+
+        A difference map must become stale when a Series Bible, Book Passport, current
+        architecture, imported source, or archive inclusion changes. It must not become stale
+        merely because an otherwise identical book advances from WRITING to EDITING/FINAL_REVIEW
+        or receives a new `updated_at` timestamp.
+        """
+        profile = self.profiles.get_profile(series_profile_id)
+        material = {
+            "profile_hash": profile.content_hash,
+            "books": [
+                {
+                    "book_id": book.book_id,
+                    "title": book.title,
+                    "ordinal": book.ordinal,
+                    "unique_idea": book.unique_idea,
+                    "reader_problem": book.reader_problem,
+                    "reader_result": book.reader_result,
+                    "unique_mechanism": book.unique_mechanism,
+                    "excluded_topics": book.excluded_topics,
+                    "source_kind": book.source_kind,
+                    "origin_kind": book.origin_kind,
+                    "legacy_content_allowed": book.legacy_content_allowed,
+                    "passport_hash": book.passport_hash,
+                    "archived": book.lifecycle == "ARCHIVED",
+                }
+                for book in books
+            ],
+            "architectures": {
+                book.book_id: self._architecture_material(book.book_id) for book in books
+            },
+            "sources": {
+                book.book_id: sorted(
+                    row["content_hash"]
+                    for row in (
+                        []
+                        if book.origin_kind == "LEGACY_TITLE_ONLY"
+                        else self._source_rows(book.book_id)
+                    )
+                )
+                for book in books
+            },
+        }
+        return hashlib.sha256(
+            json.dumps(
+                material,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+
     def _review_path(self) -> Path:
         return self.data_dir / self._SERIES_REVIEW_FILE
 
@@ -648,9 +701,8 @@ class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-re
                         )
                 finally:
                     engine.dispose()
-                # Map hashes include the book read model. Keep the returned read model byte-for-byte
-                # aligned with the just-persisted lifecycle timestamp so a new map is not stale on
-                # its first reload.
+                # Lifecycle remains visible in the Series UI, but map freshness is based only on
+                # semantic comparison inputs. Advancing a workflow stage must not invalidate a map.
                 book = book.model_copy(
                     update={"status": status, "lifecycle": lifecycle, "updated_at": now}
                 )
