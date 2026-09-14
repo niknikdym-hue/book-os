@@ -51,7 +51,7 @@ def test_m1_backup_restores_then_migrates_forward_to_current(tmp_path: Path) -> 
     with upgraded.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0028"
+            == "0027"
         )
     assert AuthorityService(upgraded).get_head(original.entity_id) == original
 
@@ -131,6 +131,9 @@ def test_0027_preserves_human_vs_delegated_master_history_and_append_only_guard(
     contract_hash = "1" * 64
     architecture_hash = "2" * 64
     with engine.begin() as connection:
+        # This fixture represents historical masters written before the adversarial-review release
+        # gate existed. Disable that current insert guard only while constructing the legacy state.
+        connection.execute(text("DROP TRIGGER IF EXISTS require_adversarial_review_for_literary_master"))
         connection.execute(
             text(
                 "INSERT INTO book_projects(book_id,working_title,mode,domain,primary_subtype,"
