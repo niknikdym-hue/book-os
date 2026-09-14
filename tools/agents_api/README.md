@@ -20,7 +20,7 @@ Create a dedicated restricted application API key with only:
 
 Do not use the BOOK OS production OpenAI key.
 
-Configure the development project's spend limit, model permissions and rate limits before any non-smoke task.
+Configure the development project's spend limit, model permissions and rate limits before any non-smoke task. Prefer an expiring key so this engineering credential can be rotated/revoked independently of production BOOK OS.
 
 ## API-free preflight
 
@@ -44,26 +44,53 @@ python3 -m venv .venv-agents-api
 .venv-agents-api/bin/pip install -r tools/agents_api/requirements.txt
 ```
 
-The runner deliberately uses `BOOK_OS_AGENTS_API_KEY`, not the standard `OPENAI_API_KEY`, to reduce the chance of accidentally reusing the production application credential.
+`openai==3.13.0` is pinned for this beta integration helper so a later SDK change cannot silently change the runner contract.
 
-Load the dedicated development key into the local process through a secure secret mechanism. Never commit it to the repository and never include it in a prompt.
+## macOS Keychain — required local secret storage
+
+Do not put the development key in `.env`, shell history, task files, prompts, GitHub Actions, or BOOK OS production Keychain items.
+
+After creating the restricted key in `BOOK-OS-DEVELOPMENT`, store it with the local helper:
+
+```bash
+.venv-agents-api/bin/python tools/agents_api/keychain_runner.py store
+```
+
+The key is entered twice with hidden input and stored as a separate macOS Generic Password:
+
+- service: `book-os.agents-development-api-key`
+- account: `book-os-development`
+
+Check only whether it exists, without printing the secret:
+
+```bash
+.venv-agents-api/bin/python tools/agents_api/keychain_runner.py status
+```
+
+The child process receives the key only as `BOOK_OS_AGENTS_API_KEY`. The launcher removes `OPENAI_API_KEY` from that child environment so the development process cannot accidentally inherit the BOOK OS production OpenAI credential.
+
+Deleting the local Keychain copy does not revoke the Platform key; revoke/expire the key in the `BOOK-OS-DEVELOPMENT` Platform project when the credential itself must be killed.
 
 ## Model policy
 
 Pass the model explicitly on every controlled run. For the initial engineering smoke, use the current coding-optimized `gpt-5.3-codex`; changing the model is a reviewed cost/quality decision and must not reuse BOOK OS production routing implicitly.
 
+Subagents are disabled by default. The smoke starts with `--reasoning low`; increasing reasoning is a deliberate cost/quality decision.
+
 ## Smoke test
 
-The first authorized task should be read-only and tiny, for example:
+The first authorized task should be read-only and tiny. Run it through the Keychain launcher so the raw key never appears on the command line:
 
 ```bash
-BOOK_OS_AGENTS_API_KEY='***' \
-.venv-agents-api/bin/python tools/agents_api/safe_development_agent.py \
+.venv-agents-api/bin/python tools/agents_api/keychain_runner.py run -- \
   --ref main \
   --model gpt-5.3-codex \
+  --reasoning low \
   --task 'Inspect README.md and report the repository components. Make no code changes.' \
   --out-dir /tmp/book-os-agents-smoke
 ```
+
+If your shell/argparse combination leaves the literal `--` as the first forwarded argument, omit that separator and pass the runner arguments directly after `run`.
 
 The agent sandbox has network access disabled and receives only a compressed `git archive` of the explicit ref.
 
@@ -82,10 +109,10 @@ For a no-change smoke test, `book-os.patch` should be empty.
 Use a task file for substantial work and pass an explicitly reviewed model:
 
 ```bash
-BOOK_OS_AGENTS_API_KEY='***' \
-.venv-agents-api/bin/python tools/agents_api/safe_development_agent.py \
+.venv-agents-api/bin/python tools/agents_api/keychain_runner.py run -- \
   --ref <approved-sha-or-branch> \
   --model gpt-5.3-codex \
+  --reasoning <approved-level> \
   --task-file /path/to/task.md \
   --out-dir /tmp/book-os-agent-result
 ```
