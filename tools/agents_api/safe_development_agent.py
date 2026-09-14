@@ -28,14 +28,16 @@ import re
 import subprocess
 import sys
 import tempfile
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from openai import OpenAI
 
 
 INLINE_LIMIT_BYTES = 5 * 1024 * 1024
 MAX_SECRET_BYTES = 16_384
-DEFAULT_MODEL = "gpt-5.3-codex"
+DEFAULT_MODEL = "gpt-5.6-sol"
+ReasoningEffort = Literal["medium", "high", "xhigh"]
+ReasoningMode = Literal["auto", "medium", "high", "xhigh"]
 SENSITIVE_PATH_PATTERNS = (
     re.compile(r"(^|/)\.env(?:\.|$)"),
     re.compile(r"(^|/)(?:id_rsa|id_ed25519)$"),
@@ -52,6 +54,31 @@ SECRET_CONTENT_ERE = (
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----)"
 )
 SECRET_OUTPUT_PATTERN = re.compile(SECRET_CONTENT_ERE)
+
+# Cost-conservative local routing. This must never make a model/API call merely to select effort.
+_HIGH_SIGNALS = (
+    "cross-module",
+    "cross module",
+    "architecture",
+    "schema migration",
+    "migration",
+    "recovery",
+    "concurrency",
+    "security",
+    "transaction",
+    "state machine",
+    "multiple subsystems",
+    "large refactor",
+)
+_XHIGH_SIGNALS = (
+    "unresolved after high",
+    "persists after high",
+    "data corruption",
+    "security vulnerability",
+    "race condition causing corruption",
+    "frontier blocker",
+    "critical deadlock",
+)
 
 
 def _git(repo: Path, *args: str, text: bool = True) -> subprocess.CompletedProcess[str]:
@@ -146,6 +173,28 @@ def _load_task(args: argparse.Namespace) -> str:
     if args.task:
         return args.task.strip()
     raise SystemExit("A task is required via --task or --task-file")
+
+
+def _auto_reasoning(task: str) -> ReasoningEffort:
+    """Choose the least expensive sufficient effort using only local deterministic signals."""
+    normalized = " ".join(task.casefold().split())
+    high_hits = sum(signal in normalized for signal in _HIGH_SIGNALS)
+    xhigh_hits = sum(signal in normalized for signal in _XHIGH_SIGNALS)
+
+    # Extra High is intentionally rare: one scary word is never enough. It requires either
+    # multiple concrete frontier/severity signals or a frontier signal plus broad complexity.
+    if xhigh_hits >= 2 or (xhigh_hits >= 1 and high_hits >= 2):
+        return "xhigh"
+    if high_hits >= 2 or (high_hits >= 1 and len(normalized) >= 3000):
+        return "high"
+    return "medium"
+
+
+def _resolve_reasoning(task: str, mode: ReasoningMode) -> ReasoningEffort:
+    # Explicit Owner selection always overrides Auto.
+    if mode != "auto":
+        return mode
+    return _auto_reasoning(task)
 
 
 def _development_api_key() -> str:
@@ -280,9 +329,12 @@ def run() -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
         "--reasoning",
-        choices=("low", "medium", "high", "xhigh"),
-        default="low",
-        help="Explicit bounded reasoning effort for the development agent",
+        choices=("auto", "medium", "high", "xhigh"),
+        default="auto",
+        help=(
+            "Reasoning policy: auto chooses locally without an API call; explicit "
+            "medium/high/xhigh is the Owner override"
+        ),
     )
     parser.add_argument("--out-dir", type=Path, default=Path("agents-api-output"))
     parser.add_argument("--keep-session", action="store_true")
@@ -294,6 +346,8 @@ def run() -> int:
 
     api_key = _development_api_key()
     task = _load_task(args)
+    reasoning_mode = args.reasoning
+    reasoning_effort = _resolve_reasoning(task, reasoning_mode)
     sha = _resolve_snapshot(repo, args.ref)
     _guard_snapshot(repo, sha)
     archive = _build_archive(repo, sha)
@@ -340,7 +394,7 @@ def run() -> int:
                     "model": args.model,
                     "instructions": _agent_instructions(sha),
                     "multi_agent": {"enabled": False},
-                    "reasoning": {"effort": args.reasoning, "summary": "concise"},
+                    "reasoning": {"effort": reasoning_effort, "summary": "concise"},
                 },
                 environment=environment,
                 input=task,
@@ -348,6 +402,8 @@ def run() -> int:
                     "purpose": "book-os-development",
                     "source_sha": sha,
                     "task_sha256": task_hash,
+                    "reasoning_mode": reasoning_mode,
+                    "reasoning_effort": reasoning_effort,
                 },
                 stream=True,
             ) as events, event_log.open("w", encoding="utf-8") as log:
@@ -381,7 +437,8 @@ def run() -> int:
                 "source_ref": args.ref,
                 "task_sha256": task_hash,
                 "model": args.model,
-                "reasoning_effort": args.reasoning,
+                "reasoning_mode": reasoning_mode,
+                "reasoning_effort": reasoning_effort,
                 "multi_agent_enabled": False,
                 "network_access": "disabled",
                 "github_credentials_in_sandbox": False,
