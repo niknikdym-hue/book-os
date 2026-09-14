@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import httpx
 from pydantic import BaseModel, Field
 
+from .audio_attention import accepted_attention_values
 from .auto_book import (
     AutoBookError,
     AutoBookGateError,
@@ -489,6 +490,10 @@ def build_auto_book_router(
             raise HTTPException(status_code=409, detail="Auto Book is not awaiting audio approval")
         try:
             existing_script = audio_scripts.get(book_id, current.audio_script_id)
+            accepted_values = accepted_attention_values(
+                existing_script,
+                payload.accepted_attention_codes,
+            )
             approved = (
                 existing_script
                 if existing_script.status == "APPROVED" and existing_script.ready_for_export
@@ -496,7 +501,7 @@ def build_auto_book_router(
                     book_id,
                     current.audio_script_id,
                     human_actor=payload.human_actor,
-                    accepted_attention_codes=payload.accepted_attention_codes,
+                    accepted_attention_codes=accepted_values,
                 )
             )
             result = finalizer.complete_audio_outputs(book_id, current, approved)
