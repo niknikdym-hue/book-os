@@ -1,0 +1,140 @@
+             master_hash=master.manifest_hash,
+             claim_coverage=coverage,
+             findings=findings,
++            finding_counts=counts,
+             independent_review=review,
+-            status="REWORK" if blocking else "PASS",
++            status="REWORK" if findings or effective_verdict != "PASS" else "PASS",
+             attempts_used=attempts_used,
+             max_attempts=max_attempts,
+         )
+ 
+     @staticmethod
+-    def may_complete(report: AutoQualityReport) -> bool:
++    def may_complete(
++        report: AutoQualityReport,
++        *,
++        current_master_hash: str | None = None,
++    ) -> bool:
+         if report.status != "PASS":
+             return False
+-        return not any(finding.severity == "BLOCKING" for finding in report.findings)
++        if current_master_hash is not None and report.master_hash != current_master_hash:
++            return False
++        if report.independent_review.master_hash != report.master_hash:
++            return False
++        if not report.independent_review.independent:
++            return False
++        if report.independent_review.verdict != "PASS":
++            return False
++        if report.attempts_used > report.max_attempts:
++            return False
++        return not report.findings
+diff --git a/services/local-core/src/book_os_core/model_gateway.py b/services/local-core/src/book_os_core/model_gateway.py
+index a37ea32..1754ff5 100644
+--- a/services/local-core/src/book_os_core/model_gateway.py
++++ b/services/local-core/src/book_os_core/model_gateway.py
+@@ -5,7 +5,7 @@ from typing import Any, Literal, Protocol
+ import json
+ 
+ import httpx
+-from pydantic import BaseModel, Field, ValidationError
++from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+ 
+ from .prompts import PromptTemplate
+ from .secrets import SecretStore
+@@ -102,17 +102,29 @@ class ChapterContractProposalOutput(BaseModel):
+ 
+ 
+ class JudgeFindingOutput(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
+     location: str = Field(min_length=1)
+     evidence: str = Field(min_length=1)
+     recommended_action: str = Field(min_length=1)
+ 
+ 
+ class BookBenchJudgeOutput(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
+     verdict: Literal["PASS", "ATTENTION", "BLOCKING"]
+-    findings: list[JudgeFindingOutput] = Field(default_factory=list)
++    findings: list[JudgeFindingOutput]
+     confidence: float = Field(ge=0, le=1)
+     rationale: str = Field(min_length=1)
+ 
++    @model_validator(mode="after")
++    def validate_verdict_findings(self) -> BookBenchJudgeOutput:
++        if self.verdict in {"ATTENTION", "BLOCKING"} and not self.findings:
++            raise ValueError(f"{self.verdict} verdict requires at least one finding")
++        if self.verdict == "PASS" and self.findings:
++            raise ValueError("PASS verdict cannot contain unresolved findings")
++        return self
++
+ 
+ class BookBenchPairwiseOutput(BaseModel):
+     preference: Literal["A", "B", "TIE"]
+@@ -297,16 +309,10 @@ class DeterministicFakeAdapter:
+             return ModelAdapterResult(
+                 provider_run_id="fake-judge-success",
+                 output={
+-                    "verdict": "ATTENTION",
+-                    "findings": [
+-                        {
+-                            "location": "candidate:1",
+-                            "evidence": "bounded synthetic signal",
+-                            "recommended_action": "Human review.",
+-                        }
+-                    ],
++                    "verdict": "PASS",
++                    "findings": [],
+                     "confidence": 0.75,
+-                    "rationale": "Deterministic fake judge fixture.",
++                    "rationale": "Deterministic fake judge found no unresolved findings.",
+                 },
+                 usage={"input_tokens": 40, "output_tokens": 20},
+             )
+diff --git a/services/local-core/tests/test_auto_book_finalizer.py b/services/local-core/tests/test_auto_book_finalizer.py
+index 341209f..1c5e91d 100644
+--- a/services/local-core/tests/test_auto_book_finalizer.py
++++ b/services/local-core/tests/test_auto_book_finalizer.py
+@@ -491,6 +491,17 @@ def test_final_candidate_requires_real_human_acceptance_before_master_lock(
+     candidate_view = finalizer.finalize(book_id, state, prepare_litres_docx=False)
+     assert candidate_view.awaiting_final_acceptance is True
+     assert candidate_view.master_id is None
++    stored_candidate = finalizer._final_candidate(book_id, state.run_id)
++    assert stored_candidate is not None
++    candidate_payload = stored_candidate["candidate"]
++    assert "findings_remaining" not in candidate_payload
++    quality_evidence = candidate_payload["quality_report"]
++    assert quality_evidence["master_hash"] == candidate_payload["snapshot_hash"]
++    assert quality_evidence["finding_counts"] == {"ATTENTION": 0, "BLOCKING": 0}
++    assert quality_evidence["independent_review"]["verdict"] == "PASS"
++    assert quality_evidence["independent_review"]["rationale"]
++    assert quality_evidence["independent_review"]["confidence"] == 0.75
++    assert quality_evidence["independent_review"]["reviewer_identity"]
+     engine = create_database(tmp_path / "projects" / book_id / "project.sqlite")
+     try:
+         with engine.connect() as connection:
+@@ -500,6 +511,14 @@ def test_final_candidate_requires_real_human_acceptance_before_master_lock(
+     finally:
+         engine.dispose()
+ 
++    with pytest.raises(Exception, match="actual human actor"):
++        finalizer.decide_final_candidate(
++            book_id,
++            state,
++            accept=True,
++            human_actor="SYSTEM:DELEGATED",
++            reason="System must not fabricate a human acceptance.",
++        )
+     accepted = finalizer.decide_final_candidate(
+         book_id,
+         state,
+diff --git a/services/local-core/tests/test_auto_book_quality.py b/services/local-core/tests/test_auto_book_quality.py
+index ecc0580..d26e127 100644
+--- a/services/local-core/tests/test_auto_book_quality.py
++++ b/services/local-core/tests/test_auto_book_quality.py
+@@ -1,7 +1,9 @@
+ import pytest
++from pydantic import ValidationError
