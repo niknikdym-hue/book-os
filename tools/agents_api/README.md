@@ -56,7 +56,7 @@ After creating the restricted key in `BOOK-OS-DEVELOPMENT`, store it with the lo
 .venv-agents-api/bin/python tools/agents_api/keychain_runner.py store
 ```
 
-The key is entered twice with hidden input and stored as a separate macOS Generic Password:
+macOS Keychain itself prompts for the password because `security ... -w` is invoked without a password argument. The raw key therefore is not placed in the launcher command line. It is stored as a separate Generic Password:
 
 - service: `book-os.agents-development-api-key`
 - account: `book-os-development`
@@ -67,7 +67,7 @@ Check only whether it exists, without printing the secret:
 .venv-agents-api/bin/python tools/agents_api/keychain_runner.py status
 ```
 
-The child process receives the key only as `BOOK_OS_AGENTS_API_KEY`. The launcher removes `OPENAI_API_KEY` from that child environment so the development process cannot accidentally inherit the BOOK OS production OpenAI credential.
+For an agent run, the launcher removes both `OPENAI_API_KEY` and any plaintext `BOOK_OS_AGENTS_API_KEY` from the child environment. It passes the dedicated development key through a one-shot inherited file descriptor; the runner reads and closes that descriptor before creating the OpenAI client. The raw key is not put in the child command line or environment and is never included in the sandbox configuration.
 
 Deleting the local Keychain copy does not revoke the Platform key; revoke/expire the key in the `BOOK-OS-DEVELOPMENT` Platform project when the credential itself must be killed.
 
@@ -90,9 +90,7 @@ The first authorized task should be read-only and tiny. Run it through the Keych
   --out-dir /tmp/book-os-agents-smoke
 ```
 
-If your shell/argparse combination leaves the literal `--` as the first forwarded argument, omit that separator and pass the runner arguments directly after `run`.
-
-The agent sandbox has network access disabled and receives only a compressed `git archive` of the explicit ref.
+The launcher strips the forwarding separator automatically. The agent sandbox has network access disabled and receives only a compressed `git archive` of the explicit ref.
 
 Expected local outputs:
 
