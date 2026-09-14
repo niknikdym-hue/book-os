@@ -1,0 +1,58 @@
+name: Agents API Safety
+
+on:
+  pull_request:
+    paths:
+      - 'tools/agents_api/**'
+      - 'docs/agents-api/**'
+      - '.github/workflows/agents-api-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile engineering helpers without importing dependencies
+        run: |
+          python -m py_compile \
+            tools/agents_api/preflight_snapshot.py \
+            tools/agents_api/safe_development_agent.py
+      - name: Verify fail-closed source invariants
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('tools/agents_api/safe_development_agent.py').read_text(encoding='utf-8')
+          required = {
+              'dedicated key variable': 'BOOK_OS_AGENTS_API_KEY',
+              'production-key alias stop': 'os.environ.get("OPENAI_API_KEY") == api_key',
+              'hosted sandbox': '"type": "openai_hosted"',
+              'network disabled': '"network": {"access": "disabled"}',
+              'snapshot archive': 'git",\n                "archive"',
+              'artifact patch': '/workspace/outputs/book-os.patch',
+          }
+          missing = [label for label, needle in required.items() if needle not in source]
+          if missing:
+              raise SystemExit('Missing safety invariants: ' + ', '.join(missing))
+
+          forbidden = {
+              'GitHub token lookup': 'os.environ.get("GITHUB_TOKEN")',
+              'GitHub PAT lookup': 'os.environ.get("GH_TOKEN")',
+              'BOOK OS data directory lookup': 'os.environ.get("BOOK_OS_DATA_DIR")',
+              'Keychain command': '/usr/bin/security',
+          }
+          found = [label for label, needle in forbidden.items() if needle in source]
+          if found:
+              raise SystemExit('Forbidden host access found: ' + ', '.join(found))
+          PY
+      - name: Run API-free exact-snapshot preflight
+        run: python tools/agents_api/preflight_snapshot.py --ref HEAD
