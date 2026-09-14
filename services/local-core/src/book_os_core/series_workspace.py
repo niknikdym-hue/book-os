@@ -15,7 +15,7 @@ from .series_workspace_base import (
 )
 
 
-class SeriesWorkspaceService(_BaseSeriesWorkspaceService):
+class SeriesWorkspaceService(_BaseSeriesWorkspaceService):  # type: ignore[no-redef]
     """Series workspace with a deterministic semantic/structural anti-clone layer.
 
     The base workspace owns persistence, rights, lifecycle, exports and exact-overlap checks.
