@@ -7,6 +7,7 @@ on:
       - '.github/workflows/t05-zero-cost-apply.yml'
       - 'tools/agents_api/apply_t05_series_uniqueness.py'
       - 'tools/agents_api/apply_t05b_universal_series.py'
+      - 'tools/agents_api/apply_t05c_red_regressions.py'
 
 permissions:
   contents: write
@@ -20,16 +21,19 @@ jobs:
         with: {fetch-depth: 0}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Preserve T05b patcher
-        run: cp tools/agents_api/apply_t05b_universal_series.py /tmp/apply_t05b.py
+      - name: Preserve T05 patchers
+        run: |
+          cp tools/agents_api/apply_t05b_universal_series.py /tmp/apply_t05b.py
+          cp tools/agents_api/apply_t05c_red_regressions.py /tmp/apply_t05c.py
       - name: Checkout exact product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
           git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
           test "$(git rev-parse HEAD)" = "98c0eaf51a4b96c10e0c2e20a3d8a6c2d49a230c"
-      - name: Apply T05b F08 universal hardening
+      - name: Apply T05 F08 universal hardening
         run: |
           python /tmp/apply_t05b.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t05c.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install dependencies
         working-directory: services/local-core
