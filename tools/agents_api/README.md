@@ -22,6 +22,18 @@ Do not use the BOOK OS production OpenAI key.
 
 Configure the development project's spend limit, model permissions and rate limits before any non-smoke task.
 
+## API-free preflight
+
+Before creating or using an Agents API session, validate the exact committed snapshot. This command uses only local Git and the Python standard library: it makes **zero network calls and zero model calls**.
+
+```bash
+python3 tools/agents_api/preflight_snapshot.py --ref <approved-sha-or-branch>
+```
+
+It fails closed when the selected ref contains a tracked credential-bearing path, a high-risk credential pattern, or a compressed Git snapshot above the initial 5 MiB inline-file limit.
+
+A PASS from this preflight is required before the first smoke or any later engineering run.
+
 ## Local environment
 
 Use a separate virtual environment for the orchestration helper:
