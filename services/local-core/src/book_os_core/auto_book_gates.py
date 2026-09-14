@@ -17,6 +17,8 @@ class EvidenceCheck(BaseModel):
     gate: str
     status: GateStatus
     evidence: dict[str, Any] = Field(min_length=1)
+    evaluation_scope: Literal["STRUCTURAL_PREFLIGHT"] = "STRUCTURAL_PREFLIGHT"
+    semantic_quality_claimed: Literal[False] = False
 
 
 class EvidenceGateResult(BaseModel):
@@ -32,7 +34,13 @@ class EvidenceGateResult(BaseModel):
 
 
 class AutoBookEvidenceGates:
-    """Deterministic evidence gates; reaching a workflow stage is never evidence."""
+    """Deterministic structural preflight gates; reaching a stage is never quality evidence.
+
+    These checks validate completeness, distinct fields and cheap structural invariants only.
+    They deliberately do not claim literary, intellectual, market or semantic quality.  Those
+    properties are evaluated later against the exact whole-book snapshot by the independent
+    critic and human authority.
+    """
 
     _TOKEN = re.compile(r"[а-яёa-z0-9]{3,}", re.IGNORECASE)
     _GENERIC = {

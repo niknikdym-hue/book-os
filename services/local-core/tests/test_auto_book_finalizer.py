@@ -312,9 +312,19 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
     assert adapter.last_request.role == "EVALUATOR"
     assert adapter.last_request.task_type == "BOOKBENCH_JUDGE"
     assert adapter.last_request.task_payload["independent_context"] is True
-    exact_book = adapter.last_request.authoritative_context["complete_book"]
+    exact_context = adapter.last_request.authoritative_context
+    exact_book = exact_context["complete_book"]
     assert len(exact_book["chapters"]) == 2
-    assert adapter.last_request.authoritative_context["master_hash"]
+    assert exact_context["master_hash"]
+    assert exact_context["book_definition"]["central_promise"]
+    assert exact_context["architecture"]["parts"]
+    assert exact_context["whole_book_review_required"] is True
+    assert exact_context["structural_preflight_is_not_semantic_acceptance"] is True
+    coverage = exact_context["chapter_coverage_manifest"]
+    assert [item["chapter_id"] for item in coverage] == [
+        item["chapter_id"] for item in exact_book["chapters"]
+    ]
+    assert all(len(item["content_hash"]) == 64 for item in coverage)
     assert final.output_path is not None
     output = Path(final.output_path)
     assert output.is_file()

@@ -1767,6 +1767,29 @@ class AutoBookFinalizer:
             quality_risk="HIGH",
         )
         effort = manual_effort if manual_effort is not None else choice.reasoning_effort
+        project = self.projects.get_project(book_id)
+        book_definition = (
+            project.book_contract.content if project.book_contract is not None else None
+        )
+        architecture = project.architecture.content if project.architecture is not None else None
+        if book_definition is None or architecture is None:
+            raise AutoBookGateError(
+                "independent whole-book review requires the approved Book Definition and architecture"
+            )
+        chapter_coverage_manifest = [
+            {
+                "chapter_id": chapter.chapter_id,
+                "paragraph_count": len(chapter.paragraphs),
+                "content_hash": hashlib.sha256(
+                    json.dumps(
+                        chapter.model_dump(mode="json"),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest(),
+            }
+            for chapter in snapshot.chapters
+        ]
         request = ModelTaskRequest(
             task_id=hashlib.sha256(
                 f"{state.run_id}:critique:{snapshot.manifest_hash}".encode("utf-8")
@@ -1779,12 +1802,23 @@ class AutoBookFinalizer:
             prompt_version=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.version,
             prompt_hash=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1.prompt_hash,
             section_objective=(
-                "Independently review the complete exact pre-release snapshot; provide "
-                "location-specific evidence and a bounded correction action for every defect."
+                "Independently review the complete exact pre-release snapshot against the approved "
+                "Book Definition and architecture. Verify promise coverage, necessity and order of "
+                "chapters, long-range contradictions/repetition, terminology continuity, evidence "
+                "boundaries, introduction-to-conclusion integrity, and practical or explanatory "
+                "value appropriate to this nonfiction profile. Provide location-specific evidence "
+                "and a bounded correction action for every defect."
             ),
             authoritative_context={
                 "master_hash": snapshot.manifest_hash,
                 "complete_book": snapshot.model_dump(mode="json"),
+                "book_definition": book_definition,
+                "architecture": architecture,
+                "book_context": self._book_context(book_id),
+                "registered_claims": self._registered_claims(book_id),
+                "chapter_coverage_manifest": chapter_coverage_manifest,
+                "whole_book_review_required": True,
+                "structural_preflight_is_not_semantic_acceptance": True,
             },
             task_payload={
                 "auto_book_run_id": state.run_id,
