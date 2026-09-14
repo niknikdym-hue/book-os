@@ -26,34 +26,76 @@ jobs:
         run: |
           python -m py_compile \
             tools/agents_api/preflight_snapshot.py \
+            tools/agents_api/keychain_runner.py \
             tools/agents_api/safe_development_agent.py
       - name: Verify fail-closed source invariants
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          source = Path('tools/agents_api/safe_development_agent.py').read_text(encoding='utf-8')
-          required = {
-              'dedicated key variable': 'BOOK_OS_AGENTS_API_KEY',
-              'production-key alias stop': 'os.environ.get("OPENAI_API_KEY") == api_key',
+          runner = Path('tools/agents_api/safe_development_agent.py').read_text(encoding='utf-8')
+          keychain = Path('tools/agents_api/keychain_runner.py').read_text(encoding='utf-8')
+          required_runner = {
+              'dedicated FD credential transport': 'BOOK_OS_AGENTS_API_KEY_FD',
+              'production-key comparison': 'production == secret',
               'hosted sandbox': '"type": "openai_hosted"',
               'network disabled': '"network": {"access": "disabled"}',
               'compressed committed snapshot': '"--format=tar.gz"',
               'artifact patch': '/workspace/outputs/book-os.patch',
+              'subagents disabled': '"multi_agent": {"enabled": False',
+              'session cleanup': 'client.beta.agents.sessions.delete(session_id)',
           }
-          missing = [label for label, needle in required.items() if needle not in source]
+          missing = [label for label, needle in required_runner.items() if needle not in runner]
           if missing:
-              raise SystemExit('Missing safety invariants: ' + ', '.join(missing))
+              raise SystemExit('Missing runner safety invariants: ' + ', '.join(missing))
 
-          forbidden = {
+          forbidden_runner = {
               'GitHub token lookup': 'os.environ.get("GITHUB_TOKEN")',
               'GitHub PAT lookup': 'os.environ.get("GH_TOKEN")',
               'BOOK OS data directory lookup': 'os.environ.get("BOOK_OS_DATA_DIR")',
-              'Keychain command': '/usr/bin/security',
+              'Keychain host command': '/usr/bin/security',
           }
-          found = [label for label, needle in forbidden.items() if needle in source]
+          found = [label for label, needle in forbidden_runner.items() if needle in runner]
           if found:
-              raise SystemExit('Forbidden host access found: ' + ', '.join(found))
+              raise SystemExit('Forbidden runner host access found: ' + ', '.join(found))
+
+          required_keychain = {
+              'isolated Keychain service': 'book-os.agents-development-api-key',
+              'isolated Keychain account': 'book-os-development',
+              'strip production env': 'env.pop("OPENAI_API_KEY", None)',
+              'strip plaintext dev env': 'env.pop("BOOK_OS_AGENTS_API_KEY", None)',
+              'FD env only': 'env["BOOK_OS_AGENTS_API_KEY_FD"]',
+              'FD inheritance': 'pass_fds=(read_fd,)',
+              'interactive Keychain password prompt': '"-w",\n        ]',
+          }
+          missing = [label for label, needle in required_keychain.items() if needle not in keychain]
+          if missing:
+              raise SystemExit('Missing Keychain safety invariants: ' + ', '.join(missing))
+          if 'env["BOOK_OS_AGENTS_API_KEY"]' in keychain:
+              raise SystemExit('Keychain launcher must not place the raw key in child environment')
           PY
       - name: Run API-free exact-snapshot preflight
         run: python tools/agents_api/preflight_snapshot.py --ref HEAD
+      - name: Install pinned SDK for local contract inspection only
+        run: python -m pip install --disable-pip-version-check -r tools/agents_api/requirements.txt
+      - name: Verify Agents SDK resources without network/model calls
+        run: |
+          python - <<'PY'
+          import inspect
+          import openai
+          from openai import OpenAI
+
+          assert openai.__version__ == '3.13.0', openai.__version__
+          client = OpenAI(api_key='local-contract-check-not-a-real-key')
+          sessions = client.beta.agents.sessions
+          assert callable(sessions.create)
+          assert callable(sessions.delete)
+          assert callable(sessions.artifacts.list)
+          assert hasattr(sessions.artifacts, 'with_streaming_response')
+          create_params = inspect.signature(sessions.create).parameters
+          for required in ('agent', 'environment', 'input', 'metadata', 'stream'):
+              if required not in create_params:
+                  raise SystemExit(f'Agents SDK create() missing parameter: {required}')
+          client.close()
+          print('Agents SDK contract PASS; network_calls=0 model_calls=0')
+          PY
