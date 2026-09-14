@@ -367,3 +367,123 @@ def test_semantic_architecture_finding_is_persisted_and_blocks_map_approval(tmp_
     )
     with pytest.raises(SeriesWorkspaceGateError, match="blocking overlap"):
         service.approve_map(series_id, result.map_hash, "Смысловой клон нельзя утвердить")
+
+
+def test_added_or_reordered_chapter_does_not_disable_architecture_clone_detection() -> None:
+    left = _book(
+        "G" * 26,
+        idea="Календарь частной практики",
+        problem="Неровная загрузка",
+        result="Стабильный график",
+        mechanism="Планирование недели",
+    )
+    right = _book(
+        "H" * 26,
+        idea="Документы юридической практики",
+        problem="Потери документов",
+        result="Контролируемый документооборот",
+        mechanism="Регламент дела",
+    )
+    base = [
+        {
+            "purpose": "Диагностировать спрос на услуги психолога",
+            "new_contribution": "Карта запросов и критериев клиента",
+        },
+        {
+            "purpose": "Собрать доказательства доверия к психологу",
+            "new_contribution": "Матрица подтверждений для решения клиента",
+        },
+        {
+            "purpose": "Объяснить цену психологической услуги до покупки",
+            "new_contribution": "Схема риска стоимости и результата клиента",
+        },
+    ]
+    disguised = [
+        {
+            "purpose": "Объяснить стоимость юридической помощи до договора",
+            "new_contribution": "Модель риска цены и результата заказчика",
+        },
+        {
+            "purpose": "Служебная дополнительная глава про организацию практики",
+            "new_contribution": "Короткий организационный переход между решениями",
+        },
+        {
+            "purpose": "Выявить потребность в юридических услугах",
+            "new_contribution": "Схема запросов и критериев заказчика",
+        },
+        {
+            "purpose": "Укрепить доверие к юристу доказательствами",
+            "new_contribution": "Карта подтверждений перед выбором заказчика",
+        },
+    ]
+    findings = semantic_series_findings(
+        left,
+        right,
+        left_architecture=base,
+        right_architecture=disguised,
+        left_sources=[],
+        right_sources=[],
+    )
+    architecture = next(item for item in findings if item.dimension == "ARCHITECTURE")
+    assert architecture.severity == "BLOCKING"
+    assert architecture.evidence["left_chapter_count"] == 3
+    assert architecture.evidence["right_chapter_count"] == 4
+    assert architecture.evidence["order_independent"] is True
+
+
+def test_genuinely_different_architectures_in_same_field_are_not_blocked() -> None:
+    left = _book(
+        "I" * 26,
+        idea="Экономика частной практики",
+        problem="Непонятна маржинальность",
+        result="Прозрачная экономика",
+        mechanism="Модель юнит-экономики",
+    )
+    right = _book(
+        "J" * 26,
+        idea="Коммуникация с клиентом",
+        problem="Теряются договорённости",
+        result="Предсказуемая коммуникация",
+        mechanism="Протокол встреч",
+    )
+    left_arch = [
+        {
+            "purpose": "Посчитать постоянные расходы практики",
+            "new_contribution": "Карта затрат по месяцам",
+        },
+        {
+            "purpose": "Определить прибыль на услугу",
+            "new_contribution": "Формула маржинальности услуги",
+        },
+        {
+            "purpose": "Проверить окупаемость рекламы",
+            "new_contribution": "Порог допустимой стоимости привлечения",
+        },
+    ]
+    right_arch = [
+        {
+            "purpose": "Подготовить первую встречу с клиентом",
+            "new_contribution": "Сценарий сбора ожиданий",
+        },
+        {
+            "purpose": "Фиксировать договорённости после разговора",
+            "new_contribution": "Протокол итогов встречи",
+        },
+        {
+            "purpose": "Разрешать конфликт ожиданий",
+            "new_contribution": "Алгоритм уточнения спорных формулировок",
+        },
+        {
+            "purpose": "Завершать проект без потери отношений",
+            "new_contribution": "Сценарий финальной коммуникации",
+        },
+    ]
+    findings = semantic_series_findings(
+        left,
+        right,
+        left_architecture=left_arch,
+        right_architecture=right_arch,
+        left_sources=[],
+        right_sources=[],
+    )
+    assert "ARCHITECTURE" not in _dimensions(findings)

@@ -175,24 +175,84 @@ def semantic_score(left: str, right: str) -> float:
 def _sequence_score(
     left: list[dict[str, str]], right: list[dict[str, str]]
 ) -> dict[str, Any] | None:
-    if len(left) != len(right) or len(left) < 2:
+    """Compare chapter functions independent of chapter count and order.
+
+    A cloned architecture must not escape merely by inserting, splitting, merging or reordering
+    chapters.  We therefore greedily match the smaller architecture to unique best matches in the
+    larger architecture, and require both high matched coverage and high semantic-function overlap.
+    The conservative thresholds keep ordinary books in the same field from becoming false positives.
+    """
+    if len(left) < 2 or len(right) < 2:
         return None
-    scores: list[float] = []
+
+    def text(item: dict[str, str]) -> str:
+        return f"{item.get('purpose', '')} {item.get('new_contribution', '')}".strip()
+
+    left_texts = [text(item) for item in left]
+    right_texts = [text(item) for item in right]
+    smaller_is_left = len(left_texts) <= len(right_texts)
+    smaller = left_texts if smaller_is_left else right_texts
+    larger = right_texts if smaller_is_left else left_texts
+
+    candidates: list[tuple[float, int, int]] = []
+    for small_index, small_text in enumerate(smaller):
+        for large_index, large_text in enumerate(larger):
+            candidates.append((semantic_score(small_text, large_text), small_index, large_index))
+    candidates.sort(reverse=True)
+
+    used_small: set[int] = set()
+    used_large: set[int] = set()
+    matches: list[tuple[float, int, int]] = []
+    for score, small_index, large_index in candidates:
+        if small_index in used_small or large_index in used_large:
+            continue
+        used_small.add(small_index)
+        used_large.add(large_index)
+        matches.append((score, small_index, large_index))
+        if len(matches) == len(smaller):
+            break
+
+    if len(matches) < 2:
+        return None
+    matches.sort(key=lambda item: item[1])
+    scores = [item[0] for item in matches]
     shared: list[list[str]] = []
-    for left_item, right_item in zip(left, right, strict=True):
-        left_text = f"{left_item.get('purpose', '')} {left_item.get('new_contribution', '')}"
-        right_text = f"{right_item.get('purpose', '')} {right_item.get('new_contribution', '')}"
-        score = semantic_score(left_text, right_text)
-        scores.append(score)
-        shared.append(sorted(semantic_families(left_text) & semantic_families(right_text)))
+    pair_rows: list[dict[str, Any]] = []
+    for score, small_index, large_index in matches:
+        small_text = smaller[small_index]
+        large_text = larger[large_index]
+        functions = sorted(semantic_families(small_text) & semantic_families(large_text))
+        shared.append(functions)
+        pair_rows.append(
+            {
+                "left_index": small_index if smaller_is_left else large_index,
+                "right_index": large_index if smaller_is_left else small_index,
+                "score": round(score, 4),
+                "shared_functions": functions,
+            }
+        )
+
     mean_score = sum(scores) / len(scores)
-    if mean_score < 0.62 or min(scores) < 0.42:
+    count_ratio = min(len(left), len(right)) / max(len(left), len(right))
+    semantic_coverage = sum(score >= 0.42 for score in scores) / len(scores)
+    function_pairs = sum(len(values) >= 2 for values in shared)
+    required_function_pairs = max(2, len(matches) - 1)
+    aggregate_score = semantic_score(" ".join(left_texts), " ".join(right_texts))
+
+    if count_ratio < 0.6:
         return None
-    if sum(len(values) >= 2 for values in shared) < max(2, len(shared) - 1):
+    if semantic_coverage < 0.8 or mean_score < 0.62 or aggregate_score < 0.58:
+        return None
+    if function_pairs < required_function_pairs:
         return None
     return {
-        "ordered_function_scores": [round(value, 4) for value in scores],
+        "matched_function_pairs": pair_rows,
         "mean_function_score": round(mean_score, 4),
+        "aggregate_function_score": round(aggregate_score, 4),
+        "chapter_count_ratio": round(count_ratio, 4),
+        "left_chapter_count": len(left),
+        "right_chapter_count": len(right),
+        "order_independent": True,
         "shared_semantic_functions": shared,
         "comparison_basis": "DOMAIN_NEUTRALIZED_CURRENT_ARCHITECTURE",
     }
