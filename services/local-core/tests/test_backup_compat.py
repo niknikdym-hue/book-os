@@ -142,7 +142,13 @@ def test_0027_preserves_human_vs_delegated_master_history_and_append_only_guard(
         )
         for provenance_id, entity_id, revision_id, revision_hash, entity_type in (
             ("P" * 26, contract_entity, contract_revision, contract_hash, "book.contract"),
-            ("Q" * 26, architecture_entity, architecture_revision, architecture_hash, "book.architecture"),
+            (
+                "Q" * 26,
+                architecture_entity,
+                architecture_revision,
+                architecture_hash,
+                "book.architecture",
+            ),
         ):
             connection.execute(
                 text(
@@ -218,9 +224,7 @@ def test_0027_preserves_human_vs_delegated_master_history_and_append_only_guard(
     with pytest.raises(IntegrityError, match="append-only"):
         with upgraded.begin() as connection:
             connection.execute(
-                text(
-                    "UPDATE literary_masters SET book_title='forbidden' WHERE master_id=:master"
-                ),
+                text("UPDATE literary_masters SET book_title='forbidden' WHERE master_id=:master"),
                 {"master": "A" * 64},
             )
     upgraded.dispose()
