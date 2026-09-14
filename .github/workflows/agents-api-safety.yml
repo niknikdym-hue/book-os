@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -37,7 +38,7 @@ jobs:
               'production-key alias stop': 'os.environ.get("OPENAI_API_KEY") == api_key',
               'hosted sandbox': '"type": "openai_hosted"',
               'network disabled': '"network": {"access": "disabled"}',
-              'snapshot archive': 'git",\n                "archive"',
+              'compressed committed snapshot': '"--format=tar.gz"',
               'artifact patch': '/workspace/outputs/book-os.patch',
           }
           missing = [label for label, needle in required.items() if needle not in source]
