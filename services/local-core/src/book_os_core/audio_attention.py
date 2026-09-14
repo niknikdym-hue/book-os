@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .audio_script import AudioScriptGateError, AudioScriptView, AudioQualityFinding
+from .audio_script import AudioQualityFinding, AudioScriptGateError, AudioScriptView
 
 _SEPARATOR = "␟"
 
@@ -20,7 +20,13 @@ def accepted_attention_values(
     AudioScriptService can therefore keep its existing code-level compatibility while the public
     author workflows fail closed unless every current finding/location was individually accepted.
     The exact keys are retained in the approval JSON for auditability.
+
+    An already human-approved, current script is allowed through unchanged so a transient export
+    failure can be retried idempotently without asking the human to approve the same findings again.
     """
+    if script.status == "APPROVED" and script.ready_for_export:
+        return []
+
     findings = [
         finding
         for check in script.quality_checks
