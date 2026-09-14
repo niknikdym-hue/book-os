@@ -8,6 +8,7 @@ on:
       - 'tools/agents_api/apply_t05_series_uniqueness.py'
       - 'tools/agents_api/apply_t05b_universal_series.py'
       - 'tools/agents_api/apply_t05c_red_regressions.py'
+      - 'tools/agents_api/apply_t05d_indexed_semantic_pairs.py'
 
 permissions:
   contents: write
@@ -25,6 +26,7 @@ jobs:
         run: |
           cp tools/agents_api/apply_t05b_universal_series.py /tmp/apply_t05b.py
           cp tools/agents_api/apply_t05c_red_regressions.py /tmp/apply_t05c.py
+          cp tools/agents_api/apply_t05d_indexed_semantic_pairs.py /tmp/apply_t05d.py
       - name: Checkout exact product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
@@ -34,6 +36,7 @@ jobs:
         run: |
           python /tmp/apply_t05b.py "$GITHUB_WORKSPACE"
           python /tmp/apply_t05c.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t05d.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install dependencies
         working-directory: services/local-core
