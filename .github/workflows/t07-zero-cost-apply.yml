@@ -1,0 +1,60 @@
+name: T07 Zero-Cost Apply
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/t07-zero-cost-apply.yml'
+      - 'tools/agents_api/apply_t07_ordered_exports.py'
+      - 'tools/agents_api/apply_t07_test_fix.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Preserve T07 patchers
+        run: |
+          cp tools/agents_api/apply_t07_ordered_exports.py /tmp/apply_t07.py
+          cp tools/agents_api/apply_t07_test_fix.py /tmp/apply_t07_test_fix.py
+      - name: Checkout exact T06 product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "db417e0b7fd9ce2a05f2c07e84078a1c4002c8e2"
+      - name: Apply T07 ordered lossless-export hardening
+        run: |
+          python /tmp/apply_t07.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t07_test_fix.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Format Ruff Mypy
+        working-directory: services/local-core
+        run: |
+          ruff format src/book_os_core/auto_book_exports.py tests/test_auto_book_exports.py
+          ruff check .
+          mypy src
+      - name: Targeted T07 export regressions
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_exports.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T07a change to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_exports.py \
+                  services/local-core/tests/test_auto_book_exports.py
+          git commit -m 'Preserve ordered objects across book exports'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
