@@ -26,13 +26,24 @@ jobs:
           cp tools/agents_api/apply_t06b_visual_truth.py /tmp/apply_t06b.py
           python - <<'PY'
           from pathlib import Path
-          path = Path('/tmp/apply_t06.py')
-          text = path.read_text(encoding='utf-8')
+
+          base = Path('/tmp/apply_t06.py')
+          text = base.read_text(encoding='utf-8')
           if text.count("old = '''") != 1 or text.count("new = '''") != 1:
               raise SystemExit('T06 patcher literal anchors are not exact')
           text = text.replace("old = '''", "old = r'''", 1)
           text = text.replace("new = '''", "new = r'''", 1)
-          path.write_text(text, encoding='utf-8')
+          base.write_text(text, encoding='utf-8')
+
+          supplemental = Path('/tmp/apply_t06b.py')
+          text = supplemental.read_text(encoding='utf-8')
+          old_anchor = "replace_once(\n    FINALIZER,\n    '''                visual_required"
+          new_anchor = "replace_once(\n    FINALIZER,\n    '''                chart_required"
+          if text.count(old_anchor) != 1 or text.count(new_anchor) != 1:
+              raise SystemExit('T06b patcher literal anchors are not exact')
+          text = text.replace(old_anchor, old_anchor.replace("'''", "r'''", 1), 1)
+          text = text.replace(new_anchor, new_anchor.replace("'''", "r'''", 1), 1)
+          supplemental.write_text(text, encoding='utf-8')
           PY
       - name: Checkout exact product candidate
         run: |
