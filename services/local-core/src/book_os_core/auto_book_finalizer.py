@@ -1222,9 +1222,17 @@ class AutoBookFinalizer:
     def _visual_asset_rows(
         self, book_id: str, *, state_run_id: str | None, chapter_id: str
     ) -> list[dict[str, Any]]:
+        relevant_units = [
+            item for item in self._current_units(book_id) if str(item["chapter_id"]) == chapter_id
+        ]
         engine = self._engine(book_id)
+        authority = AuthorityService(engine)
+        current_revisions: set[tuple[str, str]] = set()
         try:
-            with engine.connect() as connection:
+            for unit in relevant_units:
+                head = authority.get_head(str(unit["authority_entity_id"]))
+                current_revisions.add((head.revision_id, head.revision_hash))
+            with engine.begin() as connection:
                 rows = list(
                     connection.execute(
                         text(
@@ -1236,9 +1244,22 @@ class AutoBookFinalizer:
                         {"chapter_id": chapter_id, "run_id": state_run_id},
                     ).mappings()
                 )
+                current_rows: list[dict[str, Any]] = []
+                for raw in rows:
+                    row = dict(raw)
+                    if not self._visual_source_is_current(row, current_revisions):
+                        connection.execute(
+                            text(
+                                "UPDATE auto_book_visual_assets SET status='STALE' "
+                                "WHERE asset_id=:asset_id AND status='READY'"
+                            ),
+                            {"asset_id": str(row["asset_id"])},
+                        )
+                        continue
+                    current_rows.append(row)
         finally:
             engine.dispose()
-        return [{**dict(row), "data": json.loads(str(row["data_json"]))} for row in rows]
+        return [{**row, "data": json.loads(str(row["data_json"]))} for row in current_rows]
 
     def _tables_for_chapter(
         self, book_id: str, *, state_run_id: str | None, chapter_id: str
@@ -1281,6 +1302,120 @@ class AutoBookFinalizer:
             if row["kind"] in {"CHART", "SCHEME", "ILLUSTRATION"}
         ]
 
+    @staticmethod
+    def _visual_requirement_is_mandatory(requirements: str, stems: tuple[str, ...]) -> bool:
+        """Interpret conditional visual wording without turning every mention into a hard gate."""
+        soft_markers = (
+            "там, где",
+            "там где",
+            "если ",
+            "при необходимости",
+            "по необходимости",
+            "когда это помогает",
+            "где это помогает",
+            "при наличии",
+            "если это помогает",
+        )
+        strong_markers = (
+            "обязатель",
+            "требуется",
+            "требуют",
+            "должен",
+            "должна",
+            "должно",
+            "должны",
+            "необходим",
+        )
+        for segment in re.split(r"[.;\n]+", requirements.casefold()):
+            segment = " ".join(segment.split())
+            if not segment or not any(stem in segment for stem in stems):
+                continue
+            if any(marker in segment for marker in strong_markers):
+                return True
+            if any(marker in segment for marker in soft_markers):
+                continue
+            # `required_scenes_examples` is a required contract field: an unqualified visual
+            # mention is mandatory, while explicitly conditional wording is not.
+            return True
+        return False
+
+    @staticmethod
+    def _numbered_step_table_spec(paragraphs: list[str]) -> dict[str, Any] | None:
+        rows: list[list[str]] = []
+        indices: list[int] = []
+        for paragraph_index, paragraph in enumerate(paragraphs, start=1):
+            match = re.match(r"^\s*(\d{1,2})[.)]\s+(.+?)\s*$", paragraph, re.DOTALL)
+            if match is None:
+                continue
+            rows.append([match.group(1), match.group(2).strip()])
+            indices.append(paragraph_index)
+        if len(rows) < 3:
+            return None
+        return {
+            "headers": ["Шаг", "Действие"],
+            "rows": rows,
+            "source_paragraphs": indices,
+            "placement_after_paragraph": max(indices),
+            "purpose": "Собрать явно перечисленные шаги главы в сравнимую последовательность",
+            "caption": "Последовательность шагов главы",
+            "alt_text": "Таблица перечисляет все явно пронумерованные шаги главы без сокращения.",
+            "audio_equivalent": " ".join(f"Шаг {number}: {action}" for number, action in rows),
+        }
+
+    @staticmethod
+    def _percentage_chart_spec(paragraphs: list[str]) -> dict[str, Any] | None:
+        comparable_context = re.compile(
+            r"\b(?:одн(?:ой|ого)\s+(?:выборк\w*|групп\w*|совокупност\w*|когорт\w*)|"
+            r"общ(?:ая|ей|его)\s+(?:выборк\w*|групп\w*|совокупност\w*)|"
+            r"составляют\s+одн\w+\s+(?:выборк\w*|групп\w*|совокупност\w*)|"
+            r"распределени\w*|структур\w*\s+(?:выборк\w*|групп\w*|совокупност\w*)|"
+            r"из\s+\d+\s+(?:наблюден\w*|случа\w*|ответ\w*|покупател\w*|участник\w*))\b",
+            re.IGNORECASE,
+        )
+        for paragraph_index, paragraph in enumerate(paragraphs, start=1):
+            if comparable_context.search(paragraph) is None:
+                continue
+            points: list[tuple[str, float]] = []
+            for match in re.finditer(
+                r"([^.!?;:\n]{2,80}?)\s+(\d+(?:[.,]\d+)?)\s*%",
+                paragraph,
+            ):
+                label = " ".join(match.group(1).split()).strip(" ,;:-")
+                if not label:
+                    continue
+                value = float(match.group(2).replace(",", "."))
+                if 0 <= value <= 100:
+                    points.append((label, value))
+            unique = {label.casefold() for label, _ in points}
+            if len(points) < 2 or len(unique) != len(points):
+                continue
+            context = " ".join(paragraph.split())
+            spoken = "; ".join(f"{label} — {value:g} процентов" for label, value in points)
+            return {
+                "data": points,
+                "unit": "%",
+                "conditions": context,
+                "source_paragraph": paragraph_index,
+                "placement_after_paragraph": paragraph_index,
+                "purpose": "Сравнить процентные значения с явно указанной общей базой сравнения",
+                "caption": "Сравнение процентных значений",
+                "alt_text": f"Диаграмма сравнивает значения на общей базе: {spoken}.",
+                "audio_equivalent": (
+                    f"Диаграмма использует одну явно указанную базу сравнения. {spoken}."
+                ),
+            }
+        return None
+
+    @staticmethod
+    def _visual_source_is_current(
+        row: dict[str, Any], current_revisions: set[tuple[str, str]]
+    ) -> bool:
+        revision_id = str(row.get("source_revision_id") or "")
+        revision_hash = str(row.get("source_revision_hash") or "")
+        return bool(
+            revision_id and revision_hash and (revision_id, revision_hash) in current_revisions
+        )
+
     def _execute_visual_policy(
         self, book_id: str, state: AutoBookRunView, units: list[dict[str, Any]]
     ) -> dict[str, Any]:
@@ -1304,63 +1439,120 @@ class AutoBookFinalizer:
                 requirements = " ".join(
                     str(item) for item in contract.get("required_scenes_examples", [])
                 ).casefold()
-                wants_table = "таблиц" in requirements or "таблиц" in manuscript.casefold()
-                wants_visual = any(
-                    token in requirements or token in manuscript.casefold()
-                    for token in ("график", "диаграм", "схем")
+                manuscript_lower = manuscript.casefold()
+                table_requested = "таблиц" in requirements or "таблиц" in manuscript_lower
+                chart_requested = any(
+                    token in requirements or token in manuscript_lower
+                    for token in ("график", "диаграм")
                 )
+                scheme_requested = "схем" in requirements or "схем" in manuscript_lower
+                illustration_requested = any(
+                    token in requirements or token in manuscript_lower
+                    for token in ("иллюстрац", "рисунок", "изображен")
+                )
+                table_required = self._visual_requirement_is_mandatory(requirements, ("таблиц",))
+                chart_required = self._visual_requirement_is_mandatory(
+                    requirements, ("график", "диаграм")
+                )
+                scheme_required = self._visual_requirement_is_mandatory(requirements, ("схем",))
+                illustration_required = self._visual_requirement_is_mandatory(
+                    requirements, ("иллюстрац", "рисунок", "изображен")
+                )
+                wants_table = table_requested
+                wants_chart = chart_requested
                 paragraphs = [p.strip() for p in manuscript.split("\n\n") if p.strip()]
-                assets: list[tuple[str, dict[str, Any], str, str]] = []
-                if wants_table and paragraphs:
-                    rows = [
-                        [str(index), paragraph[:240]]
-                        for index, paragraph in enumerate(paragraphs[:4], 1)
-                    ]
-                    spoken_rows = " ".join(
-                        f"Шаг {index}: {paragraph[:240]}"
-                        for index, paragraph in enumerate(paragraphs[:4], 1)
-                    )
-                    assets.append(
-                        (
-                            "TABLE",
-                            {"headers": ["Шаг", "Содержание"], "rows": rows},
-                            "Ключевые шаги главы",
-                            "Таблица последовательно перечисляет ключевые шаги главы. "
-                            + spoken_rows,
-                        )
-                    )
-                if wants_visual:
-                    points = [
-                        (
-                            label.strip()[-50:] or f"Показатель {index}",
-                            float(value.replace(",", ".")),
-                        )
-                        for index, (label, value) in enumerate(
-                            re.findall(r"([^.!?\n]{1,60}?)\s+(\d+(?:[.,]\d+)?)\s*%", manuscript),
-                            1,
-                        )
-                    ][:8]
-                    kind = "CHART" if points else "SCHEME"
-                    assets.append(
-                        (
-                            kind,
-                            {"data": points},
-                            "Наглядное объяснение механизма главы",
+                assets: list[tuple[str, dict[str, Any], str, str, str, int, str]] = []
+                unresolved: list[str] = []
+                unavailable_optional: list[str] = []
+
+                if wants_table:
+                    table_spec = self._numbered_step_table_spec(paragraphs)
+                    if table_spec is None:
+                        if table_required:
+                            unresolved.append(
+                                "TABLE: no explicit structured rows in the exact source"
+                            )
+                        elif table_requested:
+                            unavailable_optional.append("TABLE")
+                    else:
+                        data = {
+                            "spec_version": "visual-spec.v1",
+                            "type": "TABLE",
+                            "headers": table_spec["headers"],
+                            "rows": table_spec["rows"],
+                            "unit": None,
+                            "conditions": "Rows are copied from explicit numbered steps in exact source.",
+                            "source_paragraphs": table_spec["source_paragraphs"],
+                        }
+                        assets.append(
                             (
-                                "Диаграмма вслух перечисляет значения и объясняет их соотношение "
-                                "в контексте главы."
-                                if points
-                                else "Схема последовательно объясняет механизм, его этапы и связь "
-                                "с выводом главы."
-                            ),
+                                "TABLE",
+                                data,
+                                str(table_spec["caption"]),
+                                str(table_spec["audio_equivalent"]),
+                                str(table_spec["purpose"]),
+                                int(table_spec["placement_after_paragraph"]),
+                                str(table_spec["alt_text"]),
+                            )
                         )
+
+                if wants_chart:
+                    chart_spec = self._percentage_chart_spec(paragraphs)
+                    if chart_spec is None:
+                        if chart_required:
+                            unresolved.append(
+                                "CHART: percentages lack an explicit common denominator/comparable context"
+                            )
+                        elif chart_requested:
+                            unavailable_optional.append("CHART")
+                    else:
+                        data = {
+                            "spec_version": "visual-spec.v1",
+                            "type": "CHART",
+                            "data": chart_spec["data"],
+                            "unit": chart_spec["unit"],
+                            "conditions": chart_spec["conditions"],
+                            "source_paragraph": chart_spec["source_paragraph"],
+                        }
+                        assets.append(
+                            (
+                                "CHART",
+                                data,
+                                str(chart_spec["caption"]),
+                                str(chart_spec["audio_equivalent"]),
+                                str(chart_spec["purpose"]),
+                                int(chart_spec["placement_after_paragraph"]),
+                                str(chart_spec["alt_text"]),
+                            )
+                        )
+
+                if scheme_required:
+                    unresolved.append(
+                        "SCHEME: programmatic scheme route is not trustworthy enough for READY"
                     )
-                for kind, data, caption, audio in assets:
+                elif scheme_requested:
+                    unavailable_optional.append("SCHEME")
+                if illustration_required:
+                    unresolved.append(
+                        "ILLUSTRATION: no reviewed owner-supplied/programmatic illustration spec exists"
+                    )
+                elif illustration_requested or policy.include_optional_illustrations:
+                    unavailable_optional.append("ILLUSTRATION")
+
+                if unresolved:
+                    raise AutoBookGateError(
+                        "required visual material has no truthful VisualSpec: "
+                        + "; ".join(unresolved)
+                    )
+
+                for kind, data, caption, audio, purpose, placement, alt_text in assets:
                     digest = hashlib.sha256(
                         json.dumps(
                             {
                                 "kind": kind,
                                 "data": data,
+                                "placement_after_paragraph": placement,
+                                "revision_id": head.revision_id,
                                 "revision_hash": head.revision_hash,
                             },
                             ensure_ascii=False,
@@ -1375,18 +1567,22 @@ class AutoBookFinalizer:
                                 "purpose,placement,data_source,caption,origin,rights_note,alt_text,"
                                 "audio_equivalent,content_hash,created_at,chapter_id,source_revision_id,"
                                 "source_revision_hash,data_json,status) VALUES (:id,:run_id,:kind,:purpose,"
-                                "'paragraph:0',:source,:caption,'PROGRAMMATIC',:rights,:alt,:audio,:hash,"
+                                ":placement,:source,:caption,'PROGRAMMATIC',:rights,:alt,:audio,:hash,"
                                 ":created,:chapter,:revision,:revision_hash,:data,'READY')"
                             ),
                             {
                                 "id": asset_id,
                                 "run_id": state.run_id,
                                 "kind": kind,
-                                "purpose": caption,
-                                "source": f"revision:{head.revision_id}#{head.revision_hash}",
+                                "purpose": purpose,
+                                "placement": f"paragraph:{placement}",
+                                "source": (
+                                    f"revision:{head.revision_id}#{head.revision_hash}:"
+                                    f"paragraph:{placement}"
+                                ),
                                 "caption": caption,
-                                "rights": "Created deterministically by BOOK OS from the manuscript",
-                                "alt": audio,
+                                "rights": "Programmatic rendering from owner-controlled manuscript data",
+                                "alt": alt_text,
                                 "audio": audio,
                                 "hash": digest,
                                 "created": utc_now(),
@@ -1399,7 +1595,17 @@ class AutoBookFinalizer:
                     created.append(asset_id)
         finally:
             engine.dispose()
-        return {"policy": policy.model_dump(mode="json"), "created": sorted(set(created))}
+        return {
+            "policy": policy.model_dump(mode="json"),
+            "created": sorted(set(created)),
+            "capabilities": {
+                "programmatic_tables": True,
+                "programmatic_charts": True,
+                "programmatic_schemes": False,
+                "generative_illustrations": False,
+            },
+            "unavailable_optional": sorted(set(unavailable_optional)),
+        }
 
     def _registered_claims(self, book_id: str) -> dict[str, bool]:
         engine = self._engine(book_id)

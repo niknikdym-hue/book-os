@@ -243,6 +243,83 @@ def test_malformed_or_unresolved_correction_locator_fails_closed() -> None:
         AutoBookFinalizer._correction_chapter_scope([{"location": "candidate:1"}])
 
 
+def test_visual_table_spec_requires_explicit_numbered_rows_without_truncation() -> None:
+    paragraphs = [
+        "Вводный абзац.",
+        "1. Соберите исходные данные полностью, не обрезая смысл строки.",
+        "2. Сравните варианты по одному и тому же критерию.",
+        "3. Зафиксируйте решение и условие пересмотра.",
+    ]
+    spec = AutoBookFinalizer._numbered_step_table_spec(paragraphs)
+    assert spec is not None
+    assert spec["placement_after_paragraph"] == 4
+    assert spec["rows"][0][1].endswith("не обрезая смысл строки.")
+    assert "Шаг 3" in spec["audio_equivalent"]
+
+
+def test_visual_chart_spec_uses_one_context_and_speaks_actual_values() -> None:
+    spec = AutoBookFinalizer._percentage_chart_spec(
+        [
+            "Первый фрагмент содержит 99 процентов, но только одно значение.",
+            "Канал А 20%, канал Б 35%, канал В 45% составляют одну выборку.",
+        ]
+    )
+    assert spec is not None
+    assert spec["placement_after_paragraph"] == 2
+    assert [value for _, value in spec["data"]] == [20.0, 35.0, 45.0]
+    assert "20 процентов" in spec["audio_equivalent"]
+    assert "35 процентов" in spec["audio_equivalent"]
+    assert "45 процентов" in spec["audio_equivalent"]
+
+
+def test_visual_chart_spec_rejects_unrelated_single_percentages() -> None:
+    assert (
+        AutoBookFinalizer._percentage_chart_spec(
+            ["Один показатель 20 процентов.", "Другой несвязанный показатель 35 процентов."]
+        )
+        is None
+    )
+
+
+def test_conditional_visual_wording_is_not_a_hard_release_gate() -> None:
+    requirements = "Таблица шагов и схема механизма там, где они помогают пониманию"
+    assert not AutoBookFinalizer._visual_requirement_is_mandatory(requirements, ("таблиц",))
+    assert not AutoBookFinalizer._visual_requirement_is_mandatory(requirements, ("схем",))
+
+
+def test_explicit_visual_wording_remains_a_hard_release_gate() -> None:
+    assert AutoBookFinalizer._visual_requirement_is_mandatory(
+        "Обязательна таблица сравнения вариантов", ("таблиц",)
+    )
+    assert AutoBookFinalizer._visual_requirement_is_mandatory(
+        "Требуется схема причинного механизма", ("схем",)
+    )
+
+
+def test_visual_chart_spec_rejects_same_paragraph_without_common_denominator() -> None:
+    assert (
+        AutoBookFinalizer._percentage_chart_spec(
+            ["Конверсия сайта 20%, а доля возвратов среди уже оплативших покупателей 35%."]
+        )
+        is None
+    )
+
+
+def test_visual_source_guard_rejects_stale_revision() -> None:
+    row = {
+        "source_revision_id": "01JOLDREVISION000000000000",
+        "source_revision_hash": "a" * 64,
+    }
+    assert not AutoBookFinalizer._visual_source_is_current(
+        row,
+        {("01JCURRENTREVISION000000000", "b" * 64)},
+    )
+    assert AutoBookFinalizer._visual_source_is_current(
+        row,
+        {("01JOLDREVISION000000000000", "a" * 64)},
+    )
+
+
 def test_inspected_excerpt_support_is_not_topic_overlap() -> None:
     supports = AutoBookFinalizer._excerpt_supports_claim
     claim = "Реклама увеличивает продажи на 20 процентов."
@@ -395,10 +472,10 @@ def test_auto_book_finalizer_locks_master_before_litres_docx(tmp_path: Path) -> 
         for item, row in zip(approval_gates, approval_rows, strict=True)
         if row["approving_actor_kind"] == "SYSTEM"
     )
-    assert {"TABLE", "SCHEME"} <= visual_kinds
+    # Incidental prose mentions of a table/scheme must not manufacture READY visuals.
+    assert visual_kinds == set()
     visual_files = list((tmp_path / "projects" / book_id / "exports").rglob("*.png"))
-    assert visual_files
-    assert all(path.read_bytes().startswith(b"\x89PNG") for path in visual_files)
+    assert not visual_files
 
 
 def test_audio_first_uses_approved_listening_master_without_redundant_rewrite_then_waits_for_human(
