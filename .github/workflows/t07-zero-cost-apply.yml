@@ -7,6 +7,7 @@ on:
       - '.github/workflows/t07-zero-cost-apply.yml'
       - 'tools/agents_api/apply_t07_ordered_exports.py'
       - 'tools/agents_api/apply_t07_test_fix.py'
+      - 'tools/agents_api/apply_t07a_render_dir_fix.py'
 
 permissions:
   contents: write
@@ -24,6 +25,7 @@ jobs:
         run: |
           cp tools/agents_api/apply_t07_ordered_exports.py /tmp/apply_t07.py
           cp tools/agents_api/apply_t07_test_fix.py /tmp/apply_t07_test_fix.py
+          cp tools/agents_api/apply_t07a_render_dir_fix.py /tmp/apply_t07_render_dir.py
       - name: Checkout exact T06 product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
@@ -33,6 +35,7 @@ jobs:
         run: |
           python /tmp/apply_t07.py "$GITHUB_WORKSPACE"
           python /tmp/apply_t07_test_fix.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t07_render_dir.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install dependencies
         working-directory: services/local-core
