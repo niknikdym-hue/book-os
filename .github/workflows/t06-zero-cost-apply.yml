@@ -1,0 +1,60 @@
+name: T06 Zero-Cost Apply
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/t06-zero-cost-apply.yml'
+      - 'tools/agents_api/apply_t06_visual_spec.py'
+      - 'tools/agents_api/apply_t06b_visual_truth.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Preserve T06 patchers
+        run: |
+          cp tools/agents_api/apply_t06_visual_spec.py /tmp/apply_t06.py
+          cp tools/agents_api/apply_t06b_visual_truth.py /tmp/apply_t06b.py
+      - name: Checkout exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "6fb15c5a66041f466721e8363a5e5ef906f30334"
+      - name: Apply T06 F09 truthful VisualSpec hardening
+        run: |
+          python /tmp/apply_t06.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t06b.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Format Ruff Mypy
+        working-directory: services/local-core
+        run: |
+          ruff format src/book_os_core/auto_book_finalizer.py tests/test_auto_book_finalizer.py
+          ruff check .
+          mypy src
+      - name: Targeted T06 regressions
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_finalizer.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T06 change to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_finalizer.py \
+                  services/local-core/tests/test_auto_book_finalizer.py
+          git commit -m 'Make visual specs truthful and source-bound'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
