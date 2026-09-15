@@ -7,6 +7,7 @@ on:
       - '.github/workflows/t07b-semantic-export-apply.yml'
       - 'tools/agents_api/t07b_part_*'
       - 'tools/agents_api/apply_t07b_plaintext_qa_fix.py'
+      - 'tools/agents_api/apply_t07b_xref_content_qa_fix.py'
 
 permissions:
   contents: write
@@ -24,6 +25,7 @@ jobs:
         run: |
           cat tools/agents_api/t07b_part_* > /tmp/apply_t07b.py
           cp tools/agents_api/apply_t07b_plaintext_qa_fix.py /tmp/apply_t07b_plaintext_qa_fix.py
+          cp tools/agents_api/apply_t07b_xref_content_qa_fix.py /tmp/apply_t07b_xref_content_qa_fix.py
           echo '0fa2332c728c47596f5bcfa403876a752bf50520f721d87f97fc0bf1d77d7e70  /tmp/apply_t07b.py' | sha256sum -c -
           python - <<'PY'
           from pathlib import Path
@@ -35,7 +37,7 @@ jobs:
               raise SystemExit(f'T07b EPUB transport anchor is not exact: {text.count(old)}')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
-          python -m py_compile /tmp/apply_t07b.py /tmp/apply_t07b_plaintext_qa_fix.py
+          python -m py_compile /tmp/apply_t07b.py /tmp/apply_t07b_plaintext_qa_fix.py /tmp/apply_t07b_xref_content_qa_fix.py
       - name: Checkout exact T07a product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
@@ -45,6 +47,7 @@ jobs:
         run: |
           python /tmp/apply_t07b.py "$GITHUB_WORKSPACE"
           python /tmp/apply_t07b_plaintext_qa_fix.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t07b_xref_content_qa_fix.py "$GITHUB_WORKSPACE"
           git diff --check
           test -f docs/publishing/LITRES_EBOOK_PROFILE_2026-09-15.md
           grep -F 'platform_acceptance_claimed=false' docs/publishing/LITRES_EBOOK_PROFILE_2026-09-15.md
