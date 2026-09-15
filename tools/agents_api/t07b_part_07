@@ -1,0 +1,6 @@
+Implementation note: BOOK OS preserves native DOCX footnotes and internal cross-references for the supported Markdown-like source markers (`[^id]`, `[^id]: text`, `[label](#anchor)`, and `## Heading {#anchor}`). EPUB receives navigable anchors/footnotes. PDF preserves the same reader-visible meaning and internal anchors where supported by ReportLab.
+""",
+    encoding="utf-8",
+)
+
+print("T07b semantic/export integrity and LitRes profile applied")

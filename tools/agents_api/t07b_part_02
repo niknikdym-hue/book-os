@@ -1,0 +1,154 @@
+                f'<w:r><w:t xml:space="preserve"> {clean}</w:t></w:r></w:p></w:footnote>'
+            )
+        xml = f'<w:footnotes {nsdecls("w")}>{"".join(rows)}</w:footnotes>'
+        part = XmlPart(
+            PackURI("/word/footnotes.xml"),
+            DOCX_CONTENT_TYPE.WML_FOOTNOTES,
+            parse_xml(xml),
+            document.part.package,
+        )
+        document.part.relate_to(part, DOCX_RELATIONSHIP_TYPE.FOOTNOTES)
+
+    @classmethod
+    def _html_inline(cls, value: str) -> str:
+        rendered = escape(value)
+        rendered = re.sub(
+            r"\[([^\]]+)\]\(#([A-Za-z0-9_-]+)\)",
+            r'<a href="#\2">\1</a>',
+            rendered,
+        )
+        rendered = re.sub(
+            r"\[\^([^\]]+)\]",
+            r'<sup id="fnref-\1"><a href="#fn-\1">\1</a></sup>',
+            rendered,
+        )
+        rendered = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", rendered)
+        rendered = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", rendered)
+        return rendered
+
+    @classmethod
+    def _epub_semantic_html(cls, value: str) -> str:
+        kind, payload = cls._semantic_kind(value)
+        if kind == "HEADING":
+            level, text, anchor = payload
+            anchor_attr = f' id="{escape(anchor)}"' if anchor else ""
+            return f"<h{level}{anchor_attr}>{cls._html_inline(text)}</h{level}>"
+        if kind in {"BULLET_LIST", "NUMBERED_LIST"}:
+            tag = "ul" if kind == "BULLET_LIST" else "ol"
+            return (
+                f"<{tag}>"
+                + "".join(f"<li>{cls._html_inline(item)}</li>" for item in payload)
+                + f"</{tag}>"
+            )
+        if kind == "NOTE":
+            return f'<aside class="note"><p>{cls._html_inline(str(payload))}</p></aside>'
+        if kind == "FOOTNOTE":
+            note_id, text = payload
+            return (
+                f'<aside class="footnote" id="fn-{escape(note_id)}">'
+                f'<p><sup>{escape(note_id)}</sup> {cls._html_inline(text)} '
+                f'<a href="#fnref-{escape(note_id)}" aria-label="Назад к тексту">↩</a>'
+                "</p></aside>"
+            )
+        return f"<p>{cls._html_inline(str(payload))}</p>"
+
+    @classmethod
+    def _pdf_inline_html(cls, value: str) -> str:
+        rendered = escape(value)
+        rendered = re.sub(
+            r"\[([^\]]+)\]\(#([A-Za-z0-9_-]+)\)",
+            r'<a href="#\2" color="#0563C1">\1</a>',
+            rendered,
+        )
+        rendered = re.sub(r"\[\^([^\]]+)\]", r"[\1]", rendered)
+        rendered = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", rendered)
+        rendered = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", rendered)
+        return rendered
+
+    @classmethod
+    def _pdf_semantic_flowables(
+        cls, value: str, body: ParagraphStyle, heading: ParagraphStyle
+    ) -> list[Any]:
+        kind, payload = cls._semantic_kind(value)
+        if kind == "HEADING":
+            _level, text, anchor = payload
+            anchor_markup = f'<a name="{escape(anchor)}"/>' if anchor else ""
+            return [
+                Paragraph(f"{anchor_markup}<b>{cls._pdf_inline_html(text)}</b>", heading),
+                Spacer(1, 2 * mm),
+            ]
+        if kind in {"BULLET_LIST", "NUMBERED_LIST"}:
+            output: list[Any] = []
+            for index, item in enumerate(payload, start=1):
+                prefix = "•" if kind == "BULLET_LIST" else f"{index}."
+                output.extend(
+                    [
+                        Paragraph(f"{escape(prefix)} {cls._pdf_inline_html(item)}", body),
+                        Spacer(1, 1.5 * mm),
+                    ]
+                )
+            return output
+        if kind == "NOTE":
+            return [
+                Paragraph(f"<i>Примечание.</i> {cls._pdf_inline_html(str(payload))}", body),
+                Spacer(1, 2 * mm),
+            ]
+        if kind == "FOOTNOTE":
+            note_id, text = payload
+            return [
+                Paragraph(f"[{escape(note_id)}] {cls._pdf_inline_html(text)}", body),
+                Spacer(1, 2 * mm),
+            ]
+        return [Paragraph(cls._pdf_inline_html(str(payload)), body), Spacer(1, 2.5 * mm)]
+
+'''
+insert_before(SRC, "    @staticmethod\n    def _ordered_chapter_blocks", helpers)
+
+new_docx = r'''    def _docx(
+        self,
+        master: StructuredBookMaster,
+        output: Path,
+        *,
+        audio: bool,
+        include_extras_only: bool = False,
+        visual_dir: Path,
+    ) -> dict[str, Any]:
+        document = Document()
+        self._apply_docx_styles(document)
+        document.add_heading(master.title, level=0)
+        document.add_paragraph(master.author)
+        expected_tables = 0
+        expected_visuals = 0
+        footnote_definitions = {} if include_extras_only else self._footnote_definitions(master)
+        if not include_extras_only:
+            self._validate_footnote_references(master, footnote_definitions)
+        footnote_ids = {note_id: index for index, note_id in enumerate(footnote_definitions, start=1)}
+        bookmark_ids: dict[str, int] = {}
+        if include_extras_only:
+            document.add_heading("Дополнительные материалы", level=1)
+
+        def add_table(table: MasterTable) -> None:
+            nonlocal expected_tables
+            if audio:
+                document.add_heading(f"Смысл таблицы «{table.title}»", level=2)
+                document.add_paragraph(table.audio_equivalent)
+                return
+            document.add_heading(table.title, level=2)
+            word_table = document.add_table(rows=1, cols=len(table.headers))
+            word_table.style = "Table Grid"
+            for index, value in enumerate(table.headers):
+                word_table.rows[0].cells[index].text = value
+            for row in table.rows:
+                cells = word_table.add_row().cells
+                for index, value in enumerate(row):
+                    cells[index].text = value
+            source_note = self._reader_source_note(table.source_note)
+            if source_note:
+                document.add_paragraph(f"Источник: {source_note}")
+            expected_tables += 1
+
+        def add_visual(visual: MasterVisual) -> None:
+            nonlocal expected_visuals
+            if audio:
+                document.add_heading(f"Смысл материала «{visual.title}»", level=2)
+                document.add_paragraph(visual.audio_equivalent)

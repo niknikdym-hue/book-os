@@ -1,0 +1,50 @@
+name: T03 Per-File Diagnostic
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t03-per-file-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  per-file:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve T03 patcher
+        run: cp tools/agents_api/apply_t03_change_correction.py /tmp/apply_t03.py
+      - name: Checkout and patch exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B product origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "36460b80ca2326f619ad5120465b11b46112e6f6"
+          python /tmp/apply_t03.py "$GITHUB_WORKSPACE"
+      - name: Install test dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Run each test file with hard timeout
+        working-directory: services/local-core
+        run: |
+          set -o pipefail
+          failed=0
+          for f in $(find tests -maxdepth 1 -name 'test_*.py' | sort); do
+            echo "=== $f ==="
+            if timeout 45s python -m pytest -q "$f"; then
+              echo "PASS $f"
+            else
+              rc=$?
+              echo "FAIL_OR_TIMEOUT rc=$rc $f"
+              failed=1
+            fi
+          done
+          exit "$failed"

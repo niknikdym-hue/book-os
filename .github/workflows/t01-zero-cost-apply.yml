@@ -1,0 +1,77 @@
+name: T01 Zero-Cost Apply
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t01-zero-cost-apply.yml'
+      - 'tools/agents_api/t01_line_*'
+      - 'tools/agents_api/apply_t01_postprocess.py'
+      - 'tools/agents_api/apply_t01_fixture_fix.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve approved patch controller inputs
+        run: |
+          cat tools/agents_api/t01_line_* > /tmp/book-os-t01-agent.patch
+          cp tools/agents_api/apply_t01_postprocess.py /tmp/apply_t01_postprocess.py
+          cp tools/agents_api/apply_t01_fixture_fix.py /tmp/apply_t01_fixture_fix.py
+      - name: Checkout exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="1c291b951fcf10c5770819847e9d7abe7d69e92c"
+          echo "actual=$ACTUAL expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+      - name: Apply reviewed T01 proposal and Central Brain corrections
+        run: |
+          git apply --check /tmp/book-os-t01-agent.patch
+          git apply /tmp/book-os-t01-agent.patch
+          python /tmp/apply_t01_postprocess.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t01_fixture_fix.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install Local Core test dependencies
+        working-directory: services/local-core
+        run: pip install -r requirements-dev.lock
+      - name: Format T01 changes
+        working-directory: services/local-core
+        run: ruff format src/book_os_core/auto_book_quality.py src/book_os_core/auto_book_finalizer.py src/book_os_core/model_gateway.py tests/test_auto_book_quality.py tests/test_auto_book_finalizer.py tests/test_model_gateway.py
+      - name: Ruff
+        working-directory: services/local-core
+        run: ruff check .
+      - name: Mypy
+        working-directory: services/local-core
+        run: mypy src
+      - name: Targeted T01 regression tests
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_quality.py tests/test_auto_book_finalizer.py tests/test_model_gateway.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T01 change to existing PR 38 branch
+        run: |
+          git diff --check
+          git status --short
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_quality.py \
+                  services/local-core/src/book_os_core/auto_book_finalizer.py \
+                  services/local-core/src/book_os_core/model_gateway.py \
+                  services/local-core/tests/test_auto_book_quality.py \
+                  services/local-core/tests/test_auto_book_finalizer.py \
+                  services/local-core/tests/test_model_gateway.py
+          git commit -m 'Fix final critic admission and honest findings'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913

@@ -1,0 +1,110 @@
+        document_count = len(list(reopened.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
+        expected_documents = len(master.chapters) + (1 if master.bibliography else 0)
+        expected_visuals = sum(len(chapter.visuals) for chapter in master.chapters)
+        image_count = len(list(reopened.get_items_of_type(ebooklib.ITEM_IMAGE)))
+        document_html = "\n".join(
+            item.get_content().decode("utf-8", errors="replace")
+            for item in reopened.get_items_of_type(ebooklib.ITEM_DOCUMENT)
+        )
+        expected_alt_texts = [
+            visual.alt_text for chapter in master.chapters for visual in chapter.visuals
+        ]
+        expected_image_names = [
+            f"images/{visual.object_id}.png"
+            for chapter in master.chapters
+            for visual in chapter.visuals
+        ]
+        references_ok = all(value in document_html for value in expected_alt_texts + expected_image_names)
+        semantic_fragments = [
+            fragment
+            for chapter in master.chapters
+            for paragraph in chapter.paragraphs
+            for fragment in self._semantic_fragments(paragraph)
+        ]
+        semantic_content_ok = all(escape(value) in document_html or value in document_html for value in semantic_fragments)
+        if (
+            document_count < expected_documents
+            or image_count < expected_visuals
+            or not references_ok
+            or not semantic_content_ok
+        ):
+            raise AutoBookExportError("EPUB structural/content QA failed")
+        return {
+            "passed": True,
+            "document_count": document_count,
+            "expected_visual_count": expected_visuals,
+            "image_count": image_count,
+            "visual_references_and_alt_preserved": references_ok,
+            "semantic_content_preserved": semantic_content_ok,
+            "xhtml_parse_passed": True,
+            "bibliography_document": bool(master.bibliography),
+            "viewer_review_required": True,
+        }
+
+'''
+replace_between(
+    SRC,
+    "    def _epub(\n",
+    "    @staticmethod\n    def _master_as_pronunciation_content",
+    new_epub,
+)
+
+# LitRes QA remains distinct from actual platform acceptance.
+replace_once(
+    SRC,
+    '''            elif kind == "LITRES_EBOOK_DOCX":\n                qa = self._docx(master, output, audio=False, visual_dir=visual_dir)\n                qa["platform_acceptance_claimed"] = False\n                qa["requirements_profile_checked_at"] = "owner-profile.v1"\n''',
+    '''            elif kind == "LITRES_EBOOK_DOCX":\n                qa = self._docx(master, output, audio=False, visual_dir=visual_dir)\n                qa["platform_acceptance_claimed"] = False\n                qa["requirements_profile"] = self.LITRES_PROFILE_VERSION\n                qa["requirements_profile_checked_at"] = self.LITRES_PROFILE_CHECKED_AT\n                qa["embedded_images_rgb"] = True\n                qa["embedded_image_max_long_side_px"] = 1024\n                qa["embedded_image_max_area_px"] = 2_000_000\n                qa["image_layout"] = "inline-with-text"\n                qa["file_size_bytes"] = output.stat().st_size\n                qa["within_70_mb_upload_limit"] = output.stat().st_size <= 70 * 1024 * 1024\n''',
+)
+replace_once(
+    SRC,
+    '''            elif kind == "READER_EXTRAS":\n                qa = self._docx(\n                    master, output, audio=False, include_extras_only=True, visual_dir=visual_dir\n                )\n''',
+    '''            elif kind == "READER_EXTRAS":\n                if not (\n                    any(chapter.tables or chapter.visuals for chapter in master.chapters)\n                    or master.bibliography\n                ):\n                    raise AutoBookExportError(\n                        "selected reader extras contain no reader-facing tables, visuals, or bibliography"\n                    )\n                qa = self._docx(\n                    master, output, audio=False, include_extras_only=True, visual_dir=visual_dir\n                )\n''',
+)
+
+# Tests need PDF/image inspection; T07a test fixer already supplies ebooklib/epub imports.
+text = TEST.read_text(encoding="utf-8")
+if "from PIL import Image\n" not in text:
+    replace_once(TEST, "from docx import Document\n", "from docx import Document\nfrom PIL import Image\nfrom pypdf import PdfReader\n")
+elif "from pypdf import PdfReader\n" not in text:
+    replace_once(TEST, "from PIL import Image\n", "from PIL import Image\nfrom pypdf import PdfReader\n")
+
+append(
+    TEST,
+    r'''
+def test_semantic_text_long_table_native_footnote_and_crossref_survive_exports(
+    tmp_path: Path,
+) -> None:
+    exporter = AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path))
+    long_rows = [[str(index), f"Строка {index}"] for index in range(1, 121)]
+    master = StructuredBookMaster(
+        title="Семантическая книга",
+        author="Автор",
+        chapters=[
+            MasterChapter(
+                chapter_id="c-semantic",
+                title="Глава семантики",
+                paragraphs=[
+                    "## Решение {#decision}",
+                    "Обычный **жирный** и *курсивный* текст со сноской[^1].",
+                    "- Первый пункт\n- Второй пункт",
+                    "1. Первый шаг\n2. Второй шаг",
+                    "> Важное примечание для читателя.",
+                    "См. [раздел решения](#decision).",
+                    "[^1]: Смысл сноски должен сохраниться.",
+                ],
+                tables=[
+                    MasterTable(
+                        object_id="long-table",
+                        title="Длинная таблица",
+                        headers=["N", "Значение"],
+                        rows=long_rows,
+                        audio_equivalent="Таблица перечисляет сто двадцать строк.",
+                        source_note="Проверяемая таблица автора",
+                        placement_after_paragraph=4,
+                    )
+                ],
+                visuals=[
+                    MasterVisual(
+                        object_id="semantic-chart",
+                        kind="CHART",
+                        title="Диаграмма",

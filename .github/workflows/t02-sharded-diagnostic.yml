@@ -1,0 +1,58 @@
+name: T02 Sharded Diagnostic
+
+on:
+  push:
+    branches:
+      - brain/agents-api-development-lane-20260914
+    paths:
+      - '.github/workflows/t02-sharded-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve T02 patchers
+        run: |
+          cp tools/agents_api/apply_t02_evidence_claims.py /tmp/apply_t02.py
+          cp tools/agents_api/apply_t02_test_semantics.py /tmp/apply_t02_test_semantics.py
+      - name: Checkout and patch exact product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B product origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "e6ab40c14c9fae5ca76ab9b5e9235c43136378d0"
+          python /tmp/apply_t02.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t02_test_semantics.py "$GITHUB_WORKSPACE"
+      - name: Install test dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Run test shard
+        working-directory: services/local-core
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os, subprocess, sys
+          files = sorted(Path('tests').glob('test_*.py'))
+          shard = int(os.environ['SHARD'])
+          selected = [str(path) for i, path in enumerate(files) if i % 4 == shard]
+          print(f'shard={shard} files={len(selected)}')
+          print('\n'.join(selected))
+          if not selected:
+              raise SystemExit(0)
+          raise SystemExit(subprocess.call([sys.executable, '-m', 'pytest', '-q', *selected]))
+          PY

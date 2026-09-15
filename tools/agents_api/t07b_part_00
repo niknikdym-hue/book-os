@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import sys
+
+ROOT = Path(sys.argv[1]).resolve()
+SRC = ROOT / "services/local-core/src/book_os_core/auto_book_exports.py"
+TEST = ROOT / "services/local-core/tests/test_auto_book_exports.py"
+PROFILE = ROOT / "docs/publishing/LITRES_EBOOK_PROFILE_2026-09-15.md"
+
+
+def replace_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"expected one match in {path}: {old[:100]!r}; count={count}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def replace_between(path: Path, start: str, end: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if text.count(start) != 1 or text.count(end) != 1:
+        raise SystemExit(
+            f"replace_between anchors not exact in {path}: start={text.count(start)} end={text.count(end)}"
+        )
+    start_at = text.index(start)
+    end_at = text.index(end, start_at)
+    path.write_text(text[:start_at] + new + text[end_at:], encoding="utf-8")
+
+
+def insert_before(path: Path, marker: str, block: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(marker)
+    if count != 1:
+        raise SystemExit(f"expected one marker in {path}: {marker[:100]!r}; count={count}")
+    path.write_text(text.replace(marker, block + marker, 1), encoding="utf-8")
+
+
+def append(path: Path, block: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if block.strip() in text:
+        raise SystemExit(f"block already present in {path}")
+    path.write_text(text.rstrip() + "\n\n" + block.strip() + "\n", encoding="utf-8")
+
+
+# Export integrity dependencies are already pinned in Local Core; only import them here.
+replace_once(SRC, "import json\nfrom pathlib import Path\n", "import json\nfrom pathlib import Path\nimport re\nimport xml.etree.ElementTree as ET\nfrom zipfile import ZipFile\n")
+replace_once(
+    SRC,
+    "from docx.document import Document as DocumentObject\n",
+    "from docx.document import Document as DocumentObject\n"
+    "from docx.opc.constants import CONTENT_TYPE as DOCX_CONTENT_TYPE\n"
+    "from docx.opc.constants import RELATIONSHIP_TYPE as DOCX_RELATIONSHIP_TYPE\n"
+    "from docx.opc.packuri import PackURI\n"
+    "from docx.opc.part import XmlPart\n"
+    "from docx.oxml import OxmlElement, parse_xml\n"
+    "from docx.oxml.ns import nsdecls, qn\n",
+)
+replace_once(
+    SRC,
+    "from PIL import Image, ImageDraw, ImageFont\n",
+    "from PIL import Image, ImageDraw, ImageFont\nfrom pypdf import PdfReader\n",
+)
+
+replace_once(
+    SRC,
+    '    EXPORTER_VERSION = "auto-book-export.v1.0.0"\n',
+    '    EXPORTER_VERSION = "auto-book-export.v1.1.0"\n'
+    '    LITRES_PROFILE_VERSION = "litres-ebook.2026-09-15.v2"\n'
+    '    LITRES_PROFILE_CHECKED_AT = "2026-09-15"\n',
+)
+replace_once(
+    SRC,
+    '        "LITRES_EBOOK_DOCX": "litres-ebook.owner-profile.v1",\n',
+    '        "LITRES_EBOOK_DOCX": "litres-ebook.2026-09-15.v2",\n',
+)
+
+# Official LitRes guidance says images should be pre-sized before Word. Keep originals within profile.
+replace_once(SRC, '        image = Image.new("RGB", (1600, 900), "white")\n', '        image = Image.new("RGB", (1024, 576), "white")\n')
+replace_once(SRC, '            bar_width = max(60, 1200 // len(visual.data))\n', '            bar_width = max(44, 760 // len(visual.data))\n')
+replace_once(
+    SRC,
+    '''                height = int(560 * value / maximum)\n                y0 = 720 - height\n                draw.rectangle((x0, y0, x0 + bar_width - 24, 720), fill="#2d6cdf")\n                draw.text((x0, 735), label, fill="#17253f", font=body_font)\n''',
+    '''                height = int(330 * value / maximum)\n                y0 = 455 - height\n                draw.rectangle((x0, y0, x0 + bar_width - 18, 455), fill="#2d6cdf")\n                draw.text((x0, 468), label, fill="#17253f", font=body_font)\n''',
+)
+replace_once(
+    SRC,
+    '''            draw.rounded_rectangle((140, 230, 1460, 650), radius=32, outline="#2d6cdf", width=8)\n            draw.multiline_text(\n                (210, 300),\n''',
+    '''            draw.rounded_rectangle((90, 145, 934, 430), radius=24, outline="#2d6cdf", width=6)\n            draw.multiline_text(\n                (130, 205),\n''',
+)
+replace_once(
+    SRC,
+    '        image.save(output, format="PNG", optimize=True)\n',
+    '        image.save(output, format="PNG", optimize=True, dpi=(72, 72))\n',
+)
+
+helpers = r'''    @staticmethod
+    def _reader_source_note(value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned or cleaned.startswith("revision:"):
+            return None
+        return cleaned
+
+    @staticmethod
+    def _plain_inline(value: str) -> str:
+        value = re.sub(r"\[([^\]]+)\]\(#([^)]+)\)", r"\1 (см. \2)", value)
+        value = re.sub(r"\[\^([^\]]+)\]", r"[\1]", value)
+        value = re.sub(r"\*\*([^*]+)\*\*", r"\1", value)
+        value = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", value)
+        return value
+
+    @staticmethod
+    def _heading_parts(value: str) -> tuple[int, str, str | None] | None:
+        match = re.fullmatch(r"(#{2,4})\s+(.+?)(?:\s+\{#([A-Za-z0-9_-]+)\})?", value.strip())
+        if match is None:
+            return None
+        return len(match.group(1)), match.group(2).strip(), match.group(3)
+
+    @classmethod
+    def _semantic_kind(cls, value: str) -> tuple[str, Any]:
+        raw = value.strip()
+        heading = cls._heading_parts(raw)
+        if heading is not None:
+            return "HEADING", heading
+        footnote = re.fullmatch(r"\[\^([^\]]+)\]:\s*(.+)", raw, flags=re.DOTALL)
+        if footnote is not None:
+            return "FOOTNOTE", (footnote.group(1), footnote.group(2).strip())
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        if lines and all(re.match(r"^[-*]\s+", line) for line in lines):
+            return "BULLET_LIST", [re.sub(r"^[-*]\s+", "", line) for line in lines]
+        if lines and all(re.match(r"^\d+[.)]\s+", line) for line in lines):
+            return "NUMBERED_LIST", [re.sub(r"^\d+[.)]\s+", "", line) for line in lines]
+        if raw.startswith(">"):
+            return "NOTE", " ".join(line.lstrip("> ") for line in raw.splitlines())
+        return "PARAGRAPH", raw
+
+    @classmethod
+    def _semantic_fragments(cls, value: str) -> list[str]:
