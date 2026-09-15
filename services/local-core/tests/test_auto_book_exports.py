@@ -2,13 +2,17 @@ from pathlib import Path
 import hashlib
 import json
 import sqlite3
+import pytest
 from zipfile import ZipFile
 
 from docx import Document
+from PIL import Image
+from pypdf import PdfReader
 import ebooklib  # type: ignore[import-untyped]
 from ebooklib import epub
 
 from book_os_core.auto_book_exports import (
+    AutoBookExportError,
     AutoBookExporter,
     MasterChapter,
     MasterTable,
@@ -444,3 +448,132 @@ def test_epub_physically_contains_visual_and_alt_text(tmp_path: Path) -> None:
         < content.index("visual-one.png")
         < content.index("После изображения")
     )
+
+
+def test_semantic_text_long_table_native_footnote_and_crossref_survive_exports(
+    tmp_path: Path,
+) -> None:
+    exporter = AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path))
+    long_rows = [[str(index), f"Строка {index}"] for index in range(1, 121)]
+    master = StructuredBookMaster(
+        title="Семантическая книга",
+        author="Автор",
+        chapters=[
+            MasterChapter(
+                chapter_id="c-semantic",
+                title="Глава семантики",
+                paragraphs=[
+                    "## Решение {#decision}",
+                    "Обычный **жирный** и *курсивный* текст со сноской[^1].",
+                    "- Первый пункт\n- Второй пункт",
+                    "1. Первый шаг\n2. Второй шаг",
+                    "> Важное примечание для читателя.",
+                    "См. [раздел решения](#decision).",
+                    "[^1]: Смысл сноски должен сохраниться.",
+                ],
+                tables=[
+                    MasterTable(
+                        object_id="long-table",
+                        title="Длинная таблица",
+                        headers=["N", "Значение"],
+                        rows=long_rows,
+                        audio_equivalent="Таблица перечисляет сто двадцать строк.",
+                        source_note="Проверяемая таблица автора",
+                        placement_after_paragraph=4,
+                    )
+                ],
+                visuals=[
+                    MasterVisual(
+                        object_id="semantic-chart",
+                        kind="CHART",
+                        title="Диаграмма",
+                        caption="Проверенная диаграмма",
+                        alt_text="Диаграмма с одним значением десять.",
+                        audio_equivalent="Диаграмма показывает значение десять.",
+                        data=[("Показатель", 10.0)],
+                        source_note="Проверяемые данные автора",
+                        placement_after_paragraph=5,
+                    )
+                ],
+            )
+        ],
+        bibliography=["Проверяемый источник. https://example.test/source"],
+    )
+    visual_dir = tmp_path / "visuals"
+    visual_dir.mkdir()
+    docx_path = tmp_path / "book.docx"
+    pdf_path = tmp_path / "book.pdf"
+    epub_path = tmp_path / "book.epub"
+    docx_qa = exporter._docx(master, docx_path, audio=False, visual_dir=visual_dir)
+    pdf_qa = exporter._pdf(master, pdf_path, visual_dir)
+    epub_qa = exporter._epub(master, epub_path, visual_dir)
+    assert docx_qa["embedded_visual_count"] == 1
+    assert docx_qa["native_footnote_part"] is True
+    assert docx_qa["bookmark_count"] >= 1
+    assert docx_qa["internal_hyperlink_count"] >= 1
+    assert pdf_qa["reader_text_preserved"] is True
+    assert epub_qa["semantic_content_preserved"] is True
+    assert epub_qa["visual_references_and_alt_preserved"] is True
+    assert epub_qa["xhtml_parse_passed"] is True
+
+    doc = Document(docx_path)
+    doc_text = "\n".join(paragraph.text for paragraph in doc.paragraphs)
+    assert "Решение" in doc_text
+    assert "Первый пункт" in doc_text and "Второй шаг" in doc_text
+    assert "Важное примечание" in doc_text
+    assert any(
+        run.bold and run.text == "жирный" for paragraph in doc.paragraphs for run in paragraph.runs
+    )
+    assert any(
+        run.italic and run.text == "курсивный"
+        for paragraph in doc.paragraphs
+        for run in paragraph.runs
+    )
+    assert doc.tables[0].rows[-1].cells[1].text == "Строка 120"
+    with ZipFile(docx_path) as archive:
+        assert "word/footnotes.xml" in archive.namelist()
+        footnotes = archive.read("word/footnotes.xml").decode("utf-8")
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "Смысл сноски должен сохраниться" in footnotes
+        assert 'w:anchor="decision"' in document_xml
+        assert 'w:name="decision"' in document_xml
+
+    pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(str(pdf_path)).pages)
+    assert "Первый пункт" in pdf_text
+    assert "Строка 120" in pdf_text
+    assert "Смысл сноски должен сохраниться" in pdf_text
+    assert "Источник: Проверяемая таблица автора" in pdf_text
+
+    reopened = epub.read_epub(str(epub_path))
+    html = "\n".join(
+        item.get_content().decode("utf-8", errors="replace")
+        for item in reopened.get_items_of_type(ebooklib.ITEM_DOCUMENT)
+    )
+    assert '<h2 id="decision">Решение</h2>' in html
+    assert "<ul>" in html and "<ol>" in html
+    assert "<strong>жирный</strong>" in html and "<em>курсивный</em>" in html
+    assert 'href="#decision"' in html
+    assert 'id="fn-1"' in html
+    assert 'href="#fn-1"' in html
+    assert "Строка 120" in html
+    assert "Источник: Проверяемые данные автора" in html
+
+    visual_path = visual_dir / "semantic-chart.png"
+    with Image.open(visual_path) as image:
+        assert image.mode == "RGB"
+        assert max(image.size) <= 1024
+        assert image.width * image.height <= 2_000_000
+
+
+def test_reader_extras_refuses_empty_selected_derivative(tmp_path: Path) -> None:
+    selection = AutoBookOutputSelection(reader_extras=True)
+    book_id, run_id = setup_run(tmp_path, selection)
+    master = StructuredBookMaster(
+        title="Книга без приложений",
+        author="Автор",
+        chapters=[MasterChapter(chapter_id="c1", title="Глава", paragraphs=["Текст."])],
+    )
+    with pytest.raises(AutoBookExportError, match="no reader-facing"):
+        AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path)).export_selected(
+            book_id, run_id, master, selection
+        )
