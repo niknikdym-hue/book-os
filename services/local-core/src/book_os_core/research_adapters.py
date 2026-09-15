@@ -28,6 +28,8 @@ class ResearchCandidate(BaseModel):
     citation_count: int | None = None
     provider_url: str | None = None
     raw_identifiers: dict[str, str] = Field(default_factory=dict)
+    inspected_excerpt: str | None = None
+    inspected_pointer: str | None = None
 
     @field_validator("title")
     @classmethod

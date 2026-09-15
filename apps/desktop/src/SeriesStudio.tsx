@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { coreApi } from "./api";
+import { uniqueProfileNames } from "./profileOptions";
 
 type ProfileKind = "AUTHOR" | "SERIES" | "STYLE";
 type ProfileView = {
@@ -8,15 +9,58 @@ type ProfileView = {
   name: string;
   status: "DRAFT" | "APPROVED";
   content: Record<string, unknown>;
+  updated_at: string;
 };
 
-type SeriesModelChoice = "ASTRA_MEDIUM" | "ASTRA_HIGH" | "ASTRA_XHIGH" | "SOL";
+type SeriesModelChoice = "AUTO" | "ASTRA_MEDIUM" | "ASTRA_HIGH" | "ASTRA_XHIGH" | "SOL";
 
 type SeriesCreateResult = {
   profile: ProfileView;
+  concepts: ProfileView[];
   provider: "openai";
   model: string;
   reasoning_effort: string | null;
+};
+
+type SeriesCostView = {
+  series_profile_id: string;
+  series_confirmed_cost_usd: number;
+  books_confirmed_cost_usd: number;
+  total_confirmed_cost_usd: number;
+  total_estimated_cost_usd: number;
+  total_reserved_cost_usd: number;
+  total_unknown_cost_usd: number;
+  current_books_forecast_low_usd: number | null;
+  current_books_forecast_high_usd: number | null;
+  production_forecast_low_usd: number | null;
+  production_forecast_high_usd: number | null;
+  production_forecast_status: string;
+  books: Array<{
+    book_id: string;
+    title: string;
+    confirmed_cost_usd: number;
+    estimated_cost_usd: number;
+    reserved_cost_usd: number;
+    unknown_cost_usd: number;
+    runtime_status: string | null;
+    forecast_total_low_usd: number | null;
+    forecast_total_high_usd: number | null;
+  }>;
+  future_books: Array<{
+    title: string;
+    forecast_total_low_usd: number | null;
+    forecast_total_high_usd: number | null;
+  }>;
+  operations: Array<{
+    entry_id: string;
+    operation: string;
+    model: string;
+    reasoning_effort: string | null;
+    confirmed_cost_usd: number;
+    estimated_cost_usd: number;
+    unknown_cost_usd: number;
+    created_at: string;
+  }>;
 };
 
 type SeriesReference = {
@@ -35,11 +79,73 @@ type SeriesReference = {
 };
 
 const MODEL_OPTIONS: readonly { value: SeriesModelChoice; label: string }[] = [
+  { value: "AUTO", label: "Автоматически" },
   { value: "ASTRA_MEDIUM", label: "GPT-6 Astra Medium" },
   { value: "ASTRA_HIGH", label: "GPT-6 Astra High" },
   { value: "ASTRA_XHIGH", label: "GPT-6 Astra Extra High" },
   { value: "SOL", label: "GPT-5.6 Sol" },
 ];
+
+type SeriesWorkspace = {
+  series_profile_id: string;
+  name: string;
+  profile_status: string;
+  profile_revision: number;
+  territory: string;
+  books: Array<{
+    book_id: string;
+    ordinal: number;
+    title: string;
+    unique_idea: string;
+    status: string;
+    source_kind: string;
+    origin_kind: "NEW" | "LEGACY_TITLE_ONLY" | "CURRENT_REWRITTEN" | "IMPORTED";
+    lifecycle: "PLANNED" | "DEFINITION" | "ARCHITECTURE" | "WRITING" | "EDITING" | "COMPLETED" | "ARCHIVED";
+    legacy_content_allowed: boolean;
+    current_corpus_eligible: boolean;
+    definition_ready: boolean;
+    passport_hash: string;
+    passport_approved: boolean;
+    imported_sources?: Array<{
+      source_id: string;
+      filename: string;
+      format: string;
+      analysis_status: string;
+      analysis: { characters?: number; headings?: string[]; tables?: number; visuals?: number; warnings?: string[] };
+    }>;
+  }>;
+  map: null | {
+    map_hash: string;
+    status: "PASS" | "ATTENTION" | "BLOCKING";
+    approved: boolean;
+    current: boolean;
+    findings: Array<Record<string, unknown>>;
+  };
+};
+
+type SeriesOutputs = {
+  complete_manuscripts: boolean;
+  editorial_and_litres: boolean;
+  audio_editions: boolean;
+  descriptions: boolean;
+  series_and_book_passports: boolean;
+  difference_map: boolean;
+  visual_materials: boolean;
+  sources_and_freshness: boolean;
+  next_books_plan: boolean;
+};
+
+const DEFAULT_SERIES_OUTPUTS: SeriesOutputs = {
+  complete_manuscripts: false,
+  editorial_and_litres: false,
+  audio_editions: false,
+  descriptions: true,
+  series_and_book_passports: true,
+  difference_map: true,
+  visual_materials: false,
+  sources_and_freshness: true,
+  next_books_plan: true,
+};
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
@@ -55,28 +161,201 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-export function SeriesStudio() {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"NEW" | "EXISTING">("NEW");
+type Props = {
+  embedded?: boolean;
+  initialMode?: "NEW" | "IMPORT" | "BOOK_OS";
+  onOpenBook?: (bookId: string) => void;
+};
+
+function usd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function bookStateLabel(book: SeriesWorkspace["books"][number]): string {
+  if (book.origin_kind === "CURRENT_REWRITTEN" && book.lifecycle === "COMPLETED") {
+    return "Готовая новая версия";
+  }
+  if (book.origin_kind === "LEGACY_TITLE_ONLY" && book.lifecycle === "PLANNED") {
+    return "Старое название · Переписать с нуля";
+  }
+  if (book.origin_kind === "NEW" && book.lifecycle === "PLANNED") {
+    return "Новая книга · Запланирована";
+  }
+  const lifecycle: Record<string, string> = {
+    DEFINITION: "Разрабатывается замысел",
+    ARCHITECTURE: "Создаётся архитектура",
+    WRITING: "Идёт написание",
+    EDITING: "Идёт редактура",
+    COMPLETED: "Готова",
+    ARCHIVED: "В архиве",
+  };
+  return lifecycle[book.lifecycle] ?? "В работе";
+}
+
+function mainBookAction(book: SeriesWorkspace["books"][number]): string {
+  if (book.lifecycle !== "PLANNED") return "Открыть книгу";
+  return book.origin_kind === "LEGACY_TITLE_ONLY" ? "Начать новую версию" : "Начать книгу";
+}
+
+function countPhrase(count: number, one: string, few: string, many: string): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const form = mod100 >= 11 && mod100 <= 14 ? many : mod10 === 1 ? one : mod10 >= 2 && mod10 <= 4 ? few : many;
+  return `${count} ${form}`;
+}
+
+function SeriesCostSummary({ cost }: { cost: SeriesCostView | null }) {
+  if (!cost) {
+    return (
+      <div className="series-cost-summary empty">
+        <span>Стоимость серии</span>
+        <strong>Пока без подтверждённых расходов</strong>
+      </div>
+    );
+  }
+  return (
+    <details className="series-cost-summary">
+      <summary>
+        <span>Стоимость серии</span>
+        <strong>Потрачено на серию {usd(cost.total_confirmed_cost_usd)}</strong>
+        <small>
+          {cost.production_forecast_low_usd != null && cost.production_forecast_high_usd != null
+            ? `Прогноз всей серии ${usd(cost.production_forecast_low_usd)}–${usd(cost.production_forecast_high_usd)}`
+            : "Прогноз всей серии: пока недостаточно данных"}
+        </small>
+      </summary>
+      <dl>
+        <div><dt>Работа с серией</dt><dd>{usd(cost.series_confirmed_cost_usd)}</dd></div>
+        <div><dt>Книги серии</dt><dd>{usd(cost.books_confirmed_cost_usd)}</dd></div>
+        <div><dt>Фактически потрачено</dt><dd>{usd(cost.total_confirmed_cost_usd)}</dd></div>
+        {cost.current_books_forecast_low_usd != null && cost.current_books_forecast_high_usd != null ? (
+          <div><dt>Текущая оценка незавершённых книг</dt><dd>{usd(cost.current_books_forecast_low_usd)}–{usd(cost.current_books_forecast_high_usd)}</dd></div>
+        ) : (
+          <div><dt>Текущая оценка незавершённых книг</dt><dd>пока недостаточно данных</dd></div>
+        )}
+        {cost.total_estimated_cost_usd > 0 && (
+          <div><dt>Оценочные суммы текущих операций</dt><dd>{usd(cost.total_estimated_cost_usd)}</dd></div>
+        )}
+        {cost.total_reserved_cost_usd > 0 && (
+          <div><dt>Зарезервировано</dt><dd>{usd(cost.total_reserved_cost_usd)}</dd></div>
+        )}
+        {cost.total_unknown_cost_usd > 0 && (
+          <div className="cost-warning">
+            <dt>Есть расходы, итог которых ещё подтверждается провайдером</dt>
+            <dd>{usd(cost.total_unknown_cost_usd)}</dd>
+          </div>
+        )}
+      </dl>
+      {cost.books.length > 0 && (
+        <ol className="series-cost-books">
+          {cost.books.map((book) => (
+            <li key={book.book_id}>
+              <span>{book.title}</span>
+              <strong>{book.runtime_status ? usd(book.confirmed_cost_usd) : "ещё не начата"}</strong>
+              {book.forecast_total_low_usd != null && book.forecast_total_high_usd != null && (
+                <small>прогноз {usd(book.forecast_total_low_usd)}–{usd(book.forecast_total_high_usd)} итог</small>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {(cost.future_books ?? []).length > 0 && (
+        <ol className="series-cost-books future">
+          {(cost.future_books ?? []).map((book) => (
+            <li key={book.title}>
+              <span>{book.title}</span>
+              <strong>ещё не начата</strong>
+              <small>
+                {book.forecast_total_low_usd != null && book.forecast_total_high_usd != null
+                  ? `прогноз ${usd(book.forecast_total_low_usd)}–${usd(book.forecast_total_high_usd)}`
+                  : "прогноз: пока недостаточно данных"}
+              </small>
+            </li>
+          ))}
+        </ol>
+      )}
+      {cost.operations.length > 0 && (
+        <details className="series-cost-history">
+          <summary>История работы с серией</summary>
+          <ul>
+            {cost.operations.map((operation) => (
+              <li key={operation.entry_id}>
+                <span>{new Date(operation.created_at).toLocaleString("ru-RU")}</span>
+                <span>{operation.operation === "SERIES_CONCEPT" ? "Концепция серии" : operation.operation}</span>
+                <strong>{usd(operation.confirmed_cost_usd)}</strong>
+                <small>{operation.model}{operation.reasoning_effort ? ` · ${operation.reasoning_effort}` : ""}</small>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </details>
+  );
+}
+
+export function SeriesStudio({ embedded = false, initialMode = "NEW", onOpenBook }: Props = {}) {
+  const [open, setOpen] = useState(embedded);
+  const [mode, setMode] = useState<"NEW" | "IMPORT" | "BOOK_OS">(initialMode);
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [authorId, setAuthorId] = useState("");
   const [brief, setBrief] = useState("");
-  const [modelChoice, setModelChoice] = useState<SeriesModelChoice>("ASTRA_HIGH");
+  const [modelChoice, setModelChoice] = useState<SeriesModelChoice>("AUTO");
   const [maxCostUsd, setMaxCostUsd] = useState("1.50");
-  const [allowPaid, setAllowPaid] = useState(false);
+  const [costConfirmationOpen, setCostConfirmationOpen] = useState(false);
+  const [advancedAiOpen, setAdvancedAiOpen] = useState(false);
   const [createdSeries, setCreatedSeries] = useState<ProfileView | null>(null);
+  const [createdConcepts, setCreatedConcepts] = useState<ProfileView[]>([]);
 
   const [seriesId, setSeriesId] = useState("");
   const [referenceTitle, setReferenceTitle] = useState("");
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
   const [currentReference, setCurrentReference] = useState<SeriesReference | null>(null);
+  const [workspaces, setWorkspaces] = useState<SeriesWorkspace[]>([]);
+  const [seriesCosts, setSeriesCosts] = useState<Record<string, SeriesCostView>>({});
+  const [workspaceSection, setWorkspaceSection] = useState<
+    "CONCEPT" | "BOOKS" | "RULES" | "MATERIALS"
+  >("CONCEPT");
+  const [externalSeriesName, setExternalSeriesName] = useState("");
+  const [externalAudience, setExternalAudience] = useState("");
+  const [externalPromise, setExternalPromise] = useState("");
+  const [externalTerritory, setExternalTerritory] = useState("");
+  const [externalBookTitle, setExternalBookTitle] = useState("");
+  const [externalBookIdea, setExternalBookIdea] = useState("");
+  const [externalBookFile, setExternalBookFile] = useState<File | null>(null);
+  const [additionalExternalBooks, setAdditionalExternalBooks] = useState<Array<{
+    title: string;
+    idea: string;
+    file: File | null;
+  }>>([]);
+  const [rightsStatus, setRightsStatus] = useState("AUTHOR_MANUSCRIPT");
+  const [seriesOutputs, setSeriesOutputs] = useState<SeriesOutputs>(DEFAULT_SERIES_OUTPUTS);
+  const [seriesExportPath, setSeriesExportPath] = useState<string | null>(null);
 
   const reloadProfiles = useCallback(async () => {
-    setProfiles(await coreApi<ProfileView[]>("GET", "/api/context/profiles"));
+    const [availableProfiles, availableWorkspaces] = await Promise.all([
+      coreApi<ProfileView[]>("GET", "/api/context/profiles"),
+      coreApi<SeriesWorkspace[]>("GET", "/api/series/workspaces"),
+    ]);
+    setProfiles(availableProfiles);
+    setWorkspaces(availableWorkspaces);
+    const costPairs = await Promise.all(
+      availableWorkspaces.map(async (workspace) => {
+        try {
+          const cost = await coreApi<SeriesCostView>(
+            "GET",
+            `/api/series/${workspace.series_profile_id}/costs`,
+          );
+          return [workspace.series_profile_id, cost] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    setSeriesCosts(Object.fromEntries(costPairs.filter((item) => item !== null)));
   }, []);
 
   useEffect(() => {
@@ -84,8 +363,17 @@ export function SeriesStudio() {
     void reloadProfiles().catch((reason: unknown) => setError(String(reason)));
   }, [open, reloadProfiles]);
 
+  useEffect(() => {
+    if (!embedded) return;
+    setOpen(true);
+    setMode(initialMode);
+  }, [embedded, initialMode]);
+
   const authors = useMemo(
-    () => profiles.filter((item) => item.kind === "AUTHOR" && item.status === "APPROVED"),
+    () =>
+      uniqueProfileNames(
+        profiles.filter((item) => item.kind === "AUTHOR" && item.status === "APPROVED"),
+      ),
     [profiles],
   );
   const series = useMemo(
@@ -104,10 +392,11 @@ export function SeriesStudio() {
   const currentReferenceStyle = currentReference
     ? styles.find((item) => item.profile_id === currentReference.style_profile_id) ?? null
     : null;
+  const servicesWorkspace = workspaces.find((item) => item.name === "Секреты продвижения услуг");
 
   useEffect(() => {
     setCurrentReference(null);
-    if (!seriesId || !open || mode !== "EXISTING") return;
+    if (!seriesId || !open || mode !== "IMPORT") return;
     void coreApi<SeriesReference | null>(
       "GET",
       `/api/series/${seriesId}/delivery-reference`,
@@ -116,9 +405,71 @@ export function SeriesStudio() {
       .catch((reason: unknown) => setError(String(reason)));
   }, [mode, open, seriesId]);
 
+  async function importExternalSeries() {
+    if (
+      !authorId ||
+      !externalSeriesName.trim() ||
+      !externalBookTitle.trim() ||
+      !externalBookIdea.trim() ||
+      !externalBookFile
+    ) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const draft = await coreApi<ProfileView>("POST", "/api/series/workspaces", {
+        series_name: externalSeriesName.trim(),
+        author_profile_id: authorId,
+        audience: externalAudience.trim(),
+        promise: externalPromise.trim(),
+        territory: externalTerritory.trim(),
+        prohibited_territories: [],
+      });
+      const approved = await coreApi<ProfileView>(
+        "POST",
+        `/api/context/profiles/${draft.profile_id}/approve`,
+      );
+      const importedBooks = [
+        { title: externalBookTitle, idea: externalBookIdea, file: externalBookFile },
+        ...additionalExternalBooks,
+      ];
+      for (const [index, item] of importedBooks.entries()) {
+        if (!item.file || !item.title.trim() || !item.idea.trim()) continue;
+        const book = await coreApi<{ book_id: string }>(
+          "POST",
+          `/api/series/${approved.profile_id}/books`,
+          {
+            title: item.title.trim(),
+            ordinal: index + 1,
+            unique_idea: item.idea.trim(),
+            reader_problem: item.idea.trim(),
+            reader_result: externalPromise.trim() || item.idea.trim(),
+            unique_mechanism: item.idea.trim(),
+            excluded_topics: [],
+            source_kind: "IMPORTED",
+          },
+        );
+        await coreApi(
+          "POST",
+          `/api/series/${approved.profile_id}/books/${book.book_id}/imports`,
+          {
+            filename: item.file.name,
+            content_base64: arrayBufferToBase64(await item.file.arrayBuffer()),
+            rights_status: rightsStatus,
+          },
+        );
+      }
+      setSeriesId(approved.profile_id);
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function createSeries() {
     const cost = Number(maxCostUsd);
-    if (!authorId || brief.trim().length < 20 || !allowPaid || !Number.isFinite(cost) || cost <= 0) {
+    if (!authorId || brief.trim().length < 20 || !Number.isFinite(cost) || cost <= 0) {
       return;
     }
     setBusy(true);
@@ -133,10 +484,165 @@ export function SeriesStudio() {
         owner_authorizes_paid_call: true,
       });
       setCreatedSeries(result.profile);
-      setAllowPaid(false);
+      setCreatedConcepts(result.concepts);
+      setCostConfirmationOpen(false);
       await reloadProfiles();
     } catch (reason) {
-      setAllowPaid(false);
+      setCostConfirmationOpen(false);
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadServicesPromotionPreset() {
+    if (!authorId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", "/api/series/presets/services-promotion", {
+        author_profile_id: authorId,
+      });
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportSeries(seriesProfileId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await coreApi<{ output_directory: string }>(
+        "POST",
+        `/api/series/${seriesProfileId}/exports`,
+        seriesOutputs,
+      );
+      setSeriesExportPath(result.output_directory);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function analyzeSeries(seriesProfileId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", `/api/series/${seriesProfileId}/analyze`);
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveSeriesMap(seriesProfileId: string, mapHash: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", `/api/series/${seriesProfileId}/maps/${mapHash}/approve`, {
+        reason: "Автор проверил актуальную карту различий в Series Studio",
+      });
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveBookPassport(
+    seriesProfileId: string,
+    bookId: string,
+    passportHash: string,
+  ) {
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi(
+        "POST",
+        `/api/series/${seriesProfileId}/books/${bookId}/passport/approve`,
+        {
+          passport_hash: passportHash,
+          reason: "Автор утвердил паспорт новой версии после Book Definition",
+        },
+      );
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function archiveSeriesBook(seriesProfileId: string, bookId: string) {
+    if (!window.confirm("Архивировать эту книгу? Её можно будет восстановить из библиотеки.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", `/api/series/${seriesProfileId}/books/${bookId}/archive`);
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startFreshSeriesBook(seriesProfileId: string, bookId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const fresh = await coreApi<{ book_id: string }>(
+        "POST",
+        `/api/series/${seriesProfileId}/books/${bookId}/start-fresh`,
+      );
+      await reloadProfiles();
+      onOpenBook?.(fresh.book_id);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteImportedSource(
+    seriesProfileId: string,
+    bookId: string,
+    sourceId: string,
+    filename: string,
+  ) {
+    const confirmed = window.confirm(
+      `Удалить локально сохранённый оригинал «${filename}»? Это действие нельзя отменить.`,
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi(
+        "DELETE",
+        `/api/series/${seriesProfileId}/books/${bookId}/imports/${sourceId}`,
+      );
+      await reloadProfiles();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveWorkspaceSeries(seriesProfileId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await coreApi("POST", `/api/context/profiles/${seriesProfileId}/approve`);
+      await reloadProfiles();
+    } catch (reason) {
       setError(String(reason));
     } finally {
       setBusy(false);
@@ -196,17 +702,21 @@ export function SeriesStudio() {
 
   return (
     <>
-      <button
+      {!embedded && <button
         type="button"
         className="series-studio-launcher"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         Серии
-      </button>
+      </button>}
 
       {open && (
-        <div className="series-studio-backdrop" role="presentation" onMouseDown={() => setOpen(false)}>
+        <div
+          className={`series-studio-backdrop ${embedded ? "embedded" : ""}`}
+          role={embedded ? undefined : "presentation"}
+          onMouseDown={() => { if (!embedded) setOpen(false); }}
+        >
           <aside
             className="series-studio-drawer"
             aria-label="Series Studio"
@@ -217,7 +727,7 @@ export function SeriesStudio() {
                 <p className="eyebrow">SERIES STUDIO</p>
                 <h2>Работа с серией</h2>
               </div>
-              <button type="button" className="ghost" onClick={() => setOpen(false)}>Закрыть</button>
+              {!embedded && <button type="button" className="ghost" onClick={() => setOpen(false)}>Закрыть</button>}
             </header>
 
             <p className="series-studio-rule">
@@ -235,10 +745,17 @@ export function SeriesStudio() {
               </button>
               <button
                 type="button"
-                className={mode === "EXISTING" ? "active" : ""}
-                onClick={() => setMode("EXISTING")}
+                className={mode === "IMPORT" ? "active" : ""}
+                onClick={() => setMode("IMPORT")}
               >
-                Обновляю существующую серию
+                Добавить внешнюю серию
+              </button>
+              <button
+                type="button"
+                className={mode === "BOOK_OS" ? "active" : ""}
+                onClick={() => setMode("BOOK_OS")}
+              >
+                Продолжить в BOOK OS
               </button>
             </div>
 
@@ -270,6 +787,13 @@ export function SeriesStudio() {
                   />
                 </label>
 
+                <details
+                  className="advanced-settings series-ai-settings"
+                  open={advancedAiOpen}
+                  onToggle={(event) => setAdvancedAiOpen(event.currentTarget.open)}
+                >
+                  <summary>AI: {MODEL_OPTIONS.find((item) => item.value === modelChoice)?.label ?? "Автоматически"}{modelChoice === "AUTO" ? " — рекомендуется" : ""}</summary>
+                  <p className="muted">Ручная модель и жёсткий лимит доступны только по вашему явному решению.</p>
                 <div className="series-studio-grid">
                   <label className="field">
                     <span>Модель</span>
@@ -284,31 +808,48 @@ export function SeriesStudio() {
                     <input
                       inputMode="decimal"
                       value={maxCostUsd}
-                      onChange={(event) => {
-                        setMaxCostUsd(event.target.value);
-                        setAllowPaid(false);
-                      }}
+                      onChange={(event) => setMaxCostUsd(event.target.value)}
                     />
                   </label>
                 </div>
-
-                <label className="paid-approval">
-                  <input
-                    type="checkbox"
-                    checked={allowPaid}
-                    onChange={(event) => setAllowPaid(event.target.checked)}
-                  />
-                  <span>Разрешаю один платный вызов выбранной модели с указанным лимитом.</span>
-                </label>
+                </details>
 
                 <button
                   type="button"
                   className="primary"
-                  disabled={busy || !authorId || brief.trim().length < 20 || !allowPaid}
-                  onClick={() => void createSeries()}
+                  disabled={busy || !authorId || brief.trim().length < 20}
+                  onClick={() => setCostConfirmationOpen(true)}
                 >
-                  {busy ? "Модель работает…" : "Предложить архитектуру серии"}
+                  {busy ? "Модель работает…" : "Предложить серию"}
                 </button>
+
+                {costConfirmationOpen && (
+                  <div className="modal-backdrop" role="presentation">
+                    <section
+                      className="series-authorization-dialog"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="series-cost-confirmation-title"
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setCostConfirmationOpen(false);
+                      }}
+                    >
+                      <p className="eyebrow">ОДНО ДЕЙСТВИЕ</p>
+                      <h3 id="series-cost-confirmation-title">Разрешить создание концепции серии</h3>
+                      <p>Максимальный расход этого шага: до {usd(Number(maxCostUsd) || 0)}</p>
+                      <p className="muted">BOOK OS автоматически выберет подходящую модель. Разрешение действует только на этот запуск.</p>
+                      <div className="actions">
+                        <button autoFocus className="primary" type="button" onClick={() => void createSeries()} disabled={busy || Number(maxCostUsd) <= 0}>
+                          {busy ? "Создаю…" : "Продолжить"}
+                        </button>
+                        <button type="button" onClick={() => { setCostConfirmationOpen(false); setAdvancedAiOpen(true); }}>
+                          Изменить лимит
+                        </button>
+                        <button className="ghost" type="button" onClick={() => setCostConfirmationOpen(false)}>Отмена</button>
+                      </div>
+                    </section>
+                  </div>
+                )}
 
                 {createdSeries && (
                   <article className="series-studio-result">
@@ -343,19 +884,81 @@ export function SeriesStudio() {
                     )}
                   </article>
                 )}
+                {createdConcepts.length > 1 && (
+                  <div className="series-studio-result" aria-label="Концепции серии">
+                    <strong>Выберите одну из {createdConcepts.length} концепций</strong>
+                    <div className="series-studio-tabs">
+                      {createdConcepts.map((concept, index) => (
+                        <button
+                          key={concept.profile_id}
+                          type="button"
+                          className={concept.profile_id === createdSeries?.profile_id ? "active" : ""}
+                          onClick={() => setCreatedSeries(concept)}
+                        >
+                          {index + 1}. {concept.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
-            {mode === "EXISTING" && (
+            {mode === "IMPORT" && (
               <section className="series-studio-section">
-                <h3>Существующая серия</h3>
+                <h3>Серия, начатая вне BOOK OS</h3>
                 <p className="muted">
-                  Загрузите уже обновлённую книгу только как эталон манеры подачи и уровня качества.
-                  BOOK OS не использует её как донор содержания для других книг.
+                  Оригинал сохраняется неизменяемым. Сначала BOOK OS покажет аналитический профиль
+                  и карту различий; импорт не разрешает переписывать или публиковать текст.
                 </p>
 
                 <label className="field">
-                  <span>Серия</span>
+                  <span>Автор / псевдоним</span>
+                  <select value={authorId} onChange={(event) => setAuthorId(event.target.value)}>
+                    <option value="">Выберите утверждённого автора</option>
+                    {authors.map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name}</option>)}
+                  </select>
+                </label>
+                <div className="series-studio-grid">
+                  <label className="field"><span>Название серии</span><input value={externalSeriesName} onChange={(event) => setExternalSeriesName(event.target.value)} /></label>
+                  <label className="field"><span>Аудитория</span><input value={externalAudience} onChange={(event) => setExternalAudience(event.target.value)} /></label>
+                  <label className="field"><span>Обещание серии</span><input value={externalPromise} onChange={(event) => setExternalPromise(event.target.value)} /></label>
+                  <label className="field"><span>Территория серии</span><input value={externalTerritory} onChange={(event) => setExternalTerritory(event.target.value)} /></label>
+                  <label className="field"><span>Название первой книги</span><input value={externalBookTitle} onChange={(event) => setExternalBookTitle(event.target.value)} /></label>
+                  <label className="field"><span>Уникальная идея этой книги</span><textarea rows={3} value={externalBookIdea} onChange={(event) => setExternalBookIdea(event.target.value)} /></label>
+                </div>
+                <label className="field">
+                  <span>Файл первой книги</span>
+                  <input type="file" accept=".docx,.txt,.pdf,.epub,.md,.markdown" onChange={(event) => setExternalBookFile(event.target.files?.[0] ?? null)} />
+                  <small>DOCX, TXT, PDF, EPUB или Markdown · до 25 МБ.</small>
+                </label>
+                {additionalExternalBooks.map((item, index) => (
+                  <div className="series-studio-result" key={`external-${index + 2}`}>
+                    <strong>Книга {index + 2}</strong>
+                    <label className="field"><span>Подтверждённое название</span><input value={item.title} onChange={(event) => setAdditionalExternalBooks((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, title: event.target.value } : value))} /></label>
+                    <label className="field"><span>Уникальная идея книги</span><textarea rows={3} value={item.idea} onChange={(event) => setAdditionalExternalBooks((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, idea: event.target.value } : value))} /></label>
+                    <label className="field"><span>Файл этой книги</span><input type="file" accept=".docx,.txt,.pdf,.epub,.md,.markdown" onChange={(event) => setAdditionalExternalBooks((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, file: event.target.files?.[0] ?? null } : value))} /></label>
+                    <button type="button" className="ghost" onClick={() => setAdditionalExternalBooks((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Убрать книгу из импорта</button>
+                  </div>
+                ))}
+                <button type="button" className="ghost" onClick={() => setAdditionalExternalBooks((current) => [...current, { title: "", idea: "", file: null }])}>
+                  + Добавить ещё книгу и файл
+                </button>
+                <label className="field">
+                  <span>Права на файл</span>
+                  <select value={rightsStatus} onChange={(event) => setRightsStatus(event.target.value)}>
+                    <option value="AUTHOR_MANUSCRIPT">Авторская рукопись</option>
+                    <option value="PUBLISHED_OWN_BOOK">Опубликованная книга автора</option>
+                    <option value="LICENSED_MATERIAL">Лицензированный материал</option>
+                    <option value="REFERENCE_ONLY">Только справочный материал</option>
+                  </select>
+                </label>
+                <button type="button" className="primary" disabled={busy || !authorId || !externalSeriesName.trim() || !externalBookTitle.trim() || !externalBookIdea.trim() || !externalBookFile || additionalExternalBooks.some((item) => !item.title.trim() || !item.idea.trim() || !item.file)} onClick={() => void importExternalSeries()}>
+                  {busy ? "Сохраняю и анализирую…" : "Создать паспорт и сохранить оригинал"}
+                </button>
+
+                <label className="field">
+                  <span>Закрепить эталон подачи для серии — необязательно</span>
                   <select value={seriesId} onChange={(event) => setSeriesId(event.target.value)}>
                     <option value="">Выберите утверждённую серию</option>
                     {series.map((item) => (
@@ -423,6 +1026,224 @@ export function SeriesStudio() {
                     продолжает контролироваться отдельными правилами серии.
                   </p>
                 )}
+              </section>
+            )}
+
+            {mode === "BOOK_OS" && (
+              <section className="series-studio-section">
+                <h3>Серии в BOOK OS</h3>
+                <p className="muted">Выберите серию, чтобы увидеть книги, порядок, статус паспорта и актуальность карты различий.</p>
+                <div className="series-studio-result">
+                  <strong>Согласованный каркас автора</strong>
+                  <p className="muted">
+                    {servicesWorkspace
+                      ? "Серия уже подготовлена в BOOK OS. Продолжайте работу с её картой и следующей книгой."
+                      : "Подготовить карту «Секретов продвижения услуг» без генерации книг и без чтения старых файлов."}
+                  </p>
+                  <label className="field">
+                    <span>Автор / псевдоним</span>
+                    <select value={authorId} onChange={(event) => setAuthorId(event.target.value)}>
+                      <option value="">Выберите утверждённого автора</option>
+                      {authors.map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name}</option>)}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy || (!servicesWorkspace && !authorId)}
+                    onClick={() => {
+                      if (servicesWorkspace) setWorkspaceSection("BOOKS");
+                      else void loadServicesPromotionPreset();
+                    }}
+                  >
+                    {servicesWorkspace ? "Продолжить серию" : "Подготовить «Секреты продвижения услуг»"}
+                  </button>
+                </div>
+                {workspaces.length === 0 ? (
+                  <p className="muted">Сохранённых серий пока нет.</p>
+                ) : workspaces.map((workspace) => (
+                  <article className="series-studio-result" key={workspace.series_profile_id}>
+                    <div className="panel-heading">
+                      <div><p className="eyebrow">SERIES BIBLE v{workspace.profile_revision}</p><h3>{workspace.name}</h3></div>
+                      <span className={`badge ${workspace.profile_status === "APPROVED" ? "approved" : "draft"}`}>{workspace.profile_status === "APPROVED" ? "УТВЕРЖДЁН" : "ЧЕРНОВИК"}</span>
+                    </div>
+                    <section className="series-ready-summary" aria-label={`Состояние серии «${workspace.name}»`}>
+                      <div>
+                        <p className="eyebrow">СЕРИЯ ПОДГОТОВЛЕНА К РАБОТЕ</p>
+                        <h4>{workspace.books.length} книг</h4>
+                        <ul>
+                          <li>{countPhrase(workspace.books.filter((book) => book.current_corpus_eligible).length, "новая версия готова", "новые версии готовы", "новых версий готово")}</li>
+                          <li>{countPhrase(workspace.books.filter((book) => book.origin_kind === "LEGACY_TITLE_ONLY" && book.lifecycle === "PLANNED").length, "книгу предстоит переписать с нуля", "книги предстоит переписать с нуля", "книг предстоит переписать с нуля")}</li>
+                          <li>{countPhrase(workspace.books.filter((book) => book.origin_kind === "NEW" && book.lifecycle === "PLANNED").length, "новая книга запланирована", "новые книги запланированы", "новых книг запланировано")}</li>
+                        </ul>
+                      </div>
+                      {workspace.books.find((book) => book.lifecycle === "PLANNED") && (() => {
+                        const next = workspace.books.find((book) => book.lifecycle === "PLANNED")!;
+                        return <div className="series-next-step">
+                          <p className="eyebrow">СЛЕДУЮЩИЙ ШАГ</p>
+                          <strong>{next.title}</strong>
+                          {next.origin_kind === "LEGACY_TITLE_ONLY" && <small>Старая версия не используется. Сохраняется только название.</small>}
+                          <button type="button" className="primary" disabled={busy} onClick={() => void startFreshSeriesBook(workspace.series_profile_id, next.book_id)}>{mainBookAction(next)}</button>
+                        </div>;
+                      })()}
+                    </section>
+                    <SeriesCostSummary cost={seriesCosts[workspace.series_profile_id] ?? null} />
+                    <nav className="series-workspace-nav" aria-label={`Разделы серии «${workspace.name}»`}>
+                      {([
+                        ["CONCEPT", "Концепция"],
+                        ["BOOKS", "Книги"],
+                        ["RULES", "Правила серии"],
+                        ["MATERIALS", "Материалы"],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          className={workspaceSection === id ? "active" : ""}
+                          aria-pressed={workspaceSection === id}
+                          onClick={() => setWorkspaceSection(id)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </nav>
+                    {workspaceSection === "CONCEPT" && (
+                      <section className="series-workspace-pane">
+                        <p className="eyebrow">КОНЦЕПЦИЯ</p>
+                        <h4>Обещание и территория серии</h4>
+                        {workspace.territory
+                          ? <p>{workspace.territory}</p>
+                          : <p className="muted">Территория уточняется в Series Bible.</p>}
+                        {workspace.profile_status !== "APPROVED" && (
+                          <button type="button" className="primary" disabled={busy} onClick={() => void approveWorkspaceSeries(workspace.series_profile_id)}>
+                            Утвердить паспорт серии
+                          </button>
+                        )}
+                      </section>
+                    )}
+                    {workspaceSection === "BOOKS" && (
+                    <section className="series-workspace-pane">
+                    <p className="eyebrow">КАРТА СЕРИИ</p>
+                    <ol className="series-book-map">
+                      {workspace.books.map((book) => (
+                        <li key={book.book_id} className="series-book-card">
+                          <span className="series-book-number">{book.ordinal}</span>
+                          <div className="series-book-copy">
+                            <strong>{book.title}</strong>
+                            <span className="series-book-state">{bookStateLabel(book)}</span>
+                            <p>{book.unique_idea}</p>
+                            <div className="series-book-actions">
+                              <button
+                                type="button"
+                                className="primary"
+                                disabled={busy}
+                                onClick={() => book.lifecycle === "PLANNED"
+                                  ? void startFreshSeriesBook(workspace.series_profile_id, book.book_id)
+                                  : onOpenBook?.(book.book_id)}
+                              >
+                                {mainBookAction(book)}
+                              </button>
+                              {book.lifecycle !== "PLANNED" && book.definition_ready && !book.passport_approved && (
+                                <button
+                                  type="button"
+                                  className="ghost"
+                                  disabled={busy}
+                                  onClick={() => void approveBookPassport(
+                                    workspace.series_profile_id,
+                                    book.book_id,
+                                    book.passport_hash,
+                                  )}
+                                >
+                                  Утвердить паспорт книги
+                                </button>
+                              )}
+                              {book.lifecycle !== "PLANNED" && (book.passport_approved || book.lifecycle === "COMPLETED") && (
+                                <button type="button" className="ghost" disabled={busy} onClick={() => onOpenBook?.(book.book_id)}>
+                                  Паспорт книги
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {book.imported_sources?.map((source) => (
+                            <span key={source.source_id} className="series-import-source">
+                              <small className="muted">
+                                {source.filename} · {source.format} · {source.analysis_status} · {source.analysis.characters ?? 0} знаков · {source.analysis.headings?.length ?? 0} глав · {source.analysis.tables ?? 0} таблиц · {source.analysis.visuals ?? 0} визуалов
+                                {(source.analysis.warnings?.length ?? 0) > 0 ? ` · предупреждения: ${source.analysis.warnings!.join("; ")}` : ""}
+                              </small>
+                              <button
+                                type="button"
+                                className="ghost danger"
+                                disabled={busy}
+                                onClick={() => void deleteImportedSource(
+                                  workspace.series_profile_id,
+                                  book.book_id,
+                                  source.source_id,
+                                  source.filename,
+                                )}
+                              >
+                                Удалить сохранённый оригинал
+                              </button>
+                            </span>
+                          ))}
+                          {book.lifecycle !== "ARCHIVED" && <details className="series-book-more">
+                            <summary aria-label={`Другие действия для «${book.title}»`}>•••</summary>
+                            <button type="button" className="ghost danger" disabled={busy} onClick={() => void archiveSeriesBook(workspace.series_profile_id, book.book_id)}>Архивировать</button>
+                          </details>}
+                        </li>
+                      ))}
+                    </ol>
+                    </section>
+                    )}
+                    {workspaceSection === "RULES" && (
+                    <section className="series-workspace-pane">
+                    <p className="eyebrow">ПРАВИЛА СЕРИИ</p>
+                    <p className="muted">
+                      Карта различий: {workspace.map === null ? "не построена" : !workspace.map.current ? "устарела" : `${workspace.map.status}${workspace.map.approved ? " · утверждена" : " · ждёт решения автора"}`}
+                    </p>
+                    {(workspace.map === null || !workspace.map.current) && (
+                      <button type="button" className="primary" disabled={busy} onClick={() => void analyzeSeries(workspace.series_profile_id)}>
+                        Построить актуальную карту различий
+                      </button>
+                    )}
+                    {workspace.map?.current && !workspace.map.approved && workspace.map.status !== "BLOCKING" && (
+                      <button type="button" className="primary" disabled={busy} onClick={() => void approveSeriesMap(workspace.series_profile_id, workspace.map!.map_hash)}>
+                        Утвердить различия книг
+                      </button>
+                    )}
+                    {workspace.map?.status === "BLOCKING" && (
+                      <p className="alert inline-alert">Есть существенные дубли или неразобранные источники. Утверждение и написание заблокированы до исправления.</p>
+                    )}
+                    </section>
+                    )}
+                    {workspaceSection === "MATERIALS" && (
+                    <section className="series-workspace-pane">
+                    <p className="eyebrow">МАТЕРИАЛЫ И ВЫПУСК</p>
+                    <details>
+                      <summary>Что выгрузить по серии</summary>
+                      {([
+                        ["complete_manuscripts", "Полные рукописи выбранных книг"],
+                        ["editorial_and_litres", "Редакционные версии и версии для ЛитРес"],
+                        ["audio_editions", "Аудиоредакции"],
+                        ["descriptions", "Оглавления и описания"],
+                        ["series_and_book_passports", "Паспорт серии и паспорта книг"],
+                        ["difference_map", "Карта различий и отчёт о повторах"],
+                        ["visual_materials", "Пакет визуальных материалов"],
+                        ["sources_and_freshness", "Источники и отчёт об актуальности"],
+                        ["next_books_plan", "План следующих книг без запуска написания"],
+                      ] as Array<[keyof SeriesOutputs, string]>).map(([key, label]) => (
+                        <label className="output-choice" key={key}>
+                          <input type="checkbox" checked={seriesOutputs[key]} onChange={(event) => setSeriesOutputs((current) => ({ ...current, [key]: event.target.checked }))} />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                      <button type="button" className="primary" disabled={busy || !Object.values(seriesOutputs).some(Boolean)} onClick={() => void exportSeries(workspace.series_profile_id)}>
+                        Подготовить выбранные материалы серии
+                      </button>
+                    </details>
+                    </section>
+                    )}
+                  </article>
+                ))}
+                {seriesExportPath && <p className="series-studio-success">Материалы готовы: {seriesExportPath}</p>}
               </section>
             )}
 

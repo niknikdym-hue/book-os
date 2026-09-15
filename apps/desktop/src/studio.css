@@ -27,6 +27,85 @@ body {
   backdrop-filter: blur(18px);
 }
 
+.top-level-nav {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  padding: 10px 30px 0;
+  border-bottom: 1px solid var(--studio-line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0));
+}
+
+.top-level-nav-item {
+  border: 1px solid transparent;
+  padding: 8px 14px;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  color: #5f5a52;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.top-level-nav-item.active {
+  border-color: var(--studio-line);
+  color: #22211f;
+  background: rgba(255, 253, 248, 0.95);
+  border-bottom-color: var(--studio-paper);
+}
+
+.project-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.project-tabs button {
+  border: 1px solid #d4cdc3;
+  background: #f3efe7;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.project-tabs button.active {
+  background: #1f211e;
+  color: #fffdf8;
+  border-color: #1f211e;
+}
+
+.project-tabs button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.library-card {
+  border: 1px solid #ddd8ce;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fffdf8;
+}
+
+.library-card h3 {
+  margin: 0.2rem 0;
+}
+
+.library-card small {
+  color: #7a746b;
+  display: block;
+  margin-bottom: 8px;
+}
+
 .topbar > div:first-child {
   display: grid;
   grid-template-columns: 44px auto;

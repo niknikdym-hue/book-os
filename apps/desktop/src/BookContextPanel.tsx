@@ -24,6 +24,8 @@ type BookContextView = {
   min_characters: number | null;
   max_characters: number | null;
   include_bibliography: boolean;
+  bibliography_preference?: "AUTO_INCLUDED" | "EXPLICITLY_OMITTED";
+  public_bibliography_omitted?: boolean;
   plan_illustrations: boolean;
   visual_asset_format: "png";
   visual_materials_policy: "when_useful";
@@ -91,7 +93,7 @@ export function BookContextPanel({ project }: Props) {
   const [targetCharacters, setTargetCharacters] = useState("300000");
   const [minCharacters, setMinCharacters] = useState("");
   const [maxCharacters, setMaxCharacters] = useState("");
-  const [includeBibliography, setIncludeBibliography] = useState(false);
+  const [omitPublicBibliography, setOmitPublicBibliography] = useState(false);
   const [planIllustrations, setPlanIllustrations] = useState(false);
 
   const [authorName, setAuthorName] = useState("");
@@ -163,7 +165,9 @@ export function BookContextPanel({ project }: Props) {
     }
     setMinCharacters(currentContext.min_characters ? String(currentContext.min_characters) : "");
     setMaxCharacters(currentContext.max_characters ? String(currentContext.max_characters) : "");
-    setIncludeBibliography(currentContext.include_bibliography);
+    setOmitPublicBibliography(
+      currentContext.public_bibliography_omitted ?? !currentContext.include_bibliography,
+    );
     setPlanIllustrations(currentContext.plan_illustrations);
   }, [project.book_id]);
 
@@ -282,7 +286,7 @@ export function BookContextPanel({ project }: Props) {
           target_characters: target,
           min_characters: minimum,
           max_characters: maximum,
-          include_bibliography: includeBibliography,
+          include_bibliography: !omitPublicBibliography,
           plan_illustrations: planIllustrations,
         },
       );
@@ -578,15 +582,19 @@ export function BookContextPanel({ project }: Props) {
 
       <section className="planning-step">
         <h4>7. Библиография</h4>
+        <p className="muted">
+          Библиография включена автоматически. BOOK OS добавляет только реально использованные и
+          проверенные источники; внутренние Research, Evidence и provenance сохраняются всегда.
+        </p>
         <label className="paid-approval">
           <input
             type="checkbox"
-            checked={includeBibliography}
-            onChange={(event) => setIncludeBibliography(event.target.checked)}
+            checked={omitPublicBibliography}
+            onChange={(event) => setOmitPublicBibliography(event.target.checked)}
           />
           <span>
-            Библиография в конце книги
-            <small>В финальном плане книги будет отдельный список использованных источников. Включайте, если книга опирается на исследования, законы, документы или проверяемые данные.</small>
+            Убрать библиографию из книги
+            <small>Это меняет только опубликованные файлы и не отключает исследование, фактчек или внутренний список источников.</small>
           </span>
         </label>
       </section>

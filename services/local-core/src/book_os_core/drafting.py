@@ -26,6 +26,7 @@ from .model_gateway_anti_junk import AntiJunkModelGateway
 from .model_routing import PROVIDERS, ModelRoutingService, RoutingChoice
 from .projects import ProjectService
 from .prompts import SECTION_DRAFT_V1
+from .series_production import SeriesProductionGateError, SeriesProductionService
 
 
 class DraftingError(RuntimeError):
@@ -82,6 +83,7 @@ class DraftingService:
         self._gateway = AntiJunkModelGateway(gateway, AntiJunkService(data_dir))
         self._routing = ModelRoutingService(data_dir)
         self._contexts = BookContextService(data_dir)
+        self._series_production = SeriesProductionService(data_dir)
 
     def _engine(self, book_id: str) -> Engine:
         self._projects.get_project(book_id)
@@ -140,9 +142,11 @@ class DraftingService:
                 else None
             ),
             "target_characters": context.target_characters,
+            "target_length_policy": "GUIDANCE_NOT_PADDING",
             "min_characters": context.min_characters,
             "max_characters": context.max_characters,
             "include_bibliography": context.include_bibliography,
+            "internal_research_and_evidence": "ALWAYS_PRESERVED",
             "plan_illustrations": context.plan_illustrations,
             "visual_asset_format": context.visual_asset_format,
             "visual_materials_policy": context.visual_materials_policy,
@@ -169,6 +173,10 @@ class DraftingService:
         task_id = new_ulid()
         run_id = new_ulid()
         try:
+            try:
+                self._series_production.require_writing_allowed(book_id, chapter_id)
+            except SeriesProductionGateError as exc:
+                raise DraftingGateError(str(exc)) from exc
             choice = self._resolve_choice(book_id, request)
             if request.reasoning_effort is not None and choice.provider in PROVIDERS:
                 self._routing.validate_work_level(

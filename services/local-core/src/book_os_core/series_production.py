@@ -14,7 +14,7 @@ from .book_context import BookContextService
 from .db import create_database
 from .projects import ProjectService
 
-HumanActorKind = Literal["HUMAN", "OWNER"]
+HumanActorKind = Literal["HUMAN", "OWNER", "SYSTEM"]
 EvidenceActorKind = Literal["HUMAN", "OWNER", "AI", "SYSTEM"]
 GateResult = Literal["PASS", "ATTENTION", "BLOCKING"]
 QualityResult = Literal["PASS", "REWORK"]
@@ -65,6 +65,7 @@ class DefinitionPackContent(BaseModel):
     original_contribution: QualityResult
     practical_value: QualityResult
     target_market_quality: QualityResult
+    gate_evidence: dict[str, Any] = Field(default_factory=dict)
     density_rule: str = Field(
         default="NO PADDING: length may grow only through a new substantive function",
         min_length=1,
@@ -134,6 +135,7 @@ class ChapterProductionContractContent(BaseModel):
     original_contribution: QualityResult
     practical_value: QualityResult
     target_market_quality: QualityResult
+    gate_evidence: dict[str, Any] = Field(default_factory=dict)
 
     def blockers(self) -> list[str]:
         gates = {
@@ -368,9 +370,16 @@ class SeriesProductionService:
             return default
 
     @staticmethod
-    def _require_human(actor_kind: str) -> None:
-        if actor_kind not in {"HUMAN", "OWNER"}:
-            raise SeriesProductionGateError("this action requires HUMAN/OWNER authority")
+    def _require_human(actor_kind: str, actor: str = "") -> None:
+        delegated = (
+            actor_kind == "SYSTEM"
+            and actor.startswith("system:auto-book:")
+            and (":authorization:" in actor)
+        )
+        if actor_kind not in {"HUMAN", "OWNER"} and not delegated:
+            raise SeriesProductionGateError(
+                "this action requires HUMAN/OWNER authority or an explicit Auto Book delegation"
+            )
 
     @staticmethod
     def _row(engine: Engine, sql: str, params: dict[str, object]) -> Any | None:
@@ -482,7 +491,7 @@ class SeriesProductionService:
     def approve_definition_pack(
         self, book_id: str, definition_id: str, request: DefinitionPackApprovalRequest
     ) -> DefinitionPackView:
-        self._require_human(request.actor_kind)
+        self._require_human(request.actor_kind, request.actor)
         current = self.get_definition_pack(book_id, definition_id)
         if current.status != "DRAFT":
             raise SeriesProductionGateError("only a DRAFT Definition Pack can be approved")
@@ -601,7 +610,7 @@ class SeriesProductionService:
         contract_id: str,
         request: ChapterProductionContractApprovalRequest,
     ) -> ChapterProductionContractView:
-        self._require_human(request.actor_kind)
+        self._require_human(request.actor_kind, request.actor)
         current = self.get_production_contract(book_id, chapter_id, contract_id)
         if current.status != "DRAFT":
             raise SeriesProductionGateError(
@@ -805,7 +814,7 @@ class SeriesProductionService:
     def admit_chapter(
         self, book_id: str, chapter_id: str, request: ChapterAdmissionRequest
     ) -> ChapterAdmissionStatusView:
-        self._require_human(request.actor_kind)
+        self._require_human(request.actor_kind, request.actor)
         blockers = request.checks.blockers()
         if blockers:
             raise SeriesProductionGateError(
@@ -888,8 +897,8 @@ class SeriesProductionService:
             rows = connection.execute(
                 text(
                     "SELECT r.content_json FROM manuscript_units u JOIN authority_heads h "
-                    "ON h.entity_id=u.authority_entity_id JOIN revisions r ON r.revision_id=h.revision_id "
-                    "WHERE u.book_id=:book_id"
+                    "ON h.entity_id=u.authority_entity_id JOIN revisions r "
+                    "ON r.revision_id=h.revision_id WHERE u.book_id=:book_id"
                 ),
                 {"book_id": book_id},
             ).all()
@@ -1061,6 +1070,37 @@ class SeriesProductionService:
                 executor_identity=request.executor_identity,
                 snapshot_hash=request.snapshot_hash,
                 created_at=now,
+            )
+        finally:
+            engine.dispose()
+
+    def latest_checkpoint(
+        self, book_id: str, kind: Literal["MID_BOOK", "ADVERSARIAL_REVIEW"]
+    ) -> ProductionCheckpointView | None:
+        engine = self._engine(book_id)
+        try:
+            row = self._row(
+                engine,
+                "SELECT * FROM production_checkpoints WHERE book_id=:book_id AND kind=:kind "
+                "ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
+                {"book_id": book_id, "kind": kind},
+            )
+            if row is None:
+                return None
+            payload = self._loads(row["findings_json"], {})
+            findings = payload.get("findings", []) if isinstance(payload, dict) else []
+            return ProductionCheckpointView(
+                checkpoint_id=str(row["checkpoint_id"]),
+                book_id=str(row["book_id"]),
+                kind=str(row["kind"]),
+                progress_percent=cast(float | None, row["progress_percent"]),
+                status=cast(GateResult, row["status"]),
+                findings=cast(list[dict[str, Any]], findings),
+                actor_kind=cast(EvidenceActorKind, row["actor_kind"]),
+                actor=str(row["actor"]),
+                executor_identity=cast(str | None, row["executor_identity"]),
+                snapshot_hash=cast(str | None, row["snapshot_hash"]),
+                created_at=str(row["created_at"]),
             )
         finally:
             engine.dispose()

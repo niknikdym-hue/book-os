@@ -50,6 +50,7 @@ class LiteraryMasterView(BaseModel):
     canonical_content_hash: str
     book_title: str
     human_actor: str
+    acceptance_actor_kind: str = "HUMAN"
     created_at: str
     status: str
     manifest: dict[str, Any]
@@ -513,8 +514,12 @@ class LiteraryMasterService:
         return text_value.encode("utf-8")
 
     @staticmethod
-    def _manifest(state: _ReleaseState, canonical_content_hash: str) -> dict[str, Any]:
-        return {
+    def _manifest(
+        state: _ReleaseState,
+        canonical_content_hash: str,
+        bibliography_evidence: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        manifest = {
             "manifest_version": LiteraryMasterService.MANIFEST_VERSION,
             "book_id": state.book_id,
             "book_title": state.title,
@@ -553,8 +558,18 @@ class LiteraryMasterService:
             "editorial": {"material_waived_count": state.editorial_waived_count},
             "canonical_content_hash": canonical_content_hash,
         }
+        if bibliography_evidence is not None:
+            manifest["bibliography"] = bibliography_evidence
+        return manifest
 
-    def create_master(self, book_id: str, *, human_actor: str) -> LiteraryMasterView:
+    def create_master(
+        self,
+        book_id: str,
+        *,
+        human_actor: str,
+        acceptance_actor_kind: str = "HUMAN",
+        bibliography_evidence: dict[str, Any] | None = None,
+    ) -> LiteraryMasterView:
         actor = human_actor.strip()
         if not actor:
             raise LiteraryMasterGateError(
@@ -569,7 +584,7 @@ class LiteraryMasterService:
                     raise LiteraryMasterGateError(f"release gate failed: {details}")
                 canonical_bytes = self._canonical_manuscript(state)
                 canonical_hash = _sha256_bytes(canonical_bytes)
-                manifest = self._manifest(state, canonical_hash)
+                manifest = self._manifest(state, canonical_hash, bibliography_evidence)
                 manifest_json = canonical_json(cast(Any, manifest))
                 manifest_hash = _sha256_bytes(manifest_json.encode("utf-8"))
                 master_id = manifest_hash[:32]
@@ -592,11 +607,13 @@ class LiteraryMasterService:
                             "master_id,book_id,manifest_version,manifest_json,manifest_hash,book_title,"
                             "book_contract_revision_id,book_contract_revision_hash,"
                             "architecture_revision_id,architecture_revision_hash,ordered_manifest_json,"
-                            "canonical_content_hash,release_gate_json,human_actor,created_at,status) VALUES "
+                            "canonical_content_hash,release_gate_json,human_actor,acceptance_actor_kind,"
+                            "created_at,status) VALUES "
                             "(:master_id,:book_id,:manifest_version,:manifest_json,:manifest_hash,:book_title,"
                             ":book_contract_revision_id,:book_contract_revision_hash,"
                             ":architecture_revision_id,:architecture_revision_hash,:ordered_manifest_json,"
-                            ":canonical_content_hash,:release_gate_json,:human_actor,:created_at,'LOCKED')"
+                            ":canonical_content_hash,:release_gate_json,:human_actor,:actor_kind,"
+                            ":created_at,'LOCKED')"
                         ),
                         {
                             "master_id": master_id,
@@ -625,6 +642,7 @@ class LiteraryMasterService:
                                 )
                             ),
                             "human_actor": actor,
+                            "actor_kind": acceptance_actor_kind,
                             "created_at": now,
                         },
                     )
@@ -650,6 +668,7 @@ class LiteraryMasterService:
             canonical_content_hash=str(row["canonical_content_hash"]),
             book_title=str(row["book_title"]),
             human_actor=str(row["human_actor"]),
+            acceptance_actor_kind=str(row["acceptance_actor_kind"]),
             created_at=str(row["created_at"]),
             status=str(row["status"]),
             manifest=cast(dict[str, Any], json.loads(str(row["manifest_json"]))),

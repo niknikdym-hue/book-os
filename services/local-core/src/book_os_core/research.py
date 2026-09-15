@@ -66,6 +66,8 @@ class ClaimCreateRequest(BaseModel):
     required_evidence_level: Annotated[str, Field(min_length=1, max_length=128)] = (
         "TRACEABLE_SOURCE"
     )
+    actor: Annotated[str, Field(min_length=1, max_length=128)] = "OWNER"
+    actor_kind: Literal["HUMAN", "SYSTEM"] = "HUMAN"
 
     @field_validator("normalized_text", "required_evidence_level")
     @classmethod
@@ -155,6 +157,8 @@ class SourceView(BaseModel):
     primary_secondary: str
     access_status: str
     identifiers: dict[str, list[str]]
+    inspected_excerpt: str | None = None
+    inspected_pointer: str | None = None
 
 
 class EvidenceCreateRequest(BaseModel):
@@ -324,9 +328,15 @@ class ResearchService:
                     text(
                         "INSERT INTO claim_state_history(state_event_id,claim_id,prior_state,new_state,"
                         "actor,actor_kind,reason,created_at) VALUES (:event_id,:claim_id,NULL,"
-                        "'UNREVIEWED','OWNER','HUMAN','Claim registered',:created_at)"
+                        "'UNREVIEWED',:actor,:actor_kind,'Claim registered',:created_at)"
                     ),
-                    {"event_id": new_ulid(), "claim_id": claim_id, "created_at": now},
+                    {
+                        "event_id": new_ulid(),
+                        "claim_id": claim_id,
+                        "actor": request.actor,
+                        "actor_kind": request.actor_kind,
+                        "created_at": now,
+                    },
                 )
             return self.get_claim(book_id, claim_id)
         finally:
@@ -506,7 +516,13 @@ class ResearchService:
                 if candidate.external_id
                 else f"url:{canonical_url}"
             )
-            access_status = "ABSTRACT_AVAILABLE" if candidate.abstract else "METADATA_ONLY"
+            access_status = (
+                "FULL_SOURCE_INSPECTED"
+                if candidate.inspected_excerpt and candidate.inspected_pointer
+                else "ABSTRACT_AVAILABLE"
+                if candidate.abstract
+                else "METADATA_ONLY"
+            )
             reliability = {
                 "metadata_provider": candidate.provider,
                 "metadata_only": access_status != "FULL_SOURCE_INSPECTED",
@@ -519,10 +535,12 @@ class ResearchService:
                             "INSERT INTO sources(source_id,canonical_key,source_type,title,authors_json,"
                             "organization,publication_date,publication_year,doi,canonical_url,"
                             "container_title,abstract,citation_count,primary_secondary,reliability_json,"
-                            "access_status,created_at,updated_at) VALUES (:source_id,:canonical_key,"
+                            "access_status,inspected_excerpt,inspected_pointer,created_at,updated_at) "
+                            "VALUES (:source_id,:canonical_key,"
                             ":source_type,:title,:authors_json,:organization,:publication_date,"
                             ":publication_year,:doi,:canonical_url,:container_title,:abstract,"
                             ":citation_count,:primary_secondary,:reliability_json,:access_status,"
+                            ":inspected_excerpt,:inspected_pointer,"
                             ":created_at,:updated_at)"
                         ),
                         {
@@ -544,6 +562,8 @@ class ResearchService:
                                 reliability, ensure_ascii=False, sort_keys=True
                             ),
                             "access_status": access_status,
+                            "inspected_excerpt": candidate.inspected_excerpt,
+                            "inspected_pointer": candidate.inspected_pointer,
                             "created_at": now,
                             "updated_at": now,
                         },
@@ -558,6 +578,11 @@ class ResearchService:
                             "container_title=COALESCE(container_title,:container_title),"
                             "abstract=COALESCE(abstract,:abstract),"
                             "citation_count=COALESCE(citation_count,:citation_count),updated_at=:updated_at "
+                            ",inspected_excerpt=COALESCE(inspected_excerpt,:inspected_excerpt),"
+                            "inspected_pointer=COALESCE(inspected_pointer,:inspected_pointer),"
+                            "access_status=CASE WHEN :inspected_excerpt IS NOT NULL AND "
+                            ":inspected_pointer IS NOT NULL THEN 'FULL_SOURCE_INSPECTED' "
+                            "ELSE access_status END "
                             "WHERE source_id=:source_id"
                         ),
                         {
@@ -568,6 +593,8 @@ class ResearchService:
                             "container_title": candidate.container_title,
                             "abstract": candidate.abstract,
                             "citation_count": candidate.citation_count,
+                            "inspected_excerpt": candidate.inspected_excerpt,
+                            "inspected_pointer": candidate.inspected_pointer,
                             "updated_at": now,
                             "source_id": source_id,
                         },

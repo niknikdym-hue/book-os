@@ -169,7 +169,7 @@ class BookContextUpdateRequest(BaseModel):
     target_characters: int = Field(gt=0)
     min_characters: int | None = Field(default=None, gt=0)
     max_characters: int | None = Field(default=None, gt=0)
-    include_bibliography: bool = False
+    include_bibliography: bool = True
     plan_illustrations: bool = False
 
     @model_validator(mode="after")
@@ -191,7 +191,9 @@ class BookContextView(BaseModel):
     target_characters: int | None
     min_characters: int | None
     max_characters: int | None
-    include_bibliography: bool = False
+    include_bibliography: bool = True
+    bibliography_preference: Literal["AUTO_INCLUDED", "EXPLICITLY_OMITTED"] = "AUTO_INCLUDED"
+    public_bibliography_omitted: bool = False
     plan_illustrations: bool = False
     visual_asset_format: Literal["png"] = "png"
     visual_materials_policy: Literal["when_useful"] = "when_useful"
@@ -451,7 +453,9 @@ class BookContextService:
                 target_characters=None,
                 min_characters=None,
                 max_characters=None,
-                include_bibliography=False,
+                include_bibliography=True,
+                bibliography_preference="AUTO_INCLUDED",
+                public_bibliography_omitted=False,
                 plan_illustrations=False,
                 ready_for_planning=False,
             )
@@ -493,6 +497,10 @@ class BookContextService:
             min_characters=cast(int | None, row["min_characters"]),
             max_characters=cast(int | None, row["max_characters"]),
             include_bibliography=bool(row["include_bibliography"]),
+            bibliography_preference=cast(Any, row["bibliography_preference"]),
+            public_bibliography_omitted=(
+                str(row["bibliography_preference"]) == "EXPLICITLY_OMITTED"
+            ),
             plan_illustrations=bool(row["plan_illustrations"]),
             ready_for_planning=ready,
         )
@@ -522,10 +530,12 @@ class BookContextService:
                         "INSERT INTO book_context_settings("
                         "book_id,author_profile_id,author_profile_hash,series_profile_id,"
                         "series_profile_hash,style_profile_id,style_profile_hash,target_characters,"
-                        "min_characters,max_characters,include_bibliography,plan_illustrations,updated_at) VALUES ("
+                        "min_characters,max_characters,include_bibliography,bibliography_preference,"
+                        "plan_illustrations,updated_at) VALUES ("
                         ":book_id,:author_profile_id,:author_profile_hash,:series_profile_id,"
                         ":series_profile_hash,:style_profile_id,:style_profile_hash,:target_characters,"
-                        ":min_characters,:max_characters,:include_bibliography,:plan_illustrations,:updated_at) "
+                        ":min_characters,:max_characters,:include_bibliography,:bibliography_preference,"
+                        ":plan_illustrations,:updated_at) "
                         "ON CONFLICT(book_id) DO UPDATE SET "
                         "author_profile_id=excluded.author_profile_id,"
                         "author_profile_hash=excluded.author_profile_hash,"
@@ -537,6 +547,7 @@ class BookContextService:
                         "min_characters=excluded.min_characters,"
                         "max_characters=excluded.max_characters,"
                         "include_bibliography=excluded.include_bibliography,"
+                        "bibliography_preference=excluded.bibliography_preference,"
                         "plan_illustrations=excluded.plan_illustrations,"
                         "updated_at=excluded.updated_at"
                     ),
@@ -552,10 +563,39 @@ class BookContextService:
                         "min_characters": request.min_characters,
                         "max_characters": request.max_characters,
                         "include_bibliography": request.include_bibliography,
+                        "bibliography_preference": (
+                            "AUTO_INCLUDED"
+                            if request.include_bibliography
+                            else "EXPLICITLY_OMITTED"
+                        ),
                         "plan_illustrations": request.plan_illustrations,
                         "updated_at": utc_now(),
                     },
                 )
         finally:
             engine.dispose()
+        return self.get_context(book_id)
+
+    def set_public_bibliography(self, book_id: str, *, include: bool) -> BookContextView:
+        """Change only public-output preference; research/evidence storage is unaffected."""
+        engine = self._engine(book_id)
+        try:
+            with engine.begin() as connection:
+                changed = connection.execute(
+                    text(
+                        "UPDATE book_context_settings SET include_bibliography=:include,"
+                        "bibliography_preference=:preference,updated_at=:updated_at "
+                        "WHERE book_id=:book_id"
+                    ),
+                    {
+                        "include": include,
+                        "preference": "AUTO_INCLUDED" if include else "EXPLICITLY_OMITTED",
+                        "updated_at": utc_now(),
+                        "book_id": book_id,
+                    },
+                ).rowcount
+        finally:
+            engine.dispose()
+        if not changed:
+            raise BookContextGateError("book context must exist before bibliography preference")
         return self.get_context(book_id)
