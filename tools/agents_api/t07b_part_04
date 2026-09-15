@@ -1,0 +1,135 @@
+            leftMargin=20 * mm,
+            topMargin=18 * mm,
+            bottomMargin=18 * mm,
+            title=master.title,
+            author=master.author,
+        ).build(story)
+        payload = output.read_bytes()
+        reader = PdfReader(str(output))
+        extracted_text = " ".join(
+            " ".join((page.extract_text() or "").split()) for page in reader.pages
+        )
+        required_fragments = [master.title, *(chapter.title for chapter in master.chapters)]
+        for chapter in master.chapters:
+            for paragraph in chapter.paragraphs:
+                required_fragments.extend(self._semantic_fragments(paragraph))
+            for table in chapter.tables:
+                required_fragments.extend([table.title, *table.headers, *table.rows[-1]])
+            for visual in chapter.visuals:
+                required_fragments.append(visual.caption)
+        normalized_required = [" ".join(value.split()) for value in required_fragments if value.strip()]
+        content_preserved = all(value in extracted_text for value in normalized_required)
+        passed = (
+            payload.startswith(b"%PDF-")
+            and b"%%EOF" in payload[-2048:]
+            and bool(reader.pages)
+            and content_preserved
+        )
+        if not passed:
+            raise AutoBookExportError("PDF structural/content QA failed")
+        return {
+            "passed": True,
+            "pdf_magic": True,
+            "page_count": len(reader.pages),
+            "reader_text_preserved": content_preserved,
+            "visual_review_required": True,
+        }
+
+'''
+replace_between(SRC, "    def _pdf(", "    def _epub(", new_pdf)
+
+new_epub = r'''    def _epub(
+        self, master: StructuredBookMaster, output: Path, visual_dir: Path
+    ) -> dict[str, Any]:
+        self._validate_footnote_references(master, self._footnote_definitions(master))
+        book = epub.EpubBook()
+        book.set_identifier(master.manifest_hash)
+        book.set_title(master.title)
+        book.set_language(master.language)
+        book.add_author(master.author)
+        stylesheet = epub.EpubItem(
+            uid="book-os-style",
+            file_name="style/book.css",
+            media_type="text/css",
+            content=(
+                b"body{line-height:1.45;} figure{text-align:center;} img{max-width:100%;height:auto;}"
+                b"table{border-collapse:collapse;} th,td{border:1px solid #999;padding:.35em;}"
+                b"aside.note,aside.footnote{margin:1em 0;padding:.6em;border-left:3px solid #777;}"
+            ),
+        )
+        book.add_item(stylesheet)
+        chapters: list[Any] = []
+        for index, chapter in enumerate(master.chapters, start=1):
+            item = epub.EpubHtml(
+                title=chapter.title, file_name=f"chapter-{index}.xhtml", lang=master.language
+            )
+            item.add_link(href="style/book.css", rel="stylesheet", type="text/css")
+            parts = [f"<h1>{escape(chapter.title)}</h1>"]
+            for block_kind, block in self._ordered_chapter_blocks(chapter):
+                if block_kind == "PARAGRAPH":
+                    parts.append(self._epub_semantic_html(str(block)))
+                elif block_kind == "TABLE":
+                    table = block
+                    parts.append(f"<h2>{escape(table.title)}</h2><table><thead><tr>")
+                    parts.extend(f"<th>{escape(value)}</th>" for value in table.headers)
+                    parts.append("</tr></thead><tbody>")
+                    for row in table.rows:
+                        parts.append(
+                            "<tr>" + "".join(f"<td>{escape(value)}</td>" for value in row) + "</tr>"
+                        )
+                    parts.append("</tbody></table>")
+                    source_note = self._reader_source_note(table.source_note)
+                    if source_note:
+                        parts.append(f'<p class="source-note">Источник: {escape(source_note)}</p>')
+                else:
+                    visual = block
+                    image_path = self._render_visual(visual, visual_dir)
+                    image_name = f"images/{visual.object_id}.png"
+                    image_item = epub.EpubImage(
+                        uid=f"visual-{visual.object_id}",
+                        file_name=image_name,
+                        media_type="image/png",
+                        content=image_path.read_bytes(),
+                    )
+                    book.add_item(image_item)
+                    parts.append(
+                        f'<figure><img src="{escape(image_name)}" alt="{escape(visual.alt_text)}" />'
+                        f'<figcaption>{escape(visual.caption)}</figcaption></figure>'
+                    )
+                    source_note = self._reader_source_note(visual.source_note)
+                    if source_note:
+                        parts.append(f'<p class="source-note">Источник: {escape(source_note)}</p>')
+            item.content = "".join(parts)
+            book.add_item(item)
+            chapters.append(item)
+        navigation: list[Any] = [*chapters]
+        if master.bibliography:
+            bibliography = epub.EpubHtml(
+                title="Библиография",
+                file_name="bibliography.xhtml",
+                lang=master.language,
+            )
+            bibliography.add_link(href="style/book.css", rel="stylesheet", type="text/css")
+            bibliography.content = (
+                "<h1>Библиография</h1><ol>"
+                + "".join(f"<li>{escape(entry)}</li>" for entry in master.bibliography)
+                + "</ol>"
+            )
+            book.add_item(bibliography)
+            navigation.append(bibliography)
+        book.toc = tuple(navigation)
+        book.spine = ["nav", *navigation]
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        epub.write_epub(str(output), book, {})
+
+        with ZipFile(output) as archive:
+            if "mimetype" not in archive.namelist():
+                raise AutoBookExportError("EPUB package has no mimetype")
+            xhtml_names = [name for name in archive.namelist() if name.endswith(".xhtml")]
+            for name in xhtml_names:
+                try:
+                    ET.fromstring(archive.read(name))
+                except ET.ParseError as exc:
+                    raise AutoBookExportError(f"EPUB XHTML is malformed: {name}") from exc
+        reopened = epub.read_epub(str(output))

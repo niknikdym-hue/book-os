@@ -1,0 +1,157 @@
+        kind, payload = cls._semantic_kind(value)
+        if kind == "HEADING":
+            return [cls._plain_inline(payload[1])]
+        if kind in {"BULLET_LIST", "NUMBERED_LIST"}:
+            return [cls._plain_inline(item) for item in payload]
+        if kind == "FOOTNOTE":
+            return [cls._plain_inline(payload[1])]
+        return [cls._plain_inline(str(payload))]
+
+    @classmethod
+    def _footnote_definitions(cls, master: StructuredBookMaster) -> dict[str, str]:
+        definitions: dict[str, str] = {}
+        for chapter in master.chapters:
+            for paragraph in chapter.paragraphs:
+                kind, payload = cls._semantic_kind(paragraph)
+                if kind != "FOOTNOTE":
+                    continue
+                note_id, text = payload
+                if note_id in definitions:
+                    raise AutoBookExportError(f"duplicate footnote definition: {note_id}")
+                definitions[note_id] = text
+        return definitions
+
+    @classmethod
+    def _validate_footnote_references(
+        cls, master: StructuredBookMaster, definitions: dict[str, str]
+    ) -> None:
+        referenced: set[str] = set()
+        for chapter in master.chapters:
+            for paragraph in chapter.paragraphs:
+                kind, _payload = cls._semantic_kind(paragraph)
+                if kind == "FOOTNOTE":
+                    continue
+                referenced.update(re.findall(r"\[\^([^\]]+)\]", paragraph))
+        missing = sorted(referenced - set(definitions))
+        if missing:
+            raise AutoBookExportError(
+                "footnote references have no definitions: " + ", ".join(missing)
+            )
+
+    @staticmethod
+    def _docx_add_bookmark(paragraph: Any, anchor: str, bookmark_id: int) -> None:
+        start = OxmlElement("w:bookmarkStart")
+        start.set(qn("w:id"), str(bookmark_id))
+        start.set(qn("w:name"), anchor)
+        paragraph._p.append(start)
+        end = OxmlElement("w:bookmarkEnd")
+        end.set(qn("w:id"), str(bookmark_id))
+        paragraph._p.append(end)
+
+    @staticmethod
+    def _docx_add_hyperlink(paragraph: Any, label: str, anchor: str) -> None:
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("w:anchor"), anchor)
+        run = OxmlElement("w:r")
+        properties = OxmlElement("w:rPr")
+        color = OxmlElement("w:color")
+        color.set(qn("w:val"), "0563C1")
+        underline = OxmlElement("w:u")
+        underline.set(qn("w:val"), "single")
+        properties.extend([color, underline])
+        run.append(properties)
+        text = OxmlElement("w:t")
+        text.text = label
+        run.append(text)
+        hyperlink.append(run)
+        paragraph._p.append(hyperlink)
+
+    @staticmethod
+    def _docx_add_footnote_reference(paragraph: Any, footnote_id: int) -> None:
+        run = OxmlElement("w:r")
+        reference = OxmlElement("w:footnoteReference")
+        reference.set(qn("w:id"), str(footnote_id))
+        run.append(reference)
+        paragraph._p.append(run)
+
+    @classmethod
+    def _docx_add_inline(
+        cls, paragraph: Any, value: str, footnote_ids: dict[str, int]
+    ) -> None:
+        token = re.compile(
+            r"(\[[^\]]+\]\(#[^)]+\)|\[\^[^\]]+\]|\*\*[^*]+\*\*|(?<!\*)\*[^*\n]+\*(?!\*))"
+        )
+        cursor = 0
+        for match in token.finditer(value):
+            if match.start() > cursor:
+                paragraph.add_run(value[cursor : match.start()])
+            marked = match.group(0)
+            link = re.fullmatch(r"\[([^\]]+)\]\(#([^)]+)\)", marked)
+            footnote = re.fullmatch(r"\[\^([^\]]+)\]", marked)
+            if link is not None:
+                cls._docx_add_hyperlink(paragraph, link.group(1), link.group(2))
+            elif footnote is not None:
+                note_id = footnote.group(1)
+                if note_id not in footnote_ids:
+                    raise AutoBookExportError(f"undefined footnote reference: {note_id}")
+                cls._docx_add_footnote_reference(paragraph, footnote_ids[note_id])
+            elif marked.startswith("**"):
+                run = paragraph.add_run(marked[2:-2])
+                run.bold = True
+            else:
+                run = paragraph.add_run(marked[1:-1])
+                run.italic = True
+            cursor = match.end()
+        if cursor < len(value):
+            paragraph.add_run(value[cursor:])
+
+    @classmethod
+    def _docx_add_semantic(
+        cls,
+        document: DocumentObject,
+        value: str,
+        footnote_ids: dict[str, int],
+        bookmark_ids: dict[str, int],
+    ) -> None:
+        kind, payload = cls._semantic_kind(value)
+        if kind == "FOOTNOTE":
+            return
+        if kind == "HEADING":
+            level, text, anchor = payload
+            paragraph = document.add_heading(level=min(max(level, 2), 3))
+            if anchor:
+                bookmark_id = bookmark_ids.setdefault(anchor, len(bookmark_ids) + 1)
+                cls._docx_add_bookmark(paragraph, anchor, bookmark_id)
+            cls._docx_add_inline(paragraph, text, footnote_ids)
+            return
+        if kind in {"BULLET_LIST", "NUMBERED_LIST"}:
+            style = "List Bullet" if kind == "BULLET_LIST" else "List Number"
+            for item in payload:
+                paragraph = document.add_paragraph(style=style)
+                cls._docx_add_inline(paragraph, item, footnote_ids)
+            return
+        if kind == "NOTE":
+            paragraph = document.add_paragraph(style="Quote")
+            cls._docx_add_inline(paragraph, str(payload), footnote_ids)
+            return
+        paragraph = document.add_paragraph()
+        cls._docx_add_inline(paragraph, str(payload), footnote_ids)
+
+    @classmethod
+    def _attach_docx_footnotes(
+        cls,
+        document: DocumentObject,
+        definitions: dict[str, str],
+        footnote_ids: dict[str, int],
+    ) -> None:
+        if not definitions:
+            return
+        rows = [
+            '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>',
+            '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>',
+        ]
+        for note_key, text in definitions.items():
+            note_id = footnote_ids[note_key]
+            clean = escape(cls._plain_inline(text))
+            rows.append(
+                f'<w:footnote w:id="{note_id}"><w:p><w:r><w:footnoteRef/></w:r>'

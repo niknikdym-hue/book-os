@@ -1,0 +1,131 @@
+                return
+            image_path = self._render_visual(visual, visual_dir)
+            document.add_picture(str(image_path), width=Inches(6.2))
+            picture_paragraph = document.paragraphs[-1]
+            picture_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            document.add_paragraph(f"{visual.caption}\nАльтернативный текст: {visual.alt_text}")
+            source_note = self._reader_source_note(visual.source_note)
+            if source_note:
+                document.add_paragraph(f"Источник: {source_note}")
+            expected_visuals += 1
+
+        for chapter in master.chapters:
+            if include_extras_only and not (chapter.tables or chapter.visuals):
+                continue
+            document.add_heading(chapter.title, level=1)
+            if include_extras_only:
+                for table in chapter.tables:
+                    add_table(table)
+                for visual in chapter.visuals:
+                    add_visual(visual)
+                continue
+            for block_kind, block in self._ordered_chapter_blocks(chapter):
+                if block_kind == "PARAGRAPH":
+                    self._docx_add_semantic(document, str(block), footnote_ids, bookmark_ids)
+                elif block_kind == "TABLE":
+                    add_table(block)
+                else:
+                    add_visual(block)
+        self._attach_docx_footnotes(document, footnote_definitions, footnote_ids)
+        self._add_bibliography(document, master.bibliography)
+        document.save(str(output))
+
+        reopened = Document(str(output))
+        embedded_visual_count = len(reopened.inline_shapes)
+        footnote_part_present = not footnote_definitions
+        document_xml = ""
+        with ZipFile(output) as archive:
+            footnote_part_present = footnote_part_present or "word/footnotes.xml" in archive.namelist()
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+        qa = {
+            "passed": (
+                len(reopened.tables) == expected_tables
+                and embedded_visual_count == expected_visuals
+                and footnote_part_present
+            ),
+            "native_table_count": len(reopened.tables),
+            "expected_table_count": expected_tables,
+            "embedded_visual_count": embedded_visual_count,
+            "expected_visual_count": expected_visuals,
+            "footnote_definition_count": len(footnote_definitions),
+            "native_footnote_part": footnote_part_present,
+            "bookmark_count": document_xml.count("w:bookmarkStart"),
+            "internal_hyperlink_count": document_xml.count("w:hyperlink"),
+            "paragraph_count": len(reopened.paragraphs),
+            "audio_adaptation": audio,
+        }
+        if not qa["passed"]:
+            raise AutoBookExportError("DOCX structural/content QA failed")
+        return qa
+
+'''
+replace_between(SRC, "    def _docx(\n", "    def _audio_docx(", new_docx)
+
+new_pdf = r'''    def _pdf(self, master: StructuredBookMaster, output: Path, visual_dir: Path) -> dict[str, Any]:
+        self._validate_footnote_references(master, self._footnote_definitions(master))
+        font = self._register_pdf_font()
+        styles = getSampleStyleSheet()
+        body = ParagraphStyle(
+            "BookOSBody", parent=styles["BodyText"], fontName=font, fontSize=11, leading=16
+        )
+        heading = ParagraphStyle(
+            "BookOSHeading", parent=styles["Heading1"], fontName=font, fontSize=18, leading=23
+        )
+        title = ParagraphStyle(
+            "BookOSTitle", parent=heading, fontSize=24, alignment=TA_CENTER, spaceAfter=18
+        )
+        story: list[Any] = [
+            Paragraph(escape(master.title), title),
+            Paragraph(escape(master.author), body),
+            PageBreak(),
+        ]
+        for chapter in master.chapters:
+            story.extend([Paragraph(escape(chapter.title), heading), Spacer(1, 4 * mm)])
+            for block_kind, block in self._ordered_chapter_blocks(chapter):
+                if block_kind == "PARAGRAPH":
+                    story.extend(self._pdf_semantic_flowables(str(block), body, heading))
+                elif block_kind == "TABLE":
+                    table = block
+                    story.append(Paragraph(escape(table.title), heading))
+                    data = [[Paragraph(escape(cell), body) for cell in table.headers]]
+                    data.extend([[Paragraph(escape(cell), body) for cell in row] for row in table.rows])
+                    rendered = Table(data, repeatRows=1, hAlign="LEFT")
+                    rendered.setStyle(
+                        TableStyle(
+                            [
+                                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf0fb")),
+                                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ]
+                        )
+                    )
+                    story.extend([rendered, Spacer(1, 4 * mm)])
+                    source_note = self._reader_source_note(table.source_note)
+                    if source_note:
+                        story.extend(
+                            [Paragraph(escape(f"Источник: {source_note}"), body), Spacer(1, 2 * mm)]
+                        )
+                else:
+                    visual = block
+                    image_path = self._render_visual(visual, visual_dir)
+                    story.extend(
+                        [
+                            PdfImage(str(image_path), width=160 * mm, height=90 * mm),
+                            Paragraph(escape(visual.caption), body),
+                        ]
+                    )
+                    source_note = self._reader_source_note(visual.source_note)
+                    if source_note:
+                        story.extend(
+                            [Paragraph(escape(f"Источник: {source_note}"), body), Spacer(1, 2 * mm)]
+                        )
+        if master.bibliography:
+            story.extend([PageBreak(), Paragraph("Библиография", heading)])
+            story.extend(
+                Paragraph(escape(f"{index}. {entry}"), body)
+                for index, entry in enumerate(master.bibliography, start=1)
+            )
+        SimpleDocTemplate(
+            str(output),
+            pagesize=A4,
+            rightMargin=20 * mm,
