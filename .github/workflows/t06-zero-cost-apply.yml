@@ -7,6 +7,7 @@ on:
       - '.github/workflows/t06-zero-cost-apply.yml'
       - 'tools/agents_api/apply_t06_visual_spec.py'
       - 'tools/agents_api/apply_t06b_visual_truth.py'
+      - 'tools/agents_api/apply_t06c_conditional_visuals.py'
 
 permissions:
   contents: write
@@ -24,6 +25,7 @@ jobs:
         run: |
           cp tools/agents_api/apply_t06_visual_spec.py /tmp/apply_t06.py
           cp tools/agents_api/apply_t06b_visual_truth.py /tmp/apply_t06b.py
+          cp tools/agents_api/apply_t06c_conditional_visuals.py /tmp/apply_t06c.py
           python - <<'PY'
           from pathlib import Path
 
@@ -56,6 +58,7 @@ jobs:
         run: |
           python /tmp/apply_t06.py "$GITHUB_WORKSPACE"
           python /tmp/apply_t06b.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t06c.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install dependencies
         working-directory: services/local-core
@@ -68,7 +71,9 @@ jobs:
           mypy src
       - name: Targeted T06 regressions
         working-directory: services/local-core
-        run: pytest -q tests/test_auto_book_finalizer.py
+        run: |
+          pytest -q tests/test_auto_book_finalizer.py
+          pytest -q tests/test_auto_book_acceptance.py::test_online_courses_linked_deterministic_acceptance_cycle
       - name: Full Local Core pytest
         working-directory: services/local-core
         run: pytest
