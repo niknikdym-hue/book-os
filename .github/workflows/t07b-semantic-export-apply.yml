@@ -1,0 +1,65 @@
+name: T07b Semantic Export Apply
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/t07b-semantic-export-apply.yml'
+      - 'tools/agents_api/t07b_part_*'
+      - 'tools/agents_api/apply_t07b_plaintext_qa_fix.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Reconstruct and verify reviewed T07b patcher
+        run: |
+          cat tools/agents_api/t07b_part_* > /tmp/apply_t07b.py
+          cp tools/agents_api/apply_t07b_plaintext_qa_fix.py /tmp/apply_t07b_plaintext_qa_fix.py
+          echo '0fa2332c728c47596f5bcfa403876a752bf50520f721d87f97fc0bf1d77d7e70  /tmp/apply_t07b.py' | sha256sum -c -
+          python -m py_compile /tmp/apply_t07b.py /tmp/apply_t07b_plaintext_qa_fix.py
+      - name: Checkout exact T07a product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          test "$(git rev-parse HEAD)" = "c3967d34fe75639e3656d98f92582f4f131dfdee"
+      - name: Apply T07b semantic/export integrity hardening
+        run: |
+          python /tmp/apply_t07b.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t07b_plaintext_qa_fix.py "$GITHUB_WORKSPACE"
+          git diff --check
+          test -f docs/publishing/LITRES_EBOOK_PROFILE_2026-09-15.md
+          grep -F 'platform_acceptance_claimed=false' docs/publishing/LITRES_EBOOK_PROFILE_2026-09-15.md
+      - name: Install dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Format Ruff Mypy
+        working-directory: services/local-core
+        run: |
+          ruff format src/book_os_core/auto_book_exports.py tests/test_auto_book_exports.py
+          ruff check .
+          mypy src
+      - name: Targeted T07b export integrity regressions
+        working-directory: services/local-core
+        run: pytest -q tests/test_auto_book_exports.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T07b change to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add services/local-core/src/book_os_core/auto_book_exports.py \
+                  services/local-core/tests/test_auto_book_exports.py \
+                  docs/publishing/LITRES_EBOOK_PROFILE_2026-09-15.md
+          git commit -m 'Preserve semantic structure across book exports'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913
