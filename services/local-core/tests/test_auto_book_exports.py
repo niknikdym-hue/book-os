@@ -5,6 +5,8 @@ import sqlite3
 from zipfile import ZipFile
 
 from docx import Document
+import ebooklib  # type: ignore[import-untyped]
+from ebooklib import epub
 
 from book_os_core.auto_book_exports import (
     AutoBookExporter,
@@ -364,3 +366,81 @@ def test_new_audio_script_version_preserves_old_files_and_marks_old_artifacts_st
         if item.output_kind == "AUDIO_READING_DOCX"
     ]
     assert [item.status for item in audio_artifacts] == ["STALE", "READY"]
+
+
+def test_ordered_blocks_preserve_between_paragraph_placement() -> None:
+    chapter = MasterChapter(
+        chapter_id="c1",
+        title="Глава",
+        paragraphs=["Первый абзац.", "Второй абзац.", "Третий абзац."],
+        tables=[
+            MasterTable(
+                object_id="t1",
+                title="Таблица",
+                headers=["A", "B"],
+                rows=[["1", "2"]],
+                audio_equivalent="A один, B два.",
+                placement_after_paragraph=1,
+            )
+        ],
+        visuals=[
+            MasterVisual(
+                object_id="v1",
+                kind="CHART",
+                title="Диаграмма",
+                caption="Подпись",
+                alt_text="Столбец один.",
+                audio_equivalent="Значение один.",
+                data=[("Один", 1.0)],
+                placement_after_paragraph=2,
+            )
+        ],
+    )
+    blocks = AutoBookExporter._ordered_chapter_blocks(chapter)
+    assert [(kind, getattr(value, "object_id", value)) for kind, value in blocks] == [
+        ("PARAGRAPH", "Первый абзац."),
+        ("TABLE", "t1"),
+        ("PARAGRAPH", "Второй абзац."),
+        ("VISUAL", "v1"),
+        ("PARAGRAPH", "Третий абзац."),
+    ]
+
+
+def test_epub_physically_contains_visual_and_alt_text(tmp_path: Path) -> None:
+    exporter = AutoBookExporter(tmp_path, DurableAutoBookRuntime(tmp_path))
+    master = StructuredBookMaster(
+        title="Книга",
+        author="Автор",
+        chapters=[
+            MasterChapter(
+                chapter_id="c1",
+                title="Глава",
+                paragraphs=["До изображения.", "После изображения."],
+                visuals=[
+                    MasterVisual(
+                        object_id="visual-one",
+                        kind="CHART",
+                        title="Диаграмма",
+                        caption="Проверенная подпись",
+                        alt_text="Альтернативное описание диаграммы",
+                        audio_equivalent="Диаграмма показывает значение десять.",
+                        data=[("Показатель", 10.0)],
+                        placement_after_paragraph=1,
+                    )
+                ],
+            )
+        ],
+    )
+    output = tmp_path / "visual.epub"
+    qa = exporter._epub(master, output, tmp_path / "visuals")
+    assert qa["expected_visual_count"] == 1
+    assert qa["image_count"] >= 1
+    reopened = epub.read_epub(str(output))
+    chapter = next(iter(reopened.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
+    content = chapter.get_content().decode("utf-8")
+    assert "Альтернативное описание диаграммы" in content
+    assert (
+        content.index("До изображения")
+        < content.index("visual-one.png")
+        < content.index("После изображения")
+    )

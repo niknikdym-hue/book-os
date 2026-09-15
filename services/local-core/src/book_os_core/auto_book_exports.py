@@ -192,6 +192,7 @@ class AutoBookExporter:
             document.add_paragraph(f"{index}. {entry}")
 
     def _render_visual(self, visual: MasterVisual, output_dir: Path) -> Path:
+        output_dir.mkdir(parents=True, exist_ok=True)
         output = output_dir / f"{visual.object_id}.png"
         image = Image.new("RGB", (1600, 900), "white")
         draw = ImageDraw.Draw(image)
@@ -220,6 +221,25 @@ class AutoBookExporter:
         image.save(output, format="PNG", optimize=True)
         return output
 
+    @staticmethod
+    def _ordered_chapter_blocks(chapter: MasterChapter) -> list[tuple[str, Any]]:
+        slots: dict[int, list[tuple[str, Any]]] = {}
+        tail: list[tuple[str, Any]] = []
+        paragraph_count = len(chapter.paragraphs)
+        for kind, values in (("TABLE", chapter.tables), ("VISUAL", chapter.visuals)):
+            for value in values:
+                placement = value.placement_after_paragraph
+                if placement is None or placement > paragraph_count:
+                    tail.append((kind, value))
+                else:
+                    slots.setdefault(max(0, placement), []).append((kind, value))
+        blocks: list[tuple[str, Any]] = [*slots.get(0, [])]
+        for index, paragraph in enumerate(chapter.paragraphs, start=1):
+            blocks.append(("PARAGRAPH", paragraph))
+            blocks.extend(slots.get(index, []))
+        blocks.extend(tail)
+        return blocks
+
     def _docx(
         self,
         master: StructuredBookMaster,
@@ -237,41 +257,52 @@ class AutoBookExporter:
         expected_visuals = 0
         if include_extras_only:
             document.add_heading("Дополнительные материалы", level=1)
+
+        def add_table(table: MasterTable) -> None:
+            nonlocal expected_tables
+            if audio:
+                document.add_heading(f"Смысл таблицы «{table.title}»", level=2)
+                document.add_paragraph(table.audio_equivalent)
+                return
+            document.add_heading(table.title, level=2)
+            word_table = document.add_table(rows=1, cols=len(table.headers))
+            word_table.style = "Table Grid"
+            for index, value in enumerate(table.headers):
+                word_table.rows[0].cells[index].text = value
+            for row in table.rows:
+                cells = word_table.add_row().cells
+                for index, value in enumerate(row):
+                    cells[index].text = value
+            expected_tables += 1
+
+        def add_visual(visual: MasterVisual) -> None:
+            nonlocal expected_visuals
+            if audio:
+                document.add_heading(f"Смысл материала «{visual.title}»", level=2)
+                document.add_paragraph(visual.audio_equivalent)
+                return
+            image_path = self._render_visual(visual, visual_dir)
+            document.add_picture(str(image_path), width=Inches(6.2))
+            picture_paragraph = document.paragraphs[-1]
+            picture_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            document.add_paragraph(f"{visual.caption}\nАльтернативный текст: {visual.alt_text}")
+            expected_visuals += 1
+
         for chapter in master.chapters:
             if include_extras_only and not chapter.tables:
                 continue
             document.add_heading(chapter.title, level=1)
-            if not include_extras_only:
-                for paragraph in chapter.paragraphs:
-                    document.add_paragraph(paragraph)
-            for table in chapter.tables:
-                if audio:
-                    document.add_heading(f"Смысл таблицы «{table.title}»", level=2)
-                    document.add_paragraph(table.audio_equivalent)
-                    continue
-                document.add_heading(table.title, level=2)
-                word_table = document.add_table(rows=1, cols=len(table.headers))
-                word_table.style = "Table Grid"
-                for index, value in enumerate(table.headers):
-                    word_table.rows[0].cells[index].text = value
-                for row in table.rows:
-                    cells = word_table.add_row().cells
-                    for index, value in enumerate(row):
-                        cells[index].text = value
-                expected_tables += 1
             if include_extras_only:
+                for table in chapter.tables:
+                    add_table(table)
                 continue
-            for visual in chapter.visuals:
-                if audio:
-                    document.add_heading(f"Смысл материала «{visual.title}»", level=2)
-                    document.add_paragraph(visual.audio_equivalent)
-                    continue
-                image_path = self._render_visual(visual, visual_dir)
-                document.add_picture(str(image_path), width=Inches(6.2))
-                picture_paragraph = document.paragraphs[-1]
-                picture_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                document.add_paragraph(f"{visual.caption}\nАльтернативный текст: {visual.alt_text}")
-                expected_visuals += 1
+            for block_kind, block in self._ordered_chapter_blocks(chapter):
+                if block_kind == "PARAGRAPH":
+                    document.add_paragraph(str(block))
+                elif block_kind == "TABLE":
+                    add_table(block)
+                else:
+                    add_visual(block)
         self._add_bibliography(document, master.bibliography)
         document.save(str(output))
 
@@ -345,31 +376,36 @@ class AutoBookExporter:
         ]
         for chapter in master.chapters:
             story.extend([Paragraph(escape(chapter.title), heading), Spacer(1, 4 * mm)])
-            for paragraph in chapter.paragraphs:
-                story.extend([Paragraph(escape(paragraph), body), Spacer(1, 2.5 * mm)])
-            for table in chapter.tables:
-                story.append(Paragraph(escape(table.title), heading))
-                data = [[Paragraph(escape(cell), body) for cell in table.headers]]
-                data.extend([[Paragraph(escape(cell), body) for cell in row] for row in table.rows])
-                rendered = Table(data, repeatRows=1, hAlign="LEFT")
-                rendered.setStyle(
-                    TableStyle(
+            for block_kind, block in self._ordered_chapter_blocks(chapter):
+                if block_kind == "PARAGRAPH":
+                    story.extend([Paragraph(escape(str(block)), body), Spacer(1, 2.5 * mm)])
+                elif block_kind == "TABLE":
+                    table = block
+                    story.append(Paragraph(escape(table.title), heading))
+                    data = [[Paragraph(escape(cell), body) for cell in table.headers]]
+                    data.extend(
+                        [[Paragraph(escape(cell), body) for cell in row] for row in table.rows]
+                    )
+                    rendered = Table(data, repeatRows=1, hAlign="LEFT")
+                    rendered.setStyle(
+                        TableStyle(
+                            [
+                                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf0fb")),
+                                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ]
+                        )
+                    )
+                    story.extend([rendered, Spacer(1, 4 * mm)])
+                else:
+                    visual = block
+                    image_path = self._render_visual(visual, visual_dir)
+                    story.extend(
                         [
-                            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf0fb")),
-                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            PdfImage(str(image_path), width=160 * mm, height=90 * mm),
+                            Paragraph(escape(visual.caption), body),
                         ]
                     )
-                )
-                story.extend([rendered, Spacer(1, 4 * mm)])
-            for visual in chapter.visuals:
-                image_path = self._render_visual(visual, visual_dir)
-                story.extend(
-                    [
-                        PdfImage(str(image_path), width=160 * mm, height=90 * mm),
-                        Paragraph(escape(visual.caption), body),
-                    ]
-                )
         if master.bibliography:
             story.extend([PageBreak(), Paragraph("Библиография", heading)])
             story.extend(
@@ -392,8 +428,7 @@ class AutoBookExporter:
             raise AutoBookExportError("PDF structural QA failed")
         return {"passed": True, "pdf_magic": True, "visual_review_required": True}
 
-    @staticmethod
-    def _epub(master: StructuredBookMaster, output: Path) -> dict[str, Any]:
+    def _epub(self, master: StructuredBookMaster, output: Path, visual_dir: Path) -> dict[str, Any]:
         book = epub.EpubBook()
         book.set_identifier(master.manifest_hash)
         book.set_title(master.title)
@@ -405,16 +440,34 @@ class AutoBookExporter:
                 title=chapter.title, file_name=f"chapter-{index}.xhtml", lang=master.language
             )
             parts = [f"<h1>{escape(chapter.title)}</h1>"]
-            parts.extend(f"<p>{escape(paragraph)}</p>" for paragraph in chapter.paragraphs)
-            for table in chapter.tables:
-                parts.append(f"<h2>{escape(table.title)}</h2><table><thead><tr>")
-                parts.extend(f"<th>{escape(value)}</th>" for value in table.headers)
-                parts.append("</tr></thead><tbody>")
-                for row in table.rows:
-                    parts.append(
-                        "<tr>" + "".join(f"<td>{escape(value)}</td>" for value in row) + "</tr>"
+            for block_kind, block in self._ordered_chapter_blocks(chapter):
+                if block_kind == "PARAGRAPH":
+                    parts.append(f"<p>{escape(str(block))}</p>")
+                elif block_kind == "TABLE":
+                    table = block
+                    parts.append(f"<h2>{escape(table.title)}</h2><table><thead><tr>")
+                    parts.extend(f"<th>{escape(value)}</th>" for value in table.headers)
+                    parts.append("</tr></thead><tbody>")
+                    for row in table.rows:
+                        parts.append(
+                            "<tr>" + "".join(f"<td>{escape(value)}</td>" for value in row) + "</tr>"
+                        )
+                    parts.append("</tbody></table>")
+                else:
+                    visual = block
+                    image_path = self._render_visual(visual, visual_dir)
+                    image_name = f"images/{visual.object_id}.png"
+                    image_item = epub.EpubImage(
+                        uid=f"visual-{visual.object_id}",
+                        file_name=image_name,
+                        media_type="image/png",
+                        content=image_path.read_bytes(),
                     )
-                parts.append("</tbody></table>")
+                    book.add_item(image_item)
+                    parts.append(
+                        f'<figure><img src="{escape(image_name)}" alt="{escape(visual.alt_text)}" />'
+                        f"<figcaption>{escape(visual.caption)}</figcaption></figure>"
+                    )
             item.content = "".join(parts)
             book.add_item(item)
             chapters.append(item)
@@ -440,11 +493,15 @@ class AutoBookExporter:
         reopened = epub.read_epub(str(output))
         document_count = len(list(reopened.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
         expected_documents = len(master.chapters) + (1 if master.bibliography else 0)
-        if document_count < expected_documents:
+        expected_visuals = sum(len(chapter.visuals) for chapter in master.chapters)
+        image_count = len(list(reopened.get_items_of_type(ebooklib.ITEM_IMAGE)))
+        if document_count < expected_documents or image_count < expected_visuals:
             raise AutoBookExportError("EPUB structural QA failed")
         return {
             "passed": True,
             "document_count": document_count,
+            "expected_visual_count": expected_visuals,
+            "image_count": image_count,
             "bibliography_document": bool(master.bibliography),
             "viewer_review_required": True,
         }
@@ -559,7 +616,7 @@ class AutoBookExporter:
             elif kind == "READING_PDF":
                 qa = self._pdf(master, output, visual_dir)
             elif kind == "EPUB":
-                qa = self._epub(master, output)
+                qa = self._epub(master, output, visual_dir)
             elif kind == "VOICE_TEXT_TXT":
                 assert audio_script is not None
                 voice_payload = audio_script.content.clean_recording_text().encode("utf-8")
