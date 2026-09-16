@@ -37,4 +37,15 @@ new = '''        required_numbers = {
 if text.count(old) != 1:
     raise SystemExit(f"expected one strict visual block, found {text.count(old)}")
 path.write_text(text.replace(old, new, 1), encoding="utf-8")
-print("T08 scope-freeze trim applied: retained T07 visual gate")
+
+test_path = root / "services/local-core/tests/test_audio_script.py"
+tests = test_path.read_text(encoding="utf-8")
+start = "\ndef test_small_multiline_visual_must_preserve_every_numeric_value() -> None:\n"
+end = "\ndef test_ambiguous_stress_alone_requires_pronunciation_ledger_review() -> None:\n"
+if tests.count(start) != 1 or tests.count(end) != 1:
+    raise SystemExit("expected one T08 visual strictness regression and following pronunciation test")
+prefix, remainder = tests.split(start, 1)
+_, suffix = remainder.split(end, 1)
+test_path.write_text(prefix.rstrip() + "\n\n\ndef test_ambiguous_stress_alone_requires_pronunciation_ledger_review() -> None:\n" + suffix, encoding="utf-8")
+
+print("T08 scope-freeze trim applied: retained T07 visual gate and removed nonblocking visual regression")
