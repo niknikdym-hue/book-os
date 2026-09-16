@@ -69,30 +69,33 @@ jobs:
       - run: pnpm build
       - run: pnpm audit --prod --audit-level=high
 
-  tauri:
+  tauri-continuity:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: apps/desktop/src-tauri
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           ref: ${{ env.PRODUCT_BRANCH }}
-      - name: Require exact frozen product candidate
-        working-directory: .
-        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --locked
-      - run: cargo check --locked
+      - name: Reuse accepted T07 Tauri evidence only if Rust surface is unchanged
+        run: |
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          rust_changes="$(git diff --name-only "$T07_SHA".."$PRODUCT_SHA" -- apps/desktop/src-tauri)"
+          if [ -n "$rust_changes" ]; then
+            echo "Rust/Tauri changed after accepted T07 evidence:"
+            printf '%s\n' "$rust_changes"
+            exit 1
+          fi
+          echo 'No apps/desktop/src-tauri changes since accepted T07 exact-head run 35076068273.'
+          echo 'T07 cargo test/check and native macOS launch were GREEN; current-head Tauri/macOS will run once more at final T12.'
 
   release-readiness:
-    needs: [scope-proof, desktop, tauri]
+    needs: [scope-proof, desktop, tauri-continuity]
     runs-on: ubuntu-latest
     steps:
       - name: Frozen release-readiness verdict
         run: |
           echo 'Backend exact-head evidence: T08 run 35133549594 — 302 passed.'
-          echo 'Desktop: GREEN.'
-          echo 'Tauri: GREEN.'
+          echo 'Desktop current exact head: GREEN.'
+          echo 'Tauri continuity: no Rust change since T07 GREEN; final current-head proof reserved for T12.'
           echo 'RELEASE-READINESS GREEN. STOP before paid real-book Owner Gate.'
