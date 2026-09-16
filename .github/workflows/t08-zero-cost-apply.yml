@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/t08-zero-cost-apply.yml'
       - 'tools/agents_api/apply_t08_audio_fidelity.py'
+      - 'tools/agents_api/apply_t08_remove_obsolete_recording.py'
 
 permissions:
   contents: write
@@ -25,10 +26,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Preserve reviewed T08 patcher
+      - name: Preserve reviewed T08 patchers
         run: |
           cp tools/agents_api/apply_t08_audio_fidelity.py /tmp/apply_t08_audio_fidelity.py
-          python -m py_compile /tmp/apply_t08_audio_fidelity.py
+          cp tools/agents_api/apply_t08_remove_obsolete_recording.py /tmp/apply_t08_remove_obsolete_recording.py
+          python -m py_compile \
+            /tmp/apply_t08_audio_fidelity.py \
+            /tmp/apply_t08_remove_obsolete_recording.py
       - name: Checkout exact T07 product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
@@ -40,6 +44,7 @@ jobs:
       - name: Apply T08 AudioScript fidelity hardening
         run: |
           python /tmp/apply_t08_audio_fidelity.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t08_remove_obsolete_recording.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install Local Core dependencies
         working-directory: services/local-core
