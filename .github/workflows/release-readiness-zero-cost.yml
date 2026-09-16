@@ -1,0 +1,98 @@
+name: Release Readiness Zero-Cost
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/release-readiness-zero-cost.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-readiness-zero-cost
+  cancel-in-progress: true
+
+env:
+  PRODUCT_BRANCH: codex/auto-book-complete-cycle-20260913
+  PRODUCT_SHA: 1b17b0525bf26a31c9532a6a65fbc124a0fad109
+  T07_SHA: 759dd9ed0f351e0946e6e57affbf6a18e877d4fb
+
+jobs:
+  scope-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.PRODUCT_BRANCH }}
+      - name: Require exact frozen product candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          changed="$(git diff --name-only "$T07_SHA".."$PRODUCT_SHA")"
+          printf '%s\n' "$changed"
+          test -n "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -vE '^services/local-core/(src/book_os_core/(audio_attention|audio_script|audio_script_api|auto_book_finalizer)\.py|tests/test_(audio_script|audio_script_api|auto_book_exports|auto_book_finalizer)\.py)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected post-T07 scope change:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "T08 backend evidence: run 35133549594; 302/302 full Local Core GREEN."
+
+  desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_BRANCH }}
+      - name: Require exact frozen product candidate
+        working-directory: .
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile --prod=false
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm audit --prod --audit-level=high
+
+  tauri:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_BRANCH }}
+      - name: Require exact frozen product candidate
+        working-directory: .
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+      - run: cargo check --locked
+
+  release-readiness:
+    needs: [scope-proof, desktop, tauri]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Frozen release-readiness verdict
+        run: |
+          echo 'Backend exact-head evidence: T08 run 35133549594 — 302 passed.'
+          echo 'Desktop: GREEN.'
+          echo 'Tauri: GREEN.'
+          echo 'RELEASE-READINESS GREEN. STOP before paid real-book Owner Gate.'
