@@ -16,10 +16,9 @@ def accepted_attention_values(
 ) -> list[str]:
     """Require an explicit disposition for every exact ATTENTION finding.
 
-    The returned list deliberately includes both the exact finding keys and their legacy codes.
-    AudioScriptService can therefore keep its existing code-level compatibility while the public
-    author workflows fail closed unless every current finding/location was individually accepted.
-    The exact keys are retained in the approval JSON for auditability.
+    The returned list contains only exact finding identities. Code-only compatibility is
+    deliberately rejected so no aggregate disposition can silently cover a different location or
+    changed detail. The exact keys are retained in approval JSON for auditability.
 
     An already human-approved, current script is allowed through unchanged so a transient export
     failure can be retried idempotently without asking the human to approve the same findings again.
@@ -42,5 +41,9 @@ def accepted_attention_values(
             "human must explicitly disposition every ATTENTION finding by exact location"
             + (f": {sample}" if sample else "")
         )
-    legacy_codes = {finding.code for finding in findings}
-    return sorted(accepted | legacy_codes)
+    unexpected = sorted(accepted - set(required))
+    if unexpected:
+        raise AudioScriptGateError(
+            "accepted ATTENTION disposition does not match the current exact findings"
+        )
+    return sorted(accepted)

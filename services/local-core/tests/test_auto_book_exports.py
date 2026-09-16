@@ -19,6 +19,7 @@ from book_os_core.auto_book_exports import (
     MasterVisual,
     StructuredBookMaster,
 )
+from book_os_core.audio_attention import attention_finding_key
 from book_os_core.audio_script import AudioScriptService
 from book_os_core.auto_book_runtime import (
     AutoBookIntent,
@@ -82,8 +83,8 @@ def fixture_master(*, suffix: str = "") -> StructuredBookMaster:
                         caption="Рисунок 1. Условные данные для проверки экспорта.",
                         alt_text="Три столбца растут от одного до трёх.",
                         audio_equivalent=(
-                            "График на условных данных показывает последовательный рост "
-                            "показателя от 1 до 3; для записи числа нужно произнести словами."
+                            "График на условных данных показывает три значения: 1, 2 и 3; "
+                            "показатель последовательно растёт от первого значения к третьему."
                         ),
                         data=[("А", 1), ("Б", 2), ("В", 3)],
                         source_note="Условные fixture-данные, не фактическое утверждение",
@@ -137,12 +138,10 @@ def test_selected_outputs_keep_sixteen_native_tables_and_audio_meaning(tmp_path:
         },
     )
     attention = sorted(
-        {
-            finding.code
-            for check in proposed.quality_checks
-            for finding in check.findings
-            if finding.severity == "ATTENTION"
-        }
+        attention_finding_key(finding)
+        for check in proposed.quality_checks
+        for finding in check.findings
+        if finding.severity == "ATTENTION"
     )
     approved = audio_service.approve(
         book_id,
@@ -333,12 +332,10 @@ def test_new_audio_script_version_preserves_old_files_and_marks_old_artifacts_st
             provenance={"provider_calls": 0},
         )
         attention = sorted(
-            {
-                finding.code
-                for check in proposed.quality_checks
-                for finding in check.findings
-                if finding.severity == "ATTENTION"
-            }
+            attention_finding_key(finding)
+            for check in proposed.quality_checks
+            for finding in check.findings
+            if finding.severity == "ATTENTION"
         )
         approved = service.approve(
             book_id,

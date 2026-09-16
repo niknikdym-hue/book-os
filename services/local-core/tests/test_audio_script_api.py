@@ -1,5 +1,8 @@
 import base64
+import json
 from pathlib import Path
+
+from docx import Document
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
@@ -170,6 +173,39 @@ def test_authenticated_existing_book_audio_flow_keeps_source_and_requires_human_
     assert "<speak" not in voice_text
     assert source_path.read_bytes() == original
     assert result["audio_script"]["approval"]["actor_kind"] == "HUMAN"
+
+    reading = next(
+        item for item in result["artifacts"] if item["output_kind"] == "AUDIO_READING_DOCX"
+    )
+    reading_doc = Document(tmp_path / "projects" / book_id / reading["relative_path"])
+    doc_blocks = [
+        paragraph.text.strip() for paragraph in reading_doc.paragraphs if paragraph.text.strip()
+    ]
+    voice_blocks = [value.strip() for value in voice_text.split("\n\n") if value.strip()]
+    assert doc_blocks == voice_blocks
+
+    handoff = next(
+        item for item in result["artifacts"] if item["output_kind"] == "AUDIO_PRODUCTION_HANDOFF"
+    )
+    manifest = json.loads(
+        (tmp_path / "projects" / book_id / handoff["relative_path"]).read_text(encoding="utf-8")
+    )
+    assert manifest["audio_script_hash"] == result["audio_script"]["content_hash"]
+    assert manifest["recording_text"]["content_hash"] == voice["content_hash"]
+
+    retried = client.post(
+        f"/api/projects/{book_id}/audio-scripts/{script['audio_script_id']}/approve",
+        json={
+            "human_actor": "Елена Дым",
+            "accepted_attention_codes": [],
+            "reading_docx": True,
+            "litres_docx": True,
+            "pronunciation_dictionary": True,
+        },
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["audio_script"]["content_hash"] == result["audio_script"]["content_hash"]
+    assert adapter.calls == 1
 
     reopened = client.post(
         f"/api/projects/{book_id}/audio-scripts/prepare",

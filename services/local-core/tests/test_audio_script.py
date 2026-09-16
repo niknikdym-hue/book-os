@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from book_os_core.audio_attention import attention_finding_key
 from book_os_core.audio_script import (
     AudioScriptContent,
     AudioScriptGateError,
@@ -96,13 +97,26 @@ def test_audio_script_is_separate_versioned_human_approved_and_stale_without_des
     with pytest.raises(AudioScriptGateError, match="explicitly disposition"):
         service.approve(book_id, proposed.audio_script_id, human_actor="Owner")
 
-    attention = sorted(
+    aggregate_codes = sorted(
         {
             finding.code
             for check in proposed.quality_checks
             for finding in check.findings
             if finding.severity == "ATTENTION"
         }
+    )
+    with pytest.raises(AudioScriptGateError, match="exact location"):
+        service.approve(
+            book_id,
+            proposed.audio_script_id,
+            human_actor="Owner",
+            accepted_attention_codes=aggregate_codes,
+        )
+    attention = sorted(
+        attention_finding_key(finding)
+        for check in proposed.quality_checks
+        for finding in check.findings
+        if finding.severity == "ATTENTION"
     )
     approved = service.approve(
         book_id,
@@ -372,3 +386,112 @@ def test_regression_fixture_exposes_every_audio_risk_without_fake_pass(tmp_path:
     recording = content.clean_recording_text()
     assert recording.index("Таблица конверсии показывает") > recording.index("Смотрите выше")
     assert recording.index("Таблица конверсии показывает") < recording.index("По данным OpenAI")
+
+
+def test_material_fidelity_blocks_dropped_numeric_values_and_requires_exact_section_review() -> (
+    None
+):
+    service = AudioScriptService(Path("."))
+    master = StructuredBookMaster(
+        title="Книга о проверяемых данных",
+        author="Автор",
+        chapters=[
+            MasterChapter(
+                chapter_id="chapter-material",
+                title="Материальный вывод",
+                paragraphs=[
+                    (
+                        "Конверсия выросла с 20 до 35%, но это не доказывает причинность. "
+                        "Вывод: при бюджете 50 000 ₽ масштабирование допустимо только после "
+                        "повторной проверки."
+                    )
+                ],
+            )
+        ],
+    )
+    dropped_content, dropped_map = service.content_from_master(
+        master,
+        adaptation_mode="SOURCE_FAITHFUL",
+        adapted_chapters={
+            "chapter-material": (
+                "Конверсия выросла с 20 процентов, но это не доказывает причинность. "
+                "Вывод: при бюджете 50 000 рублей масштабирование допустимо только после "
+                "повторной проверки."
+            )
+        },
+    )
+    dropped_checks = service.evaluate(
+        dropped_content,
+        source_hash="f" * 64,
+        mode="SOURCE_FAITHFUL",
+        transformations=dropped_map,
+    )
+    source_fidelity = next(item for item in dropped_checks if item.check_kind == "SOURCE_FIDELITY")
+    assert source_fidelity.state == "BLOCKING"
+    assert any(
+        finding.code == "MATERIAL_NUMBER_DROPPED" and "35" in finding.detail
+        for finding in source_fidelity.findings
+    )
+
+    complete_content, complete_map = service.content_from_master(
+        master,
+        adaptation_mode="SOURCE_FAITHFUL",
+        adapted_chapters={
+            "chapter-material": (
+                "Конверсия выросла с 20 до 35 процентов, но это не доказывает причинность. "
+                "Вывод: при бюджете 50 000 рублей масштабирование допустимо только после "
+                "повторной проверки."
+            )
+        },
+    )
+    complete_checks = service.evaluate(
+        complete_content,
+        source_hash="f" * 64,
+        mode="SOURCE_FAITHFUL",
+        transformations=complete_map,
+    )
+    source_fidelity = next(item for item in complete_checks if item.check_kind == "SOURCE_FIDELITY")
+    assert not any(
+        finding.code == "MATERIAL_NUMBER_DROPPED" for finding in source_fidelity.findings
+    )
+    assert any(
+        finding.code == "MATERIAL_SECTION_FIDELITY_HUMAN_REVIEW_REQUIRED"
+        and "source:" in finding.location
+        for finding in source_fidelity.findings
+    )
+    assert any(
+        finding.code == "MATERIAL_STATEMENT_HUMAN_REVIEW_REQUIRED"
+        and "не доказывает причинность" in finding.detail
+        for finding in source_fidelity.findings
+    )
+
+
+def test_ambiguous_stress_alone_requires_pronunciation_ledger_review() -> None:
+    service = AudioScriptService(Path("."))
+    content = AudioScriptContent(
+        title="Проверка произношения",
+        author="Автор",
+        sections=[
+            AudioScriptSection(
+                source_chapter_id="chapter-stress",
+                title="Произношение",
+                paragraphs=["Старинный замок описан в примере для слушателя."],
+            )
+        ],
+    )
+    checks = service.evaluate(
+        content,
+        source_hash="2" * 64,
+        mode="AUDIO_NATIVE",
+        transformations=[
+            AudioTransformation(
+                source_unit_id="chapter-stress",
+                outcome="PRESERVED",
+                summary="Audio-native source.",
+            )
+        ],
+    )
+    pronunciation = next(
+        item for item in checks if item.check_kind == "ACRONYM_AND_TERM_PRONUNCIATION"
+    )
+    assert pronunciation.state == "ATTENTION"

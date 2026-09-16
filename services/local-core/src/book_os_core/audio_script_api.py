@@ -575,11 +575,15 @@ def build_audio_script_router(
                 current,
                 payload.accepted_attention_codes,
             )
-            script = scripts.approve(
-                book_id,
-                audio_script_id,
-                human_actor=payload.human_actor,
-                accepted_attention_codes=accepted_values,
+            script = (
+                current
+                if current.status == "APPROVED" and current.ready_for_export
+                else scripts.approve(
+                    book_id,
+                    audio_script_id,
+                    human_actor=payload.human_actor,
+                    accepted_attention_codes=accepted_values,
+                )
             )
             run_id = str(script.provenance.get("run_id", ""))
             if not run_id:

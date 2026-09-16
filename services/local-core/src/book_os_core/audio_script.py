@@ -122,6 +122,9 @@ class AudioTransformation(BaseModel):
     summary: str = Field(min_length=1, max_length=4000)
     material: bool = False
     human_review_required: bool = False
+    source_text_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    required_numeric_values: list[str] = Field(default_factory=list, max_length=200)
+    material_review_items: list[str] = Field(default_factory=list, max_length=100)
 
 
 class AudioQualityFinding(BaseModel):
@@ -192,6 +195,36 @@ def _word_tokens(value: str) -> set[str]:
     }
 
 
+def _numeric_values(value: str) -> list[str]:
+    """Return ordered canonical numeric values while preserving grouped thousands/decimals."""
+    raw = re.findall(
+        r"(?<!\d)(?:\d{1,3}(?:[ \u00a0]\d{3})+|\d+)(?:[.,]\d+)?(?!\d)",
+        value,
+    )
+    result: list[str] = []
+    for item in raw:
+        normalized = item.replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        if normalized not in result:
+            result.append(normalized)
+    return result
+
+
+def _material_review_items(value: str) -> list[str]:
+    """Identify source statements whose semantic force cannot be proven by token overlap."""
+    marker = re.compile(
+        r"\b(?:однако|но|при этом|хотя|если|только|лишь|не означает|не доказывает|"
+        r"не гарантирует|ограничени\w*|оговорк\w*|вывод\w*|следовательно|поэтому|итак|"
+        r"нельзя|может|могут|не всегда)\b",
+        re.IGNORECASE,
+    )
+    items: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", value):
+        cleaned = " ".join(sentence.split())
+        if cleaned and marker.search(cleaned) and cleaned not in items:
+            items.append(cleaned[:1200])
+    return items[:100]
+
+
 class AudioScriptService:
     """Versioned audio-editorial artifacts derived from an exact immutable source snapshot."""
 
@@ -254,7 +287,6 @@ class AudioScriptService:
         transformations: list[AudioTransformation],
     ) -> list[AudioQualityCheck]:
         script_hash = audio_content_hash(content)
-        recording = content.clean_recording_text()
         locations = [
             (f"{section.source_chapter_id}:{index}", paragraph)
             for section in content.sections
@@ -376,6 +408,53 @@ class AudioScriptService:
             for item in transformations
             if item.material and item.outcome in {"OMITTED", "ADDED", "MOVED"}
         ]
+        section_recordings = {
+            section.source_chapter_id: "\n".join(section.recording_paragraphs())
+            for section in content.sections
+        }
+        material_fidelity: list[AudioQualityFinding] = []
+        for transformation in transformations:
+            if transformation.outcome == "ADDED" or transformation.source_text_hash is None:
+                continue
+            section_text = section_recordings.get(transformation.source_unit_id, "")
+            audible_numbers = set(_numeric_values(section_text))
+            for value in transformation.required_numeric_values:
+                if value not in audible_numbers:
+                    material_fidelity.append(
+                        AudioQualityFinding(
+                            code="MATERIAL_NUMBER_DROPPED",
+                            location=transformation.source_unit_id,
+                            detail=(
+                                f"Исходное материальное числовое значение {value} отсутствует "
+                                "в аудиотексте этого раздела."
+                            ),
+                            severity="BLOCKING",
+                        )
+                    )
+            if mode != "AUDIO_NATIVE":
+                material_fidelity.append(
+                    AudioQualityFinding(
+                        code="MATERIAL_SECTION_FIDELITY_HUMAN_REVIEW_REQUIRED",
+                        location=(
+                            f"{transformation.source_unit_id}:source:"
+                            f"{transformation.source_text_hash[:12]}"
+                        ),
+                        detail=(
+                            "Человек должен сверить exact source section с AudioScript и подтвердить "
+                            "сохранение всех материальных утверждений, оговорок и выводов."
+                        ),
+                        severity="ATTENTION",
+                    )
+                )
+                for index, statement in enumerate(transformation.material_review_items, start=1):
+                    material_fidelity.append(
+                        AudioQualityFinding(
+                            code="MATERIAL_STATEMENT_HUMAN_REVIEW_REQUIRED",
+                            location=f"{transformation.source_unit_id}:material:{index}",
+                            detail=f"Сверить смысл исходного утверждения: {statement}",
+                            severity="ATTENTION",
+                        )
+                    )
 
         listenability_findings = [
             *page_findings,
@@ -420,18 +499,22 @@ class AudioScriptService:
                     severity="ATTENTION",
                 )
             ]
-            if re.search(r"\b(?:[А-ЯЁA-Z]{2,}|[A-Za-z][A-Za-z0-9.+-]{2,})\b", recording)
+            if self.discover_pronunciation(content)
             else []
         )
         checks = [
             check("LISTENABILITY", listenability_findings),
             check(
                 "SOURCE_FIDELITY",
-                [*fidelity, *fidelity_review] if mode == "SOURCE_FAITHFUL" else [],
+                [*fidelity, *material_fidelity, *fidelity_review]
+                if mode == "SOURCE_FAITHFUL"
+                else [],
             ),
             check(
                 "SEMANTIC_FIDELITY",
-                [*fidelity, *fidelity_review] if mode == "LISTENING_ADAPTATION" else [],
+                [*fidelity, *material_fidelity, *fidelity_review]
+                if mode == "LISTENING_ADAPTATION"
+                else [],
             ),
             check("AUTHOR_VOICE_FOR_AUDIO", voice_review),
             check("VISUAL_DEPENDENCY_RESOLVED", visual_findings),
@@ -583,11 +666,15 @@ class AudioScriptService:
                     visual_decisions=decisions,
                 )
             )
+            source_text = "\n\n".join(chapter.paragraphs)
             transformations.append(
                 AudioTransformation(
                     source_unit_id=chapter.chapter_id,
                     outcome=outcome,
                     summary=summary,
+                    source_text_hash=hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+                    required_numeric_values=_numeric_values(source_text),
+                    material_review_items=_material_review_items(source_text),
                 )
             )
         return (
@@ -985,16 +1072,25 @@ class AudioScriptService:
             )
         if not human_actor.strip():
             raise AudioScriptGateError("human approval requires an identified human actor")
-        attention_codes = {
-            finding.code
+        from .audio_attention import attention_finding_key
+
+        attention_findings = [
+            finding
             for item in current.quality_checks
             for finding in item.findings
             if finding.severity == "ATTENTION"
-        }
+        ]
+        required = {attention_finding_key(finding) for finding in attention_findings}
         accepted: set[str] = set(accepted_attention_codes or [])
-        if attention_codes - accepted:
+        missing = required - accepted
+        unexpected = accepted - required
+        if missing:
             raise AudioScriptGateError(
-                "human must explicitly disposition every ATTENTION finding before approval"
+                "human must explicitly disposition every ATTENTION finding by exact location"
+            )
+        if unexpected:
+            raise AudioScriptGateError(
+                "accepted ATTENTION disposition does not match the current exact findings"
             )
         approval = {
             "actor": human_actor,
@@ -1003,6 +1099,7 @@ class AudioScriptService:
             "source_hash": current.source_hash,
             "script_hash": current.content_hash,
             "accepted_attention_codes": sorted(accepted),
+            "accepted_attention_findings": sorted(accepted),
         }
         engine = self._engine(book_id)
         try:

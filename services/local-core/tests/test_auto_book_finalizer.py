@@ -11,6 +11,7 @@ from book_os_core.auto_book_finalizer import (
     AUTO_BOOK_FINAL_EDIT_V1,
     AutoBookFinalizer,
 )
+from book_os_core.audio_attention import attention_finding_key
 from book_os_core.audio_script import AudioScriptService
 from book_os_core.auto_book_runtime import AutoBookOutputSelection
 from book_os_core.book_context import (
@@ -525,12 +526,10 @@ def test_audio_first_uses_approved_listening_master_without_redundant_rewrite_th
     assert proposed.provenance["redundant_rewrite_skipped"] is True
     assert proposed.status == "PROPOSED"
     attention = sorted(
-        {
-            finding.code
-            for check in proposed.quality_checks
-            for finding in check.findings
-            if finding.severity == "ATTENTION"
-        }
+        attention_finding_key(finding)
+        for check in proposed.quality_checks
+        for finding in check.findings
+        if finding.severity == "ATTENTION"
     )
     approved = AudioScriptService(tmp_path).approve(
         book_id,
