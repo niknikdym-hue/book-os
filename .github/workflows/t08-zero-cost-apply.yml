@@ -8,6 +8,7 @@ on:
       - 'tools/agents_api/apply_t08_audio_fidelity.py'
       - 'tools/agents_api/apply_t08_remove_obsolete_recording.py'
       - 'tools/agents_api/apply_t08_fixture_migration.py'
+      - 'tools/agents_api/apply_t08_scope_freeze_trim.py'
 
 permissions:
   contents: write
@@ -32,10 +33,12 @@ jobs:
           cp tools/agents_api/apply_t08_audio_fidelity.py /tmp/apply_t08_audio_fidelity.py
           cp tools/agents_api/apply_t08_remove_obsolete_recording.py /tmp/apply_t08_remove_obsolete_recording.py
           cp tools/agents_api/apply_t08_fixture_migration.py /tmp/apply_t08_fixture_migration.py
+          cp tools/agents_api/apply_t08_scope_freeze_trim.py /tmp/apply_t08_scope_freeze_trim.py
           python -m py_compile \
             /tmp/apply_t08_audio_fidelity.py \
             /tmp/apply_t08_remove_obsolete_recording.py \
-            /tmp/apply_t08_fixture_migration.py
+            /tmp/apply_t08_fixture_migration.py \
+            /tmp/apply_t08_scope_freeze_trim.py
       - name: Checkout exact T07 product candidate
         run: |
           git fetch origin codex/auto-book-complete-cycle-20260913
@@ -49,6 +52,7 @@ jobs:
           python /tmp/apply_t08_audio_fidelity.py "$GITHUB_WORKSPACE"
           python /tmp/apply_t08_remove_obsolete_recording.py "$GITHUB_WORKSPACE"
           python /tmp/apply_t08_fixture_migration.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t08_scope_freeze_trim.py "$GITHUB_WORKSPACE"
           git diff --check
       - name: Install Local Core dependencies
         working-directory: services/local-core
