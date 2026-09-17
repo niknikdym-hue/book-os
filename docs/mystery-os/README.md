@@ -72,8 +72,9 @@ The hidden solution is authority. Draft prose is downstream.
 18. [`../../contracts/mystery-os/narrative_contract.schema.json`](../../contracts/mystery-os/narrative_contract.schema.json) — machine-readable NarrativeContract.
 19. [`../../contracts/mystery-os/fiction_research_ledger.schema.json`](../../contracts/mystery-os/fiction_research_ledger.schema.json) — machine-readable factual realism ledger.
 20. [`../../contracts/mystery-os/professional_fiction_benchmark.schema.json`](../../contracts/mystery-os/professional_fiction_benchmark.schema.json) — machine-readable benchmark run/findings contract.
-21. [`../../contracts/mystery-os/editorial_prep_agent.schema.json`](../../contracts/mystery-os/editorial_prep_agent.schema.json) — machine-readable editorial-prep agent request contract.
-22. [`../tasks/TASK_022_MYSTERY_OS_FOUNDATION.md`](../tasks/TASK_022_MYSTERY_OS_FOUNDATION.md) — bounded project/task contract and stop gate.
+21. [`../../contracts/mystery-os/editorial_machine_gate.schema.json`](../../contracts/mystery-os/editorial_machine_gate.schema.json) — machine-readable fail-closed gate state / WRITING_ALLOWED scope contract.
+22. [`../../contracts/mystery-os/editorial_prep_agent.schema.json`](../../contracts/mystery-os/editorial_prep_agent.schema.json) — machine-readable editorial-prep agent request contract.
+23. [`../tasks/TASK_022_MYSTERY_OS_FOUNDATION.md`](../tasks/TASK_022_MYSTERY_OS_FOUNDATION.md) — bounded project/task contract and stop gate.
 
 ## What is shared with BOOK OS
 
@@ -116,6 +117,7 @@ The fiction/mystery layer introduces first-class objects such as:
 - `AntiClicheFinding` / `AntiClicheException`;
 - `RepresentativeFictionSample`;
 - `ProfessionalFictionBenchmarkRun`;
+- `EditorialMachineGateState`;
 - `MysteryBenchRun`;
 - `ColdReaderRun`.
 
@@ -126,6 +128,8 @@ The canonical gate map is:
 `IDEA -> MARKET -> SERIES POSITION -> STORY DEFINITION -> NARRATIVE CONTRACT -> CASE SOLUTION -> REALISM PLAN -> MYSTIC RULES -> CHARACTERS -> SUSPECT/CLUE/TIMELINE -> SCENE ARCHITECTURE -> REPRESENTATIVE SAMPLE -> WRITING -> MIDBOOK -> DEVELOPMENTAL REBUILD -> WHOLE-BOOK AUDITS -> PROFESSIONAL BENCHMARK -> LITERARY MASTER -> DERIVATIVES`
 
 A provider response does not advance state by itself. Required authority must be fresh and required gates must pass.
+
+The machine-readable gate-state contract records `BLOCKED | PASS | STALE | HUMAN_REVIEW_REQUIRED` and scopes `WRITING_ALLOWED`; it is designed so future implementation can fail closed before paid/model execution.
 
 ## Quality routing
 
