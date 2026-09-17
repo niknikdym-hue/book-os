@@ -16,6 +16,7 @@ No runtime implementation is authorized yet.
 The design pack now covers:
 
 - canonical end-to-end Editorial Machine gate map;
+- explicit machine-readable gate state / scoped `WRITING_ALLOWED` contract;
 - mystery/fair-play genre canon;
 - narrative/POV/reader-knowledge fairness contract;
 - fiction research / real-world realism / fictionalization discipline;
@@ -31,7 +32,7 @@ The design pack now covers:
 - future BOOK OS integration boundary;
 - Codex/Agents API engineering mode;
 - Codex/Agents API `EDITORIAL_PREP` mode for bounded pre-writing preparation;
-- machine-readable authority, narrative, research, benchmark and agent-request schemas;
+- machine-readable authority, narrative, research, benchmark, gate-state and agent-request schemas;
 - first pilot profile for `Линия 112`.
 
 ## Owner decisions captured during design
@@ -55,6 +56,8 @@ The design pack now covers:
 `IDEA -> MARKET -> SERIES POSITION -> STORY DEFINITION -> NARRATIVE CONTRACT -> CASE SOLUTION -> REALISM PLAN -> MYSTIC RULES -> CHARACTERS -> SUSPECT/CLUE/TIMELINE -> SCENE ARCHITECTURE -> REPRESENTATIVE SAMPLE -> WRITING -> MIDBOOK -> DEVELOPMENTAL REBUILD -> WHOLE-BOOK AUDITS -> PROFESSIONAL BENCHMARK -> LITERARY MASTER -> DERIVATIVES`
 
 Advancement is based on fresh authority + gate PASS, not on model completion.
+
+Future runtime is explicitly expected to persist gate state as `NOT_STARTED | DRAFT | BLOCKED | PASS | STALE | HUMAN_REVIEW_REQUIRED` and keep `WRITING_ALLOWED=false` outside an exact admitted scope.
 
 ## Current quality-routing hypothesis
 
@@ -86,12 +89,13 @@ Not accepted yet:
 
 ## Design completeness result
 
-The foundation now has explicit protection against four common false-success modes:
+The foundation now has explicit protection against five common false-success modes:
 
 1. **technically coherent but narratively dishonest mystery** — controlled by NarrativeContract/reader-knowledge gates;
 2. **plausible-sounding but factually impossible contemporary case** — controlled by FictionResearchLedger/realism gates;
 3. **internally GREEN but mediocre/self-publishing-level prose** — controlled by Representative Sample + Professional Fiction Benchmark;
-4. **high-quality architecture diluted by unnecessary premium spend** — controlled by operation-level Quality Routing.
+4. **high-quality architecture diluted by unnecessary premium spend** — controlled by operation-level Quality Routing;
+5. **model completion mistaken for editorial readiness** — controlled by machine-readable fail-closed gate state and scoped `WRITING_ALLOWED`.
 
 ## Stop gate
 
