@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/editorial_machine_gate.schema.json",
+  "title": "MYSTERY OS Editorial Machine Gate State",
+  "type": "object",
+  "required": ["schema_version", "book_id", "current_stage", "gates"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "book_id": {"type": "string", "minLength": 1},
+    "current_stage": {"type": "string", "minLength": 1},
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate_id", "status", "authority_refs", "blocking_findings"],
+        "properties": {
+          "gate_id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["NOT_STARTED", "DRAFT", "BLOCKED", "PASS", "STALE", "HUMAN_REVIEW_REQUIRED"]},
+          "authority_refs": {"type": "array", "items": {"type": "string"}},
+          "blocking_findings": {"type": "array", "items": {"type": "string"}},
+          "evaluation_refs": {"type": "array", "items": {"type": "string"}},
+          "human_decision_ref": {"type": ["string", "null"]},
+          "updated_at": {"type": ["string", "null"]}
+        },
+        "additionalProperties": true
+      }
+    },
+    "writing_allowed": {"type": "boolean"},
+    "writing_allowed_scope": {"type": "array", "items": {"type": "string"}},
+    "stale_reasons": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}
