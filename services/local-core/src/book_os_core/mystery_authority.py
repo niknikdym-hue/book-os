@@ -49,7 +49,7 @@ _ALLOWED_TRANSITIONS: dict[AuthorityStatus, frozenset[AuthorityStatus]] = {
 
 @dataclass(frozen=True)
 class MysteryAuthorityRevision:
-    """Immutable envelope for one version of a fiction authority object."""
+    """Immutable content identity plus mutable-by-replacement authority state."""
 
     entity_id: str
     kind: MysteryAuthorityKind
@@ -97,22 +97,19 @@ def create_authority_revision(
     status: AuthorityStatus = "DRAFT",
     supersedes_revision_id: str | None = None,
 ) -> MysteryAuthorityRevision:
-    """Create an immutable, content-addressed authority revision."""
+    """Create new content authority; new content always starts as DRAFT."""
     if not entity_id.strip():
         raise InvalidAuthorityOperation("entity_id must not be empty")
-    if status in {"APPROVED", "LOCKED"}:
-        raise HumanApprovalRequired(
-            "new authority content cannot be created directly as APPROVED/LOCKED; "
-            "create DRAFT and pass the human transition gate"
+    if status != "DRAFT":
+        raise InvalidAuthorityOperation(
+            "new authority content must start as DRAFT and pass explicit transitions"
         )
-    if status == "SUPERSEDED":
-        raise InvalidAuthorityOperation("new authority content cannot start SUPERSEDED")
     return MysteryAuthorityRevision(
         entity_id=entity_id,
         kind=kind,
         revision_id=new_ulid(),
         revision_hash=content_hash(payload),
-        status=status,
+        status="DRAFT",
         content_json=canonical_json(payload),
         supersedes_revision_id=supersedes_revision_id,
         last_transition_actor="SYSTEM",
@@ -128,7 +125,6 @@ def revise_authority(
         entity_id=previous.entity_id,
         kind=previous.kind,
         payload=payload,
-        status="DRAFT",
         supersedes_revision_id=previous.revision_id,
     )
 
@@ -139,7 +135,7 @@ def transition_authority_status(
     target_status: AuthorityStatus,
     actor_kind: ActorKind,
 ) -> MysteryAuthorityRevision:
-    """Apply an authority-state transition without changing content identity."""
+    """Apply a bounded authority-state transition without changing content identity."""
     if target_status == revision.status:
         return revision
     allowed = _ALLOWED_TRANSITIONS[revision.status]
@@ -155,14 +151,16 @@ def transition_authority_status(
 
 
 class MysteryAuthorityGraph:
-    """In-memory exact-revision dependency and staleness model.
+    """Exact-revision authority graph with separate working and effective heads.
 
-    MYS-01 intentionally has no database concerns. Persistence may later project
-    these semantics onto BOOK OS revision storage without changing the rules.
+    `latest` is the newest working revision and may be DRAFT/PROPOSED/REVIEWED.
+    `effective` is the currently governing APPROVED/LOCKED revision. A proposal never
+    displaces accepted authority until HUMAN approval promotes that exact revision.
     """
 
     def __init__(self) -> None:
-        self._heads: dict[str, MysteryAuthorityRevision] = {}
+        self._latest: dict[str, MysteryAuthorityRevision] = {}
+        self._effective: dict[str, MysteryAuthorityRevision] = {}
         self._bindings_by_revision: dict[tuple[str, str], tuple[AuthorityDependency, ...]] = {}
 
     @staticmethod
@@ -185,11 +183,61 @@ class MysteryAuthorityGraph:
                 f"{revision.status} authority must carry HUMAN transition provenance"
             )
 
+    def _dependencies_for_revision(
+        self, revision: MysteryAuthorityRevision
+    ) -> tuple[AuthorityDependency, ...]:
+        return self._bindings_by_revision.get((revision.entity_id, revision.revision_id), ())
+
+    def _effective_stale_entities(self) -> frozenset[str]:
+        reverse_edges: dict[str, set[str]] = defaultdict(set)
+        stale: set[str] = set()
+
+        for dependent_id, dependent in self._effective.items():
+            for binding in self._dependencies_for_revision(dependent):
+                reverse_edges[binding.upstream_entity_id].add(dependent_id)
+                upstream = self._effective.get(binding.upstream_entity_id)
+                if upstream is None or upstream.revision_id != binding.upstream_revision_id:
+                    stale.add(dependent_id)
+
+        queue: deque[str] = deque(stale)
+        while queue:
+            stale_upstream = queue.popleft()
+            for dependent_id in reverse_edges.get(stale_upstream, set()):
+                if dependent_id not in stale:
+                    stale.add(dependent_id)
+                    queue.append(dependent_id)
+        return frozenset(stale)
+
+    def _validate_dependencies_ready_for_acceptance(
+        self, revision: MysteryAuthorityRevision
+    ) -> None:
+        stale_effective = self._effective_stale_entities()
+        for binding in self._dependencies_for_revision(revision):
+            upstream = self._effective.get(binding.upstream_entity_id)
+            if upstream is None:
+                raise InvalidAuthorityOperation(
+                    f"cannot accept {revision.entity_id}: upstream authority "
+                    f"{binding.upstream_entity_id} has no effective accepted revision"
+                )
+            if upstream.revision_id != binding.upstream_revision_id:
+                raise InvalidAuthorityOperation(
+                    f"cannot accept {revision.entity_id}: dependency on "
+                    f"{binding.upstream_entity_id}@{binding.upstream_revision_id} is stale"
+                )
+            if binding.upstream_entity_id in stale_effective:
+                raise InvalidAuthorityOperation(
+                    f"cannot accept {revision.entity_id}: upstream authority "
+                    f"{binding.upstream_entity_id} is itself stale"
+                )
+
     def register_head(self, revision: MysteryAuthorityRevision) -> None:
-        current = self._heads.get(revision.entity_id)
+        current = self._latest.get(revision.entity_id)
         if current is None:
             self._validate_accepted_provenance(revision)
-            self._heads[revision.entity_id] = revision
+            if revision.status in _ACCEPTED_STATUSES:
+                self._validate_dependencies_ready_for_acceptance(revision)
+                self._effective[revision.entity_id] = revision
+            self._latest[revision.entity_id] = revision
             return
 
         if current.kind != revision.kind:
@@ -209,12 +257,19 @@ class MysteryAuthorityGraph:
                         f"invalid registered transition {current.status} -> {revision.status}"
                     )
                 self._validate_accepted_provenance(revision)
-            self._heads[revision.entity_id] = revision
+                if revision.status in _ACCEPTED_STATUSES:
+                    self._validate_dependencies_ready_for_acceptance(revision)
+                    self._effective[revision.entity_id] = revision
+                elif revision.status == "SUPERSEDED":
+                    effective = self._effective.get(revision.entity_id)
+                    if effective is not None and effective.revision_id == revision.revision_id:
+                        self._effective.pop(revision.entity_id)
+            self._latest[revision.entity_id] = revision
             return
 
         if revision.supersedes_revision_id != current.revision_id:
             raise InvalidAuthorityOperation(
-                "new head must directly supersede the current revision; detached or "
+                "new head must directly supersede the current working revision; detached or "
                 "out-of-order revision replacement is not allowed"
             )
         if revision.status != "DRAFT":
@@ -230,23 +285,29 @@ class MysteryAuthorityGraph:
                 for item in self._bindings_by_revision.get(old_key, ())
             )
             self._bindings_by_revision[new_key] = inherited
+        self._latest[revision.entity_id] = revision
 
-        self._heads[revision.entity_id] = revision
+    def latest(self, entity_id: str) -> MysteryAuthorityRevision | None:
+        return self._latest.get(entity_id)
+
+    def effective(self, entity_id: str) -> MysteryAuthorityRevision | None:
+        return self._effective.get(entity_id)
 
     def head(self, entity_id: str) -> MysteryAuthorityRevision | None:
-        return self._heads.get(entity_id)
+        """Return governing accepted authority when present, else the working revision."""
+        return self._effective.get(entity_id) or self._latest.get(entity_id)
 
     def heads(self) -> tuple[MysteryAuthorityRevision, ...]:
-        return tuple(self._heads.values())
+        entity_ids = self._latest.keys() | self._effective.keys()
+        return tuple(head for entity_id in entity_ids if (head := self.head(entity_id)) is not None)
 
-    def _current_dependencies(self, entity_id: str) -> tuple[AuthorityDependency, ...]:
-        head = self._heads.get(entity_id)
-        if head is None:
+    def _latest_dependencies(self, entity_id: str) -> tuple[AuthorityDependency, ...]:
+        latest = self._latest.get(entity_id)
+        if latest is None:
             return ()
-        return self._bindings_by_revision.get((entity_id, head.revision_id), ())
+        return self._dependencies_for_revision(latest)
 
-    def _depends_on(self, start_entity_id: str, target_entity_id: str) -> bool:
-        """Return whether current `start` transitively depends on `target`."""
+    def _latest_depends_on(self, start_entity_id: str, target_entity_id: str) -> bool:
         pending: list[str] = [start_entity_id]
         visited: set[str] = set()
         while pending:
@@ -254,7 +315,7 @@ class MysteryAuthorityGraph:
             if current in visited:
                 continue
             visited.add(current)
-            for binding in self._current_dependencies(current):
+            for binding in self._latest_dependencies(current):
                 upstream = binding.upstream_entity_id
                 if upstream == target_entity_id:
                     return True
@@ -268,15 +329,15 @@ class MysteryAuthorityGraph:
         upstream_entity_id: str,
         reason: str,
     ) -> AuthorityDependency:
-        dependent = self._heads.get(dependent_entity_id)
-        upstream = self._heads.get(upstream_entity_id)
+        dependent = self._latest.get(dependent_entity_id)
+        upstream = self._latest.get(upstream_entity_id)
         if dependent is None:
             raise InvalidAuthorityOperation(
-                f"cannot bind dependency: missing dependent head {dependent_entity_id}"
+                f"cannot bind dependency: missing dependent revision {dependent_entity_id}"
             )
         if upstream is None:
             raise InvalidAuthorityOperation(
-                f"cannot bind dependency: missing upstream head {upstream_entity_id}"
+                f"cannot bind dependency: missing upstream revision {upstream_entity_id}"
             )
         if dependent_entity_id == upstream_entity_id:
             raise InvalidAuthorityOperation("authority entity cannot depend on itself")
@@ -296,7 +357,7 @@ class MysteryAuthorityGraph:
                 "dependent revision before adding or rebinding dependencies"
             )
 
-        if self._depends_on(upstream_entity_id, dependent_entity_id):
+        if self._latest_depends_on(upstream_entity_id, dependent_entity_id):
             raise InvalidAuthorityOperation(
                 f"dependency cycle rejected: {dependent_entity_id} -> {upstream_entity_id}"
             )
@@ -315,58 +376,43 @@ class MysteryAuthorityGraph:
         return binding
 
     def dependencies_for(self, entity_id: str) -> tuple[AuthorityDependency, ...]:
-        return self._current_dependencies(entity_id)
+        """Return dependencies of the latest working revision for authoring/review."""
+        return self._latest_dependencies(entity_id)
 
     def stale_entities(self) -> frozenset[str]:
-        """Return current heads stale from missing/moved exact upstream revisions.
-
-        Staleness is transitive: if B consumes stale A, then everything consuming B
-        is stale even if B's own direct upstream revision IDs still exist.
-        """
-        reverse_edges: dict[str, set[str]] = defaultdict(set)
-        stale: set[str] = set()
-
-        for dependent_id, dependent_head in self._heads.items():
-            bindings = self._bindings_by_revision.get(
-                (dependent_id, dependent_head.revision_id), ()
-            )
-            for binding in bindings:
-                reverse_edges[binding.upstream_entity_id].add(dependent_id)
-                upstream = self._heads.get(binding.upstream_entity_id)
-                if upstream is None or upstream.revision_id != binding.upstream_revision_id:
-                    stale.add(dependent_id)
-
-        queue: deque[str] = deque(stale)
-        while queue:
-            stale_upstream = queue.popleft()
-            for dependent in reverse_edges.get(stale_upstream, set()):
-                if dependent not in stale:
-                    stale.add(dependent)
-                    queue.append(dependent)
-
-        return frozenset(stale)
+        """Return stale governing accepted authorities, propagated transitively."""
+        return self._effective_stale_entities()
 
     def is_fresh(self, entity_id: str) -> bool:
-        return entity_id in self._heads and entity_id not in self.stale_entities()
+        return entity_id in self._effective and entity_id not in self.stale_entities()
 
 
 def evaluate_writing_admission(
     graph: MysteryAuthorityGraph,
     requirements: Sequence[AuthorityRequirement],
 ) -> WritingAdmission:
-    """Fail closed unless all required exact authorities exist, are accepted and fresh."""
+    """Fail closed unless all required governing authorities are accepted and fresh."""
     stale = graph.stale_entities()
     blockers: list[str] = []
     refs: list[str] = []
 
     for requirement in requirements:
-        head = graph.head(requirement.entity_id)
-        if head is None:
-            blockers.append(f"MISSING_AUTHORITY:{requirement.entity_id}")
+        effective = graph.effective(requirement.entity_id)
+        if effective is None:
+            latest = graph.latest(requirement.entity_id)
+            if latest is None:
+                blockers.append(f"MISSING_AUTHORITY:{requirement.entity_id}")
+            else:
+                blockers.append(
+                    f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{latest.status}"
+                )
+                refs.append(latest.revision_ref)
             continue
-        refs.append(head.revision_ref)
-        if head.status not in requirement.allowed_statuses:
-            blockers.append(f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{head.status}")
+        refs.append(effective.revision_ref)
+        if effective.status not in requirement.allowed_statuses:
+            blockers.append(
+                f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{effective.status}"
+            )
         if requirement.entity_id in stale:
             blockers.append(f"STALE_AUTHORITY:{requirement.entity_id}")
 
