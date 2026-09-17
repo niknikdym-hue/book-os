@@ -20,6 +20,8 @@ Owner requirements captured in this task:
 - cheap overused cliches, stock twists, template characters and AI-prose patterns must be identified and blocked/flagged;
 - series books must remain materially unique;
 - commercial viability must be checked before full manuscript investment;
+- target quality is professional international commercial fiction, not merely acceptable self-publishing/Samizdat output;
+- expensive frontier intelligence should be used selectively on high-impact/global operations rather than on every page;
 - project must be designed for later BOOK OS integration rather than as a separate throwaway tool;
 - the existing BOOK OS Agents API/Codex capability must be reusable when needed;
 - Agents API/Codex must be usable not only for software implementation but, after a separate safe implementation, for **bounded pre-writing editorial preparation**;
@@ -33,6 +35,8 @@ Owner requirements captured in this task:
 - genre canon and fair-play rules;
 - supernatural-rule discipline;
 - anti-cliche / anti-template policy;
+- professional fiction quality standard;
+- selective premium-intelligence / cost-aware routing policy;
 - fiction-specific ontology and contracts;
 - MysteryBench quality gates;
 - series/commercial governance;
@@ -78,14 +82,23 @@ Cheap cliches are not merely “style suggestions”. A registry distinguishes b
 ### 3.6 Series uniqueness
 Same case structure with changed names/location/profession is a failure.
 
-### 3.7 Human authority
+### 3.7 Professional quality target
+“Complete”, “readable”, “genre-correct”, “technically coherent” or “good enough for self-publishing” are not sufficient acceptance criteria. The manuscript target is professionally conceived, edited and authored commercial fiction capable of comparison with established-publisher genre work.
+
+### 3.8 Human authority
 Human Owner approves material story/series authority and final release. AI proposes and critiques.
 
-### 3.8 No hidden integration shortcut
+### 3.9 No hidden integration shortcut
 Fiction semantics must not be stuffed into nonfiction fields just to avoid proper future schema design.
 
-### 3.9 Agent optionality
+### 3.10 Agent optionality
 Agents API/Codex may accelerate engineering and pre-writing preparation, but normal authoring must not depend on an external agent runtime.
+
+### 3.11 Selective premium intelligence
+The strongest/most expensive executor is reserved for operations where a wrong decision has high downstream blast radius or where measured quality gain is material. Most ordinary scene drafting may use a cheaper proven Writer under strong authority/QA. Deterministic checks should not spend model tokens.
+
+### 3.12 No silent quality downgrade
+Cost controls optimize the route to the quality target; they do not redefine the target downward. If budget prevents a quality-critical operation, the trade-off must be surfaced to the Owner.
 
 ## 4. Deliverables in this branch
 
@@ -95,6 +108,8 @@ Required project pack:
 - `docs/mystery-os/MYSTERY_OS_SPEC_v0.1.md`;
 - `docs/mystery-os/GENRE_CANON_v0.1.md`;
 - `docs/mystery-os/ANTI_CLICHE_AND_TEMPLATE_POLICY_v0.1.md`;
+- `docs/mystery-os/WORLD_CLASS_FICTION_STANDARD_v0.1.md`;
+- `docs/mystery-os/QUALITY_ROUTING_v0.1.md`;
 - `docs/mystery-os/ONTOLOGY_AND_CONTRACTS_v0.1.md`;
 - `docs/mystery-os/QUALITY_GATES_v0.1.md`;
 - `docs/mystery-os/SERIES_BIBLE_AND_COMMERCIAL_GATE_v0.1.md`;
@@ -105,7 +120,36 @@ Required project pack:
 - `contracts/mystery-os/mystery_os_authority_pack.schema.json`;
 - `contracts/mystery-os/editorial_prep_agent.schema.json`.
 
-## 5. Agents API / Codex requirement
+## 5. Quality-routing requirement
+
+MYSTERY OS inherits BOOK OS operation-level routing: no single model owns the whole book.
+
+### Deterministic/local first
+Use software rather than model calls for schema, staleness, exact timeline conflicts, authority binding, clue lifecycle completeness, exact repetitions and other provable properties.
+
+### Standard editorial lane
+Use the least expensive proven Writer/Editor without material quality loss for bounded scene drafting, routine revisions, structured memory extraction and low-risk local edits.
+
+### Premium/global lane
+Use the strongest proven frontier/Astra-class executor or bounded editorial-prep agent where additional reasoning can materially improve high-blast-radius decisions, including:
+
+- series positioning/engine;
+- concept selection;
+- StoryDefinition;
+- CaseSolution;
+- clue/reveal architecture;
+- difficult MysticRuleSet;
+- ending architecture;
+- long character/relationship arcs;
+- anti-cliche adversarial analysis;
+- midpoint structural diagnosis;
+- whole-book developmental diagnosis;
+- adversarial reconstruction;
+- final literary/readiness review.
+
+Routing must be justified by quality/risk/cost evidence and recorded in provenance. Premium is not a default for every creative operation.
+
+## 6. Agents API / Codex requirement
 
 ### Engineering mode
 
@@ -149,7 +193,7 @@ Requirements:
 - agent cannot write GitHub in editorial-prep mode;
 - agent cannot become a hidden manuscript writer in a prep task.
 
-## 6. Future implementation slices after Owner acceptance
+## 7. Future implementation slices after Owner acceptance
 
 No implementation is authorized by Task 022 itself. If approved, use bounded follow-on tasks:
 
@@ -159,12 +203,13 @@ No implementation is authorized by Task 022 itself. If approved, use bounded fol
 4. `MYS-04` — MysteryBench + ColdReader/adversarial harness;
 5. `MYS-05` — fiction Series Brain / Book Passport / collisions;
 6. `MYS-06` — anti-cliche registry/scanners/exception workflow;
-7. `MYS-07` — author UX;
-8. `MYS-08` — Agents API `EDITORIAL_PREP` runner/import path;
-9. `MYS-09` — synthetic full-cycle fixture;
-10. `MYS-10` — «Линия 112» real pilot under separate paid/private Owner gate.
+7. `MYS-07` — quality-routing/model-operation extension + eval hooks;
+8. `MYS-08` — author UX;
+9. `MYS-09` — Agents API `EDITORIAL_PREP` runner/import path;
+10. `MYS-10` — synthetic full-cycle fixture;
+11. `MYS-11` — «Линия 112» real pilot under separate paid/private Owner gate.
 
-## 7. First pilot rule
+## 8. First pilot rule
 
 No Book 1 prose should be treated as a representative MYSTERY OS pilot until at least:
 
@@ -175,22 +220,25 @@ No Book 1 prose should be treated as a representative MYSTERY OS pilot until at 
 - supernatural rules (if used) are bounded;
 - anti-cliche gate passes;
 - series engine is accepted;
+- quality routing for high-impact preparation is resolved;
 - writing admission path exists for the chosen production mode.
 
-## 8. Acceptance criteria for Task 022
+## 9. Acceptance criteria for Task 022
 
 Task 022 design can be accepted when Owner agrees that:
 
 - the system captures the real professional work of mystery construction rather than a generic beat sheet;
+- quality target is explicitly professional/publisher-level rather than Samizdat-level completion;
 - blocked cliches/templates are explicit enough to prevent default model shortcuts;
 - fiction ontology is separable from nonfiction ontology but integrable at platform level;
 - quality gates can become executable tests/evaluations;
 - series/commercial rules protect against repeated formula books;
+- the routing design spends premium intelligence where marginal quality is most valuable rather than on every page;
 - «Линия 112» can be piloted without hard-coding its story into generic software;
 - both engineering and pre-writing agent use are explicitly designed and safely bounded;
 - current BOOK OS authority remains intact until separate integration approval.
 
-## 9. Stop gate
+## 10. Stop gate
 
 After this documentation/contract pack is created and reviewed in Draft PR:
 
