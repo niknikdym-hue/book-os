@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/narrative_contract.schema.json",
+  "title": "MYSTERY OS Narrative Contract",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "narrative_mode",
+    "grammatical_person",
+    "tense",
+    "viewpoints",
+    "reliability_model",
+    "allowed_withholding",
+    "prohibited_withholding",
+    "authority_status"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "authority_status": {"enum": ["DRAFT", "PROPOSED", "REVIEWED", "APPROVED", "LOCKED", "SUPERSEDED"]},
+    "narrative_mode": {"enum": ["FIRST_SINGLE", "FIRST_MULTI", "THIRD_LIMITED_SINGLE", "THIRD_LIMITED_MULTI", "CONTROLLED_OMNISCIENT", "EPISTOLARY_HYBRID", "MIXED"]},
+    "grammatical_person": {"enum": ["FIRST", "THIRD", "MIXED"]},
+    "tense": {"enum": ["PAST", "PRESENT", "MIXED_CONTROLLED"]},
+    "psychic_distance": {"enum": ["EXTERNAL", "CLOSE_LIMITED", "DEEP_LIMITED", "VARIABLE_CONTROLLED"]},
+    "viewpoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["character_id", "function", "knowledge_boundary"],
+        "properties": {
+          "character_id": {"type": "string", "minLength": 1},
+          "function": {"type": "string", "minLength": 1},
+          "knowledge_boundary": {"type": "string", "minLength": 1},
+          "culprit_pov": {"type": "boolean"},
+          "voice_markers": {"type": "array", "items": {"type": "string"}},
+          "prohibited_suppression": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": true
+      }
+    },
+    "reliability_model": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["RELIABLE", "LIMITED", "UNRELIABLE_EXPLICIT", "UNRELIABLE_BOUNDED"]},
+        "source": {"type": ["string", "null"]},
+        "unreliable_domains": {"type": "array", "items": {"type": "string"}},
+        "reader_signals": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "allowed_withholding": {"type": "array", "items": {"type": "string"}},
+    "prohibited_withholding": {"type": "array", "items": {"type": "string"}},
+    "thought_policy": {"type": "string"},
+    "flashback_policy": {"type": "string"},
+    "dream_vision_policy": {"type": "string"},
+    "document_media_policy": {"type": "string"},
+    "head_hopping_policy": {"type": "string"},
+    "audio_constraints": {"type": "array", "items": {"type": "string"}},
+    "reader_fairness_constraints": {"type": "array", "items": {"type": "string"}},
+    "input_revision_refs": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}
