@@ -49,12 +49,7 @@ _ALLOWED_TRANSITIONS: dict[AuthorityStatus, frozenset[AuthorityStatus]] = {
 
 @dataclass(frozen=True)
 class MysteryAuthorityRevision:
-    """Immutable envelope for one version of a fiction authority object.
-
-    Payload is stored as canonical JSON text so callers cannot mutate an accepted
-    revision through a retained dict/list reference. The content hash is therefore
-    stable and can be used as exact downstream authority identity.
-    """
+    """Immutable envelope for one version of a fiction authority object."""
 
     entity_id: str
     kind: MysteryAuthorityKind
@@ -63,6 +58,7 @@ class MysteryAuthorityRevision:
     status: AuthorityStatus
     content_json: str
     supersedes_revision_id: str | None = None
+    last_transition_actor: ActorKind = "SYSTEM"
 
     @property
     def revision_ref(self) -> str:
@@ -119,6 +115,7 @@ def create_authority_revision(
         status=status,
         content_json=canonical_json(payload),
         supersedes_revision_id=supersedes_revision_id,
+        last_transition_actor="SYSTEM",
     )
 
 
@@ -154,7 +151,7 @@ def transition_authority_status(
         raise HumanApprovalRequired(f"{target_status} requires HUMAN authority, got {actor_kind}")
     if target_status == "SUPERSEDED" and actor_kind == "AI":
         raise HumanApprovalRequired("AI cannot supersede accepted authority")
-    return replace(revision, status=target_status)
+    return replace(revision, status=target_status, last_transition_actor=actor_kind)
 
 
 class MysteryAuthorityGraph:
@@ -181,9 +178,17 @@ class MysteryAuthorityGraph:
             and left.supersedes_revision_id == right.supersedes_revision_id
         )
 
+    @staticmethod
+    def _validate_accepted_provenance(revision: MysteryAuthorityRevision) -> None:
+        if revision.status in _ACCEPTED_STATUSES and revision.last_transition_actor != "HUMAN":
+            raise HumanApprovalRequired(
+                f"{revision.status} authority must carry HUMAN transition provenance"
+            )
+
     def register_head(self, revision: MysteryAuthorityRevision) -> None:
         current = self._heads.get(revision.entity_id)
         if current is None:
+            self._validate_accepted_provenance(revision)
             self._heads[revision.entity_id] = revision
             return
 
@@ -198,6 +203,12 @@ class MysteryAuthorityGraph:
                     "revision identity is immutable; content/hash/lineage cannot change "
                     "under the same revision_id"
                 )
+            if revision.status != current.status:
+                if revision.status not in _ALLOWED_TRANSITIONS[current.status]:
+                    raise InvalidAuthorityOperation(
+                        f"invalid registered transition {current.status} -> {revision.status}"
+                    )
+                self._validate_accepted_provenance(revision)
             self._heads[revision.entity_id] = revision
             return
 
@@ -205,6 +216,10 @@ class MysteryAuthorityGraph:
             raise InvalidAuthorityOperation(
                 "new head must directly supersede the current revision; detached or "
                 "out-of-order revision replacement is not allowed"
+            )
+        if revision.status != "DRAFT":
+            raise InvalidAuthorityOperation(
+                "a new superseding revision must enter the graph as DRAFT before review/approval"
             )
 
         old_key = (current.entity_id, current.revision_id)
