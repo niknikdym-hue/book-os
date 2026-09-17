@@ -1,253 +1,251 @@
-# MYSTERY OS — INTEGRATION WITH BOOK OS v0.1
+# MYSTERY OS — INTEGRATION WITH BOOK OS v0.2
 
 **Status:** INCUBATION DRAFT  
-**Date:** 2026-09-17
+**Date:** 2026-09-18
 
-## 1. Objective
+## 1. Principle
 
-MYSTERY OS is designed from day one to become a genre module inside a broader publishing system rather than a parallel monolith.
+MYSTERY OS is designed as a future fiction genre module of the wider BOOK OS publishing system, not a parallel product that duplicates platform infrastructure.
 
-Current BOOK OS authority is nonfiction-focused. Therefore this document defines a **future integration boundary**, not an authorization to modify current production semantics.
+Integration must happen only after human acceptance of MYSTERY OS authority and bounded implementation evidence.
 
 ## 2. Shared platform core
 
-The following capabilities should remain genre-neutral and be reused:
+Reuse BOOK OS primitives where semantics are genuinely shared:
 
-- Author Profile;
-- Series Profile / Series Studio;
-- Style Profile / author voice;
-- project/revision/authority graph;
-- human approval statuses;
+- Author / Series hierarchy;
+- StyleProfile / author voice;
+- authority statuses and immutable revision history;
+- human approval gates;
+- Research Source/Evidence infrastructure;
+- Book Memory / retrieval / cross-book similarity;
 - Model Gateway and operation-level routing;
-- cost authorization/accounting;
-- provider/model provenance;
-- Book Memory and retrieval infrastructure;
-- file/material ingestion;
-- research source/evidence infrastructure for real-world facts;
-- whole-book editing framework;
-- generic BookBench execution/reporting infrastructure;
-- Editorial Decision Memory;
-- Literary Master semantics;
-- output/export registry;
-- audio-script/adaptation workflow;
-- publishing package/platform metadata;
-- local-first desktop/security/backup/recovery;
-- task/execution governance.
+- cost/provenance ledger;
+- BookBench infrastructure;
+- Literary Master;
+- audio adaptation / recording-script path;
+- publishing/export infrastructure;
+- local-first storage/security/backup;
+- Agents API engineering lane after its own acceptance.
 
-The rule is `share infrastructure, specialize editorial semantics`.
+Do not fork these primitives merely because fiction has additional semantics.
 
-## 3. Fiction-specific modules
+## 3. Fiction-specific extensions
 
-MYSTERY OS should add bounded modules/interfaces rather than overload nonfiction concepts.
-
-Proposed logical modules:
-
-### `fiction.story_definition`
-Owns StoryDefinition and GenreProfile.
-
-### `fiction.case_engine`
-Owns CaseSolution, suspects, secrets, clue/evidence chains and objective CaseTimeline.
-
-### `fiction.mystic_engine`
-Owns MysticRuleSet and MysticEvent consistency.
-
-### `fiction.character_engine`
-Owns character knowledge states, CharacterArc and RelationshipArc.
-
-### `fiction.scene_architecture`
-Owns RevealPlan, NarrativeTimeline, SceneContract and writing admission.
-
-### `fiction.mysterybench`
-Owns case reconstruction, fair-play, timeline, clue lifecycle, cold-reader and anti-cliche evaluations.
-
-### `fiction.series_brain`
-Extends existing Series Studio with MysteryBookPassport, series engine and fiction-specific difference/collision maps.
-
-## 4. Do not misuse nonfiction objects
-
-Do NOT map fiction objects into nonfiction fields merely to avoid schema work.
-
-Examples of prohibited shortcuts:
-
-- putting culprit/motive into `central_thesis`;
-- storing clues as nonfiction `Claim` records;
-- using Research `Evidence` as a substitute for in-world EvidenceChain;
-- treating scenes as chapters with fake “claims”;
-- storing MysticRuleSet as unstructured notes;
-- putting character knowledge into prompt text only.
-
-These shortcuts would make future validation unreliable.
-
-## 5. Shared vs distinct evidence semantics
-
-### Real-world research evidence
-Existing BOOK OS semantics:
-`Source -> Evidence -> Claim`
-
-Used for factual realism: medicine, law, police procedure, emergency services, technology, geography, history, etc.
-
-### Fiction in-world evidence
-MYSTERY OS semantics:
-`CaseEvent -> Clue -> Interpretation/Hypothesis -> EvidenceChain -> CaseSolution`
-
-These must remain separate in the data model, while UI can present them coherently.
-
-## 6. Proposed top-level genre capability model
-
-Future BOOK OS may expose a project `editorial_mode`, for example:
-
-- `NONFICTION`;
-- `MYSTERY_FICTION`;
-- future fiction genres only after separate validated modules exist.
-
-Do not generalize prematurely into a vague `FICTION` mode that promises all genres.
-
-## 7. Lifecycle mapping
-
-Shared high-level application journey may remain simple while internal gates differ.
-
-### Nonfiction
-`Idea -> Definition -> Research -> Architecture -> Writing -> Edit -> Check -> Release`
-
-### Mystery fiction
-`Idea -> Story Definition -> Case Solution -> Mystery Architecture -> Writing -> Edit -> MysteryBench -> Release`
-
-The author-facing UI may still use common stage navigation, but stage internals and required authority objects must be genre-specific.
-
-## 8. Book Memory extension
-
-MYSTERY OS needs retrieval/indexing over:
-
-- characters and aliases;
-- character knowledge by scene/time;
-- locations;
-- clues;
-- secrets;
-- case timeline;
-- narrative timeline;
-- supernatural rules/events;
-- series continuity;
-- repeated scene/dialogue/twist patterns;
-- consumed/reserved series assets.
-
-Indexes remain derived/rebuildable from canonical structured state and manuscript revisions.
-
-## 9. Model routing extension
-
-New editorial operations should be independently routable, including:
-
-- premise/commercial analyst;
-- case architect;
-- clue/fair-play auditor;
-- timeline auditor;
-- supernatural-rule auditor;
-- scene architect;
-- fiction writer;
-- character editor;
-- cold reader;
-- adversarial case reconstructor;
-- anti-cliche reviewer;
-- series fiction editor.
-
-Do not assume the best nonfiction Writer/Judge models are automatically best for fiction operations. Promotion should use operation-specific eval evidence.
-
-## 10. MysteryBench as BookBench extension
-
-Reuse generic evaluation run infrastructure, provenance, findings, severity and human dispositions.
-
-Add fiction dimensions rather than a separate incompatible judge framework.
-
-Blocking genre findings cannot be averaged into a general score.
-
-## 11. Style system extension
-
-Existing StyleProfile should remain shared but gain fiction-relevant inspectable features such as:
-
-- POV and psychic distance;
-- dialogue ratio and attribution style;
-- scene/chapter rhythm;
-- description density;
-- interiority;
-- suspense syntax/rhythm;
-- humor/darkness;
-- violence explicitness;
-- romance explicitness;
-- recurring prohibited phrases/constructions;
-- reference passages where rights permit.
-
-Anti-cliche policy remains a separate quality layer; style preference cannot authorize broken plot logic.
-
-## 12. Literary Master extension
-
-Future Mystery Literary Master manifest should add exact references to:
+MYSTERY OS adds genre-specific authority such as:
 
 - StoryDefinition;
+- NarrativeContract;
+- ReaderKnowledgeState;
 - CaseSolution;
-- GenreProfile;
-- Character authority;
-- Clue/EvidenceChain snapshot;
-- CaseTimeline;
-- MysticRuleSet if applicable;
+- MysteryQuestion;
+- Suspect/Secret/Alibi;
+- Clue/RedHerring/EvidenceChain;
+- CaseTimeline/NarrativeTimeline;
+- CharacterKnowledgeState;
+- FictionResearchLedger / FictionalizationDecision;
+- MysticRuleSet / MysticEvent;
+- CharacterArc / RelationshipArc;
 - RevealPlan;
-- final MysteryBench/ColdReader evidence;
-- Series Closure if applicable.
+- SceneContract;
+- RepresentativeFictionSample;
+- AntiClicheFinding / AntiClicheException;
+- ProfessionalFictionBenchmarkRun;
+- MysteryBenchRun / ColdReaderRun;
+- EditorialMachineGateState.
 
-The final reader-facing export does not expose private spoiler authority, but release provenance retains it locally.
+These should integrate by extension/composition, not by abusing nonfiction Claim/Chapter fields.
 
-## 13. Data migration principle
+## 4. Editorial Machine state
 
-No fiction database migration should be added until:
+Future BOOK OS integration should expose one genre-neutral production shell with genre-specific gate packs.
 
-1. authority/spec pack is human-approved;
-2. `Линия 112` pilot definition exercises the model on paper;
-3. required fields/gates are shown to be necessary rather than speculative;
-4. interaction with Task 021/Series Studio candidate is reconciled;
-5. migration plan is forward-only and backup-tested.
+For MYSTERY OS, advancement is governed by `EditorialMachineGateState`.
 
-This avoids building unused schema before the editorial process is proven.
+Required behavior:
 
-## 14. UI integration principle
+- gate state is persisted;
+- gate inputs are revision-bound;
+- material upstream change marks dependent gates `STALE`;
+- `WRITING_ALLOWED` is scoped to exact scenes/chapters and authority revisions;
+- missing/stale/blocking gate state fails closed before provider/model access;
+- completed model/API execution never self-converts a gate to PASS;
+- human-required decisions remain explicit.
 
-Do not add a “Mystery OS” engineering dashboard to the main author experience.
+This mirrors and extends the chapter-admission philosophy already developed in BOOK OS nonfiction.
 
-Future user-facing flow should remain author-centric:
+## 5. Shared research, separate semantics
 
-- create project;
-- choose `Мистический детектив` / relevant genre;
-- enter a short idea or series direction;
-- review concept;
-- review/approve spoiler authority in a clearly separated author-only workspace;
-- follow staged creation;
-- review required decisions/findings;
-- approve final manuscript and outputs.
+Real-world fiction research should reuse BOOK OS Source/Evidence infrastructure.
 
-Advanced clue/timeline/suspect graphs may be inspectable tools, not mandatory clutter on every screen.
+But fiction must distinguish:
 
-## 15. Integration gates
+- real-world evidence supporting realism;
+- in-world fictional EvidenceChain supporting a case solution.
 
-MYSTERY OS may be promoted into production BOOK OS only after all are true:
+They are different ontologies even when both use the word evidence.
 
-- Owner approves genre authority pack;
-- one complete real-book pilot is produced;
-- case/fair-play/timeline audits demonstrate value;
-- cold-reader/adversarial evaluation is run on the real manuscript;
-- professional human editorial review finds the system useful rather than bureaucratic;
-- anti-cliche/series uniqueness layer catches real defects;
-- no current nonfiction workflow regresses;
-- exact integration implementation passes software CI;
-- human Owner explicitly approves integration/release.
+A FictionResearchItem may reference real sources/evidence and then link to CaseSolution/Clue/Timeline/Scene authority.
 
-## 16. Non-goals of Task 022
+## 6. Shared StyleProfile, separate NarrativeContract
 
-Task 022 does not authorize:
+StyleProfile remains the shared expression/voice primitive.
 
-- database migrations;
-- Desktop UI changes;
-- paid model calls;
-- manuscript generation;
-- installation/deployment;
-- merge to main;
-- converting BOOK OS product identity from nonfiction to fiction;
-- claiming MYSTERY OS is production-ready.
+NarrativeContract is fiction-specific epistemic authority controlling:
+- POV;
+- tense/person;
+- narrator reliability;
+- knowledge access;
+- fair withholding;
+- psychic distance;
+- documentary/dream/vision rules.
 
-Task 022 creates the reusable editorial foundation and machine-readable contract for review.
+Do not overload StyleProfile with mystery fairness semantics.
+
+## 7. BookBench extension
+
+General BookBench infrastructure should be extended with MysteryBench dimensions rather than replaced.
+
+Shared evaluation plumbing may handle:
+- exact revision identity;
+- findings/severity;
+- evaluator provenance;
+- human disposition;
+- rerun/supersession;
+- cost tracking.
+
+Mystery-specific evaluators include:
+- case reconstruction;
+- fair-play audit;
+- narrative-integrity audit;
+- clue lifecycle;
+- timeline/knowledge audit;
+- supernatural-rule audit;
+- anti-cliche/series collision;
+- ColdReader;
+- Professional Fiction Benchmark.
+
+## 8. Professional Fiction Benchmark boundary
+
+Benchmark infrastructure may later become a reusable fiction capability for other genres.
+
+It must remain rights-safe:
+- no public copyrighted benchmark corpus;
+- no named-living-author imitation objective;
+- no substantial protected text in repository/eval artifacts;
+- derived metrics and high-level craft comparisons only where appropriate.
+
+Benchmark output is diagnostic evidence, not autonomous literary authority.
+
+## 9. Model routing integration
+
+Reuse operation-level routing.
+
+MYSTERY OS adds operation categories such as:
+- premise/series architecture;
+- NarrativeContract design;
+- CaseSolution;
+- clue/reveal architecture;
+- realism dependency diagnosis;
+- scene drafting;
+- midpoint diagnosis;
+- ColdReader;
+- adversarial reconstruction;
+- professional benchmark diagnosis;
+- literary edit.
+
+Each role may route to different executors based on measured quality/risk/cost.
+
+No model monopoly.
+
+## 10. Agents API integration
+
+Reuse the accepted BOOK OS Agents API engineering lane for `ENGINEERING` work.
+
+A separate `EDITORIAL_PREP` operation family may use the same safe orchestration principles while keeping:
+- private content minimum necessary;
+- no secrets;
+- bounded spend;
+- explicit Owner launch;
+- structured outputs;
+- outputs `PROPOSED` only;
+- no GitHub write from editorial-prep job;
+- no self-approval;
+- no automatic Writing unlock.
+
+Agent use remains optional.
+
+## 11. UI integration direction
+
+Do not expose ontology complexity directly to the author.
+
+Future author-facing flow should remain simple, for example:
+
+`Замысел -> Конструкция -> Написание -> Редактура -> Проверка -> Выпуск`
+
+Under the surface, fiction-specific gate states control what can run.
+
+Advanced/spoiler views may expose CaseSolution, clue/timeline maps and benchmark findings intentionally.
+
+## 12. Literary Master integration
+
+One shared LiteraryMaster concept should bind genre-specific accepted authority.
+
+For mystery it should reference exact accepted revisions of at least:
+- StoryDefinition;
+- NarrativeContract;
+- CaseSolution;
+- character/relationship authority;
+- FictionResearchLedger snapshot;
+- ClueLedger/EvidenceChains;
+- CaseTimeline;
+- MysticRuleSet when used;
+- StyleProfile;
+- manuscript;
+- final MysteryBench;
+- Professional Fiction Benchmark;
+- Series Closure where applicable;
+- human release approval.
+
+Derived outputs remain downstream.
+
+## 13. Migration principle
+
+Do not implement MYSTERY OS against an obsolete branch snapshot.
+
+After Task 022 is accepted, every implementation slice must:
+- start/rebase from the then-current accepted BOOK OS `main`;
+- inspect current Task 021 and Agents API accepted state;
+- reuse compatible primitives;
+- avoid duplicating already implemented author/series/audio/export/cost systems;
+- add migrations only where fiction-specific persisted semantics require them;
+- preserve backward compatibility for existing nonfiction books.
+
+## 14. Genre-module future
+
+The long-term platform should permit additional fiction genre packs to share the core while supplying their own authority/eval layers.
+
+MYSTERY OS should therefore prove a pattern:
+
+`BOOK OS shared publishing core + genre authority pack + genre gates + genre evals`
+
+not:
+
+`BOOK OS nonfiction app + mystery hacks`.
+
+## 15. Promotion gate
+
+MYSTERY OS may be promoted from incubation into the wider BOOK OS product only after:
+
+- Task 022 authority is human accepted;
+- bounded implementation slices are technically GREEN;
+- a synthetic full-cycle fixture proves orchestration/gate semantics;
+- representative prose path works;
+- a real private `Линия 112` pilot demonstrates professional-quality potential;
+- Professional Fiction Benchmark + human editorial review support the quality target;
+- existing nonfiction behavior is not regressed;
+- Owner explicitly approves product integration.
+
+## 16. Principle
+
+The editorial intelligence is genre-specific. The publishing platform should be shared.
