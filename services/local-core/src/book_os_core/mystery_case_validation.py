@@ -46,7 +46,9 @@ class ClueRecord:
     clue_id: str
     origin_event_id: str
     exposure_event_id: str | None = None
+    exposure_order: int | None = None
     payoff_event_id: str | None = None
+    payoff_order: int | None = None
     decisive: bool = False
     dependency_clue_ids: tuple[str, ...] = ()
     temporal_rule_ref: str | None = None
@@ -66,7 +68,9 @@ class CaseIntegrityResult:
 
     @property
     def blocking_findings(self) -> tuple[ValidationFinding, ...]:
-        return tuple(finding for finding in self.findings if finding.severity == "BLOCKING")
+        return tuple(
+            finding for finding in self.findings if finding.severity == "BLOCKING"
+        )
 
     @property
     def passed(self) -> bool:
@@ -149,9 +153,9 @@ def _travel_rule_map(
                 _finding(
                     "CASE.TRAVEL.RULE_CONFLICT",
                     (
-                        f"conflicting minimum travel times for {rule.origin_location_id} -> "
-                        f"{rule.destination_location_id}: {previous.minimum_seconds} vs "
-                        f"{rule.minimum_seconds}"
+                        f"conflicting minimum travel times for "
+                        f"{rule.origin_location_id} -> {rule.destination_location_id}: "
+                        f"{previous.minimum_seconds} vs {rule.minimum_seconds}"
                     ),
                     rule.origin_location_id,
                     rule.destination_location_id,
@@ -175,7 +179,9 @@ def _validate_actor_timeline(
             by_actor[actor_id].append(event)
 
     for actor_id, actor_events in by_actor.items():
-        actor_events.sort(key=lambda item: (item.start_second, item.end_second, item.event_id))
+        actor_events.sort(
+            key=lambda item: (item.start_second, item.end_second, item.event_id)
+        )
         previous: CaseEvent | None = None
         for event in actor_events:
             if previous is None:
@@ -258,7 +264,7 @@ def _validate_knowledge(
                 _finding(
                     "CASE.KNOWLEDGE.EVENT_MISSING",
                     (
-                        f"knowledge acquisition references missing event "
+                        "knowledge acquisition references missing event "
                         f"{acquisition.event_id}"
                     ),
                     acquisition.character_id,
@@ -272,8 +278,9 @@ def _validate_knowledge(
                 _finding(
                     "CASE.KNOWLEDGE.TIME_OUTSIDE_EVENT",
                     (
-                        f"knowledge acquisition for {acquisition.character_id}/{acquisition.fact_id} "
-                        f"occurs outside event {acquisition.event_id}"
+                        "knowledge acquisition for "
+                        f"{acquisition.character_id}/{acquisition.fact_id} occurs "
+                        f"outside event {acquisition.event_id}"
                     ),
                     acquisition.character_id,
                     acquisition.fact_id,
@@ -321,8 +328,8 @@ def _validate_knowledge(
                 _finding(
                     "CASE.KNOWLEDGE.USED_BEFORE_ACQUIRED",
                     (
-                        f"{use.character_id} uses fact {use.fact_id} at {use.at_second} "
-                        "before any valid acquisition"
+                        f"{use.character_id} uses fact {use.fact_id} at "
+                        f"{use.at_second} before any valid acquisition"
                     ),
                     use.character_id,
                     use.fact_id,
@@ -408,6 +415,69 @@ def _validate_clue_dependencies(
         visit(clue_id, ())
 
 
+def _validate_reader_order_fields(
+    clue: ClueRecord, findings: list[ValidationFinding]
+) -> None:
+    if clue.exposure_event_id is None and clue.exposure_order is not None:
+        findings.append(
+            _finding(
+                "CASE.CLUE.EXPOSURE_EVENT_REQUIRED",
+                (
+                    f"clue {clue.clue_id} has exposure_order without an "
+                    "exposure_event_id"
+                ),
+                clue.clue_id,
+            )
+        )
+    if clue.exposure_event_id is not None and clue.exposure_order is None:
+        findings.append(
+            _finding(
+                "CASE.CLUE.EXPOSURE_ORDER_MISSING",
+                (
+                    f"clue {clue.clue_id} has an exposure event but no reader "
+                    "exposure_order"
+                ),
+                clue.clue_id,
+                clue.exposure_event_id,
+            )
+        )
+    if clue.payoff_event_id is None and clue.payoff_order is not None:
+        findings.append(
+            _finding(
+                "CASE.CLUE.PAYOFF_EVENT_REQUIRED",
+                f"clue {clue.clue_id} has payoff_order without payoff_event_id",
+                clue.clue_id,
+            )
+        )
+    if clue.payoff_event_id is not None and clue.payoff_order is None:
+        findings.append(
+            _finding(
+                "CASE.CLUE.PAYOFF_ORDER_MISSING",
+                (
+                    f"clue {clue.clue_id} has a payoff event but no reader "
+                    "payoff_order"
+                ),
+                clue.clue_id,
+                clue.payoff_event_id,
+            )
+        )
+    if (
+        clue.exposure_order is not None
+        and clue.payoff_order is not None
+        and clue.payoff_order < clue.exposure_order
+    ):
+        findings.append(
+            _finding(
+                "CASE.CLUE.PAYOFF_BEFORE_EXPOSURE",
+                (
+                    f"clue {clue.clue_id} payoff_order {clue.payoff_order} is "
+                    f"before exposure_order {clue.exposure_order}"
+                ),
+                clue.clue_id,
+            )
+        )
+
+
 def _validate_clues(
     clue_by_id: Mapping[str, ClueRecord],
     event_by_id: Mapping[str, CaseEvent],
@@ -416,12 +486,16 @@ def _validate_clues(
     findings: list[ValidationFinding],
 ) -> None:
     for clue in clue_by_id.values():
+        _validate_reader_order_fields(clue, findings)
         origin = event_by_id.get(clue.origin_event_id)
         if origin is None:
             findings.append(
                 _finding(
                     "CASE.CLUE.ORIGIN_MISSING",
-                    f"clue {clue.clue_id} references missing origin event {clue.origin_event_id}",
+                    (
+                        f"clue {clue.clue_id} references missing origin event "
+                        f"{clue.origin_event_id}"
+                    ),
                     clue.clue_id,
                     clue.origin_event_id,
                 )
@@ -443,7 +517,6 @@ def _validate_clues(
                     )
                 )
 
-        payoff: CaseEvent | None = None
         if clue.payoff_event_id is not None:
             payoff = event_by_id.get(clue.payoff_event_id)
             if payoff is None:
@@ -459,7 +532,10 @@ def _validate_clues(
                     )
                 )
 
-        if clue.temporal_rule_ref is not None and clue.temporal_rule_ref not in accepted_temporal_rule_refs:
+        if (
+            clue.temporal_rule_ref is not None
+            and clue.temporal_rule_ref not in accepted_temporal_rule_refs
+        ):
             findings.append(
                 _finding(
                     "CASE.CLUE.TEMPORAL_RULE_UNKNOWN",
@@ -486,26 +562,12 @@ def _validate_clues(
                 _finding(
                     "CASE.CLUE.EXPOSED_BEFORE_ORIGIN",
                     (
-                        f"clue {clue.clue_id} is exposed at event {exposure.event_id} "
-                        f"before origin event {origin.event_id}"
+                        f"clue {clue.clue_id} is exposed at event "
+                        f"{exposure.event_id} before origin event {origin.event_id}"
                     ),
                     clue.clue_id,
                     origin.event_id,
                     exposure.event_id,
-                )
-            )
-
-        if exposure is not None and payoff is not None and payoff.start_second < exposure.start_second:
-            findings.append(
-                _finding(
-                    "CASE.CLUE.PAYOFF_BEFORE_EXPOSURE",
-                    (
-                        f"clue {clue.clue_id} pays off at event {payoff.event_id} "
-                        f"before exposure event {exposure.event_id}"
-                    ),
-                    clue.clue_id,
-                    exposure.event_id,
-                    payoff.event_id,
                 )
             )
 
@@ -529,7 +591,10 @@ def _validate_clues(
             findings.append(
                 _finding(
                     "CASE.CLUE.DECISIVE_NO_PAYOFF",
-                    f"decisive clue {clue.clue_id} has no payoff/recontextualization event",
+                    (
+                        f"decisive clue {clue.clue_id} has no "
+                        "payoff/recontextualization event"
+                    ),
                     clue.clue_id,
                 )
             )
@@ -548,7 +613,7 @@ def validate_case_integrity(
     fair_play_mode: FairPlayMode = "REQUIRED",
     accepted_temporal_rule_refs: frozenset[str] = frozenset(),
 ) -> CaseIntegrityResult:
-    """Run deterministic case-integrity checks with no model or network dependency."""
+    """Run deterministic case-integrity checks with no model/network dependency."""
     findings: list[ValidationFinding] = []
     event_by_id = _event_map(events, findings)
     unique_events = tuple(event_by_id.values())
