@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from book_os_core.mystery_case_validation import (
     CaseEvent,
+    CaseIntegrityResult,
     ClueRecord,
     KnowledgeAcquisition,
     KnowledgeUse,
@@ -10,7 +11,7 @@ from book_os_core.mystery_case_validation import (
 )
 
 
-def _codes(result) -> set[str]:  # type: ignore[no-untyped-def]
+def _codes(result: CaseIntegrityResult) -> set[str]:
     return {finding.code for finding in result.findings}
 
 
@@ -24,7 +25,10 @@ def test_clean_case_passes_deterministic_integrity() -> None:
     )
     result = validate_case_integrity(
         events=events,
-        travel_rules=(TravelRule("flat", "office", 60), TravelRule("office", "station", 30)),
+        travel_rules=(
+            TravelRule("flat", "office", 60),
+            TravelRule("office", "station", 30),
+        ),
         acquisitions=(KnowledgeAcquisition("investigator", "fact-a", "learn", 125),),
         uses=(KnowledgeUse("investigator", "fact-a", "expose", 145),),
         clues=(
@@ -32,7 +36,9 @@ def test_clean_case_passes_deterministic_integrity() -> None:
                 "clue-a",
                 origin_event_id="origin",
                 exposure_event_id="expose",
+                exposure_order=10,
                 payoff_event_id="payoff",
+                payoff_order=20,
                 decisive=True,
             ),
         ),
@@ -154,48 +160,103 @@ def test_decisive_clue_fair_play_is_profile_aware_but_payoff_is_always_required(
     events = (CaseEvent("origin", 0, 10),)
     clue = ClueRecord("key", "origin", decisive=True)
 
-    required = validate_case_integrity(events=events, clues=(clue,), fair_play_mode="REQUIRED")
+    required = validate_case_integrity(
+        events=events, clues=(clue,), fair_play_mode="REQUIRED"
+    )
     required_findings = {finding.code: finding for finding in required.findings}
     assert required_findings["CASE.CLUE.DECISIVE_NOT_EXPOSED"].severity == "BLOCKING"
     assert required_findings["CASE.CLUE.DECISIVE_NO_PAYOFF"].severity == "BLOCKING"
 
-    expected = validate_case_integrity(events=events, clues=(clue,), fair_play_mode="EXPECTED")
+    expected = validate_case_integrity(
+        events=events, clues=(clue,), fair_play_mode="EXPECTED"
+    )
     expected_findings = {finding.code: finding for finding in expected.findings}
     assert expected_findings["CASE.CLUE.DECISIVE_NOT_EXPOSED"].severity == "MAJOR"
 
-    relaxed = validate_case_integrity(events=events, clues=(clue,), fair_play_mode="RELAXED")
+    relaxed = validate_case_integrity(
+        events=events, clues=(clue,), fair_play_mode="RELAXED"
+    )
     relaxed_findings = {finding.code: finding for finding in relaxed.findings}
     assert relaxed_findings["CASE.CLUE.DECISIVE_NOT_EXPOSED"].severity == "NOTE"
     assert relaxed_findings["CASE.CLUE.DECISIVE_NO_PAYOFF"].severity == "BLOCKING"
 
 
-def test_clue_event_references_and_lifecycle_order_are_validated() -> None:
+def test_clue_event_references_and_reader_order_are_validated_separately() -> None:
     events = (
-        CaseEvent("expose", 0, 10),
-        CaseEvent("origin", 100, 110),
-        CaseEvent("payoff", 50, 60),
+        CaseEvent("origin", 0, 10),
+        CaseEvent("payoff-in-case-time", 50, 60),
+        CaseEvent("expose-in-case-time", 100, 110),
+    )
+    nonlinear_but_valid = ClueRecord(
+        "nonlinear",
+        origin_event_id="origin",
+        exposure_event_id="expose-in-case-time",
+        exposure_order=10,
+        payoff_event_id="payoff-in-case-time",
+        payoff_order=20,
+    )
+    invalid_reader_order = ClueRecord(
+        "bad-reader-order",
+        origin_event_id="origin",
+        exposure_event_id="expose-in-case-time",
+        exposure_order=20,
+        payoff_event_id="payoff-in-case-time",
+        payoff_order=10,
     )
     result = validate_case_integrity(
         events=events,
         clues=(
+            nonlinear_but_valid,
+            invalid_reader_order,
+            ClueRecord("missing-origin", origin_event_id="missing"),
             ClueRecord(
-                "c1",
+                "missing-exposure",
                 origin_event_id="origin",
-                exposure_event_id="expose",
-                payoff_event_id="payoff",
+                exposure_event_id="missing-expose",
+                exposure_order=30,
             ),
-            ClueRecord("c2", origin_event_id="missing"),
-            ClueRecord("c3", origin_event_id="origin", exposure_event_id="missing-expose"),
-            ClueRecord("c4", origin_event_id="origin", payoff_event_id="missing-payoff"),
+            ClueRecord(
+                "missing-payoff",
+                origin_event_id="origin",
+                payoff_event_id="missing-payoff",
+                payoff_order=40,
+            ),
         ),
     )
 
     codes = _codes(result)
-    assert "CASE.CLUE.EXPOSED_BEFORE_ORIGIN" in codes
-    assert "CASE.CLUE.PAYOFF_BEFORE_EXPOSURE" not in codes
+    assert "CASE.CLUE.PAYOFF_BEFORE_EXPOSURE" in codes
     assert "CASE.CLUE.ORIGIN_MISSING" in codes
     assert "CASE.CLUE.EXPOSURE_MISSING_EVENT" in codes
     assert "CASE.CLUE.PAYOFF_MISSING_EVENT" in codes
+    assert not any(
+        finding.code == "CASE.CLUE.PAYOFF_BEFORE_EXPOSURE"
+        and "nonlinear" in finding.object_refs
+        for finding in result.findings
+    )
+
+
+def test_clue_reader_order_fields_are_structurally_paired_with_events() -> None:
+    events = (
+        CaseEvent("origin", 0, 10),
+        CaseEvent("expose", 20, 30),
+        CaseEvent("payoff", 40, 50),
+    )
+    result = validate_case_integrity(
+        events=events,
+        clues=(
+            ClueRecord("a", "origin", exposure_event_id="expose"),
+            ClueRecord("b", "origin", exposure_order=10),
+            ClueRecord("c", "origin", payoff_event_id="payoff"),
+            ClueRecord("d", "origin", payoff_order=20),
+        ),
+    )
+
+    codes = _codes(result)
+    assert "CASE.CLUE.EXPOSURE_ORDER_MISSING" in codes
+    assert "CASE.CLUE.EXPOSURE_EVENT_REQUIRED" in codes
+    assert "CASE.CLUE.PAYOFF_ORDER_MISSING" in codes
+    assert "CASE.CLUE.PAYOFF_EVENT_REQUIRED" in codes
 
 
 def test_temporal_exception_requires_an_accepted_rule_reference() -> None:
@@ -208,7 +269,9 @@ def test_temporal_exception_requires_an_accepted_rule_reference() -> None:
         "premonition",
         origin_event_id="origin",
         exposure_event_id="vision",
+        exposure_order=10,
         payoff_event_id="payoff",
+        payoff_order=20,
         temporal_rule_ref="rule-premonition",
     )
 
