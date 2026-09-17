@@ -168,26 +168,53 @@ class MysteryAuthorityGraph:
         self._heads: dict[str, MysteryAuthorityRevision] = {}
         self._bindings_by_revision: dict[tuple[str, str], tuple[AuthorityDependency, ...]] = {}
 
+    @staticmethod
+    def _same_revision_identity(
+        left: MysteryAuthorityRevision, right: MysteryAuthorityRevision
+    ) -> bool:
+        return (
+            left.entity_id == right.entity_id
+            and left.kind == right.kind
+            and left.revision_id == right.revision_id
+            and left.revision_hash == right.revision_hash
+            and left.content_json == right.content_json
+            and left.supersedes_revision_id == right.supersedes_revision_id
+        )
+
     def register_head(self, revision: MysteryAuthorityRevision) -> None:
         current = self._heads.get(revision.entity_id)
-        if current is not None and current.kind != revision.kind:
+        if current is None:
+            self._heads[revision.entity_id] = revision
+            return
+
+        if current.kind != revision.kind:
             raise InvalidAuthorityOperation(
                 f"entity {revision.entity_id} changed kind {current.kind} -> {revision.kind}"
             )
 
-        if (
-            current is not None
-            and revision.revision_id != current.revision_id
-            and revision.supersedes_revision_id == current.revision_id
-        ):
-            old_key = (current.entity_id, current.revision_id)
-            new_key = (revision.entity_id, revision.revision_id)
-            if new_key not in self._bindings_by_revision:
-                inherited = tuple(
-                    replace(item, dependent_revision_id=revision.revision_id)
-                    for item in self._bindings_by_revision.get(old_key, ())
+        if revision.revision_id == current.revision_id:
+            if not self._same_revision_identity(current, revision):
+                raise InvalidAuthorityOperation(
+                    "revision identity is immutable; content/hash/lineage cannot change "
+                    "under the same revision_id"
                 )
-                self._bindings_by_revision[new_key] = inherited
+            self._heads[revision.entity_id] = revision
+            return
+
+        if revision.supersedes_revision_id != current.revision_id:
+            raise InvalidAuthorityOperation(
+                "new head must directly supersede the current revision; detached or "
+                "out-of-order revision replacement is not allowed"
+            )
+
+        old_key = (current.entity_id, current.revision_id)
+        new_key = (revision.entity_id, revision.revision_id)
+        if new_key not in self._bindings_by_revision:
+            inherited = tuple(
+                replace(item, dependent_revision_id=revision.revision_id)
+                for item in self._bindings_by_revision.get(old_key, ())
+            )
+            self._bindings_by_revision[new_key] = inherited
 
         self._heads[revision.entity_id] = revision
 
