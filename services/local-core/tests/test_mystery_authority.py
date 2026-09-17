@@ -6,6 +6,8 @@ from book_os_core.authority_types import HumanApprovalRequired, InvalidAuthority
 from book_os_core.mystery_authority import (
     AuthorityRequirement,
     MysteryAuthorityGraph,
+    MysteryAuthorityKind,
+    MysteryAuthorityRevision,
     create_authority_revision,
     evaluate_writing_admission,
     revise_authority,
@@ -13,10 +15,12 @@ from book_os_core.mystery_authority import (
 )
 
 
-def _accepted_revision(entity_id: str, kind: str, marker: str):
+def _accepted_revision(
+    entity_id: str, kind: MysteryAuthorityKind, marker: str
+) -> MysteryAuthorityRevision:
     revision = create_authority_revision(
         entity_id=entity_id,
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         payload={"marker": marker},
     )
     revision = transition_authority_status(
@@ -80,7 +84,7 @@ def test_revision_preserves_old_accepted_content_and_hash() -> None:
     assert replacement.supersedes_revision_id == approved.revision_id
 
 
-def test_dependency_binding_uses_exact_upstream_revision() -> None:
+def test_dependency_binding_uses_both_exact_revision_ids() -> None:
     graph = MysteryAuthorityGraph()
     story = _accepted_revision("story", "STORY_DEFINITION", "v1")
     case = _accepted_revision("case", "CASE_SOLUTION", "v1")
@@ -93,6 +97,7 @@ def test_dependency_binding_uses_exact_upstream_revision() -> None:
         reason="case architecture consumes story definition",
     )
 
+    assert binding.dependent_revision_id == case.revision_id
     assert binding.upstream_revision_id == story.revision_id
     assert graph.is_fresh("case")
 
@@ -124,7 +129,7 @@ def test_upstream_revision_change_makes_dependents_stale_transitively() -> None:
     assert not graph.is_fresh("scene")
 
 
-def test_rebinding_to_new_upstream_revision_clears_direct_staleness() -> None:
+def test_accepted_revision_cannot_be_silently_rebound() -> None:
     graph = MysteryAuthorityGraph()
     story = _accepted_revision("story", "STORY_DEFINITION", "v1")
     case = _accepted_revision("case", "CASE_SOLUTION", "v1")
@@ -140,11 +145,44 @@ def test_rebinding_to_new_upstream_revision_clears_direct_staleness() -> None:
     graph.register_head(new_story)
     assert "case" in graph.stale_entities()
 
+    with pytest.raises(InvalidAuthorityOperation):
+        graph.bind_dependency(
+            dependent_entity_id="case",
+            upstream_entity_id="story",
+            reason="illegal silent rebind",
+        )
+
+
+def test_new_dependent_revision_inherits_staleness_until_reviewed_and_rebound() -> None:
+    graph = MysteryAuthorityGraph()
+    story = _accepted_revision("story", "STORY_DEFINITION", "v1")
+    case = _accepted_revision("case", "CASE_SOLUTION", "v1")
+    graph.register_head(story)
+    graph.register_head(case)
     graph.bind_dependency(
         dependent_entity_id="case",
         upstream_entity_id="story",
-        reason="case reviewed against revised story",
+        reason="case consumes story",
     )
+
+    new_story = _accepted_revision("story", "STORY_DEFINITION", "v2")
+    graph.register_head(new_story)
+    case_v2 = revise_authority(case, {"marker": "v2 reviewed against new story"})
+    graph.register_head(case_v2)
+
+    inherited = graph.dependencies_for("case")
+    assert len(inherited) == 1
+    assert inherited[0].dependent_revision_id == case_v2.revision_id
+    assert inherited[0].upstream_revision_id == story.revision_id
+    assert "case" in graph.stale_entities()
+
+    rebound = graph.bind_dependency(
+        dependent_entity_id="case",
+        upstream_entity_id="story",
+        reason="new case revision reviewed against revised story",
+    )
+    assert rebound.dependent_revision_id == case_v2.revision_id
+    assert rebound.upstream_revision_id == new_story.revision_id
     assert "case" not in graph.stale_entities()
 
 
@@ -187,7 +225,9 @@ def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authorit
         (
             AuthorityRequirement("story"),
             AuthorityRequirement("case"),
-            AuthorityRequirement("scene", frozenset({"DRAFT", "APPROVED", "LOCKED"})),
+            AuthorityRequirement(
+                "scene", frozenset({"DRAFT", "APPROVED", "LOCKED"})
+            ),
         ),
     )
     assert not stale_result.allowed
