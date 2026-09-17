@@ -414,16 +414,12 @@ def evaluate_writing_admission(
             if latest is None:
                 blockers.append(f"MISSING_AUTHORITY:{requirement.entity_id}")
             else:
-                blockers.append(
-                    f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{latest.status}"
-                )
+                blockers.append(f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{latest.status}")
                 refs.append(latest.revision_ref)
             continue
         refs.append(effective.revision_ref)
         if effective.status not in requirement.allowed_statuses:
-            blockers.append(
-                f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{effective.status}"
-            )
+            blockers.append(f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{effective.status}")
         if requirement.entity_id in stale:
             blockers.append(f"STALE_AUTHORITY:{requirement.entity_id}")
 
