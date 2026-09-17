@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/editorial_prep_agent.schema.json",
+  "title": "MYSTERY OS Editorial Prep Agent Request",
+  "type": "object",
+  "required": ["schema_version", "task_id", "mode", "task", "allowed_outputs", "forbidden_actions", "owner_authorized"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "task_id": {"type": "string", "minLength": 1},
+    "mode": {"const": "EDITORIAL_PREP"},
+    "project_id": {"type": ["string", "null"]},
+    "series_id": {"type": ["string", "null"]},
+    "book_id": {"type": ["string", "null"]},
+    "authority_refs": {"type": "array", "items": {"type": "string"}},
+    "task": {"type": "string", "minLength": 1},
+    "allowed_outputs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "forbidden_actions": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "source_packet_refs": {"type": "array", "items": {"type": "string"}},
+    "private_content_scope": {"enum": ["NONE", "MINIMUM_NECESSARY", "OWNER_SELECTED"]},
+    "reasoning_mode": {"enum": ["auto", "medium", "high", "xhigh"]},
+    "cost_cap": {
+      "type": "object",
+      "properties": {
+        "currency": {"type": "string"},
+        "max_total": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "owner_authorized": {"const": true}
+  },
+  "additionalProperties": true
+}
