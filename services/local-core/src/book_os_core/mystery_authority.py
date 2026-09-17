@@ -151,9 +151,7 @@ def transition_authority_status(
             f"invalid authority transition {revision.status} -> {target_status}"
         )
     if target_status in {"APPROVED", "LOCKED"} and actor_kind != "HUMAN":
-        raise HumanApprovalRequired(
-            f"{target_status} requires HUMAN authority, got {actor_kind}"
-        )
+        raise HumanApprovalRequired(f"{target_status} requires HUMAN authority, got {actor_kind}")
     if target_status == "SUPERSEDED" and actor_kind == "AI":
         raise HumanApprovalRequired("AI cannot supersede accepted authority")
     return replace(revision, status=target_status)
@@ -168,9 +166,7 @@ class MysteryAuthorityGraph:
 
     def __init__(self) -> None:
         self._heads: dict[str, MysteryAuthorityRevision] = {}
-        self._bindings_by_revision: dict[
-            tuple[str, str], tuple[AuthorityDependency, ...]
-        ] = {}
+        self._bindings_by_revision: dict[tuple[str, str], tuple[AuthorityDependency, ...]] = {}
 
     def register_head(self, revision: MysteryAuthorityRevision) -> None:
         current = self._heads.get(revision.entity_id)
@@ -246,11 +242,7 @@ class MysteryAuthorityGraph:
         key = (dependent.entity_id, dependent.revision_id)
         existing = self._bindings_by_revision.get(key, ())
         same_upstream = next(
-            (
-                item
-                for item in existing
-                if item.upstream_entity_id == upstream_entity_id
-            ),
+            (item for item in existing if item.upstream_entity_id == upstream_entity_id),
             None,
         )
         if same_upstream is not None and same_upstream.upstream_revision_id == upstream.revision_id:
@@ -332,9 +324,7 @@ def evaluate_writing_admission(
             continue
         refs.append(head.revision_ref)
         if head.status not in requirement.allowed_statuses:
-            blockers.append(
-                f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{head.status}"
-            )
+            blockers.append(f"UNACCEPTED_AUTHORITY:{requirement.entity_id}:{head.status}")
         if requirement.entity_id in stale:
             blockers.append(f"STALE_AUTHORITY:{requirement.entity_id}")
 
