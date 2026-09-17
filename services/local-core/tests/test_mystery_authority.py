@@ -188,7 +188,7 @@ def test_unapproved_upstream_draft_does_not_stale_effective_dependents() -> None
         reason="scene consumes case truth",
     )
     story = _approve_in_graph(graph, story)
-    case = _approve_in_graph(graph, case)
+    _approve_in_graph(graph, case)
     _approve_in_graph(graph, scene)
 
     story_v2 = revise_authority(story, {"marker": "v2 draft"})
@@ -301,7 +301,7 @@ def test_accepted_revision_cannot_gain_or_change_dependencies() -> None:
         upstream_entity_id="story",
         reason="case consumes story",
     )
-    case = _approve_in_graph(graph, case)
+    _approve_in_graph(graph, case)
 
     new_story = revise_authority(story, {"marker": "v2"})
     graph.register_head(new_story)
@@ -403,6 +403,7 @@ def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authorit
     assert "UNACCEPTED_AUTHORITY:scene:DRAFT" in result.blocking_reasons
     assert "MISSING_AUTHORITY:narrative" in result.blocking_reasons
 
+    scene = _approve_in_graph(graph, scene)
     new_case = revise_authority(case, {"marker": "v2"})
     graph.register_head(new_case)
     _approve_in_graph(graph, new_case)
@@ -411,10 +412,11 @@ def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authorit
         (
             AuthorityRequirement("story"),
             AuthorityRequirement("case"),
-            AuthorityRequirement("scene", frozenset({"DRAFT", "APPROVED", "LOCKED"})),
+            AuthorityRequirement("scene"),
         ),
     )
     assert not stale_result.allowed
+    assert graph.effective("scene") == scene
     assert "STALE_AUTHORITY:scene" in stale_result.blocking_reasons
 
 
