@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from book_os_core.authority_types import HumanApprovalRequired, InvalidAuthorityOperation
@@ -64,6 +66,15 @@ def test_ai_cannot_approve_or_lock_authority() -> None:
         transition_authority_status(approved, target_status="LOCKED", actor_kind="SYSTEM")
 
 
+def test_graph_rejects_forged_accepted_status_without_human_provenance() -> None:
+    graph = MysteryAuthorityGraph()
+    draft = _draft_revision("case", "CASE_SOLUTION", "v1")
+    forged = replace(draft, status="APPROVED", last_transition_actor="AI")
+
+    with pytest.raises(HumanApprovalRequired):
+        graph.register_head(forged)
+
+
 def test_revision_preserves_old_accepted_content_and_hash() -> None:
     approved = _accepted_revision("case-1", "CASE_SOLUTION", "first")
     replacement = revise_authority(approved, {"marker": "second"})
@@ -75,6 +86,36 @@ def test_revision_preserves_old_accepted_content_and_hash() -> None:
     assert replacement.revision_id != approved.revision_id
     assert replacement.revision_hash != approved.revision_hash
     assert replacement.supersedes_revision_id == approved.revision_id
+
+
+def test_same_revision_id_cannot_change_content_or_lineage() -> None:
+    graph = MysteryAuthorityGraph()
+    revision = _draft_revision("case", "CASE_SOLUTION", "v1")
+    graph.register_head(revision)
+
+    tampered = replace(revision, content_json='{"marker":"tampered"}')
+    with pytest.raises(InvalidAuthorityOperation, match="revision identity is immutable"):
+        graph.register_head(tampered)
+
+
+def test_detached_revision_cannot_replace_current_head() -> None:
+    graph = MysteryAuthorityGraph()
+    current = _accepted_revision("case", "CASE_SOLUTION", "v1")
+    graph.register_head(current)
+    detached = _draft_revision("case", "CASE_SOLUTION", "detached")
+
+    with pytest.raises(InvalidAuthorityOperation, match="directly supersede"):
+        graph.register_head(detached)
+
+
+def test_new_superseding_revision_must_enter_graph_as_draft() -> None:
+    graph = MysteryAuthorityGraph()
+    current = _accepted_revision("case", "CASE_SOLUTION", "v1")
+    graph.register_head(current)
+    replacement = _approve(revise_authority(current, {"marker": "v2"}))
+
+    with pytest.raises(InvalidAuthorityOperation, match="must enter the graph as DRAFT"):
+        graph.register_head(replacement)
 
 
 def test_dependency_binding_uses_both_exact_revision_ids() -> None:
@@ -151,6 +192,7 @@ def test_accepted_revision_cannot_gain_or_change_dependencies() -> None:
     graph.register_head(case)
 
     new_story = revise_authority(story, {"marker": "v2"})
+    graph.register_head(new_story)
     new_story = _approve(new_story)
     graph.register_head(new_story)
     assert "case-b" in graph.stale_entities()
@@ -180,6 +222,7 @@ def test_new_dependent_revision_inherits_staleness_until_reviewed_and_rebound() 
     graph.register_head(case)
 
     new_story = revise_authority(story, {"marker": "v2"})
+    graph.register_head(new_story)
     new_story = _approve(new_story)
     graph.register_head(new_story)
     case_v2 = revise_authority(case, {"marker": "v2 reviewed against new story"})
@@ -254,6 +297,7 @@ def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authorit
     assert "MISSING_AUTHORITY:narrative" in result.blocking_reasons
 
     new_case = revise_authority(case, {"marker": "v2"})
+    graph.register_head(new_case)
     new_case = _approve(new_case)
     graph.register_head(new_case)
     stale_result = evaluate_writing_admission(
