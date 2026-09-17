@@ -33,6 +33,9 @@ MysteryAuthorityKind: TypeAlias = Literal[
 ]
 
 _ACCEPTED_STATUSES: frozenset[AuthorityStatus] = frozenset(("APPROVED", "LOCKED"))
+_FROZEN_DEPENDENCY_STATUSES: frozenset[AuthorityStatus] = frozenset(
+    ("APPROVED", "LOCKED", "SUPERSEDED")
+)
 
 _ALLOWED_TRANSITIONS: dict[AuthorityStatus, frozenset[AuthorityStatus]] = {
     "DRAFT": frozenset(("PROPOSED",)),
@@ -198,6 +201,28 @@ class MysteryAuthorityGraph:
     def heads(self) -> tuple[MysteryAuthorityRevision, ...]:
         return tuple(self._heads.values())
 
+    def _current_dependencies(self, entity_id: str) -> tuple[AuthorityDependency, ...]:
+        head = self._heads.get(entity_id)
+        if head is None:
+            return ()
+        return self._bindings_by_revision.get((entity_id, head.revision_id), ())
+
+    def _depends_on(self, start_entity_id: str, target_entity_id: str) -> bool:
+        """Return whether current `start` transitively depends on `target`."""
+        pending: list[str] = [start_entity_id]
+        visited: set[str] = set()
+        while pending:
+            current = pending.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            for binding in self._current_dependencies(current):
+                upstream = binding.upstream_entity_id
+                if upstream == target_entity_id:
+                    return True
+                pending.append(upstream)
+        return False
+
     def bind_dependency(
         self,
         *,
@@ -228,14 +253,19 @@ class MysteryAuthorityGraph:
             ),
             None,
         )
-        if same_upstream is not None:
-            if same_upstream.upstream_revision_id == upstream.revision_id:
-                return same_upstream
-            if dependent.status in {"APPROVED", "LOCKED", "SUPERSEDED"}:
-                raise InvalidAuthorityOperation(
-                    "accepted authority dependencies are immutable; create a new "
-                    "dependent revision before rebinding"
-                )
+        if same_upstream is not None and same_upstream.upstream_revision_id == upstream.revision_id:
+            return same_upstream
+
+        if dependent.status in _FROZEN_DEPENDENCY_STATUSES:
+            raise InvalidAuthorityOperation(
+                "accepted/superseded authority dependencies are immutable; create a new "
+                "dependent revision before adding or rebinding dependencies"
+            )
+
+        if self._depends_on(upstream_entity_id, dependent_entity_id):
+            raise InvalidAuthorityOperation(
+                f"dependency cycle rejected: {dependent_entity_id} -> {upstream_entity_id}"
+            )
 
         binding = AuthorityDependency(
             dependent_entity_id=dependent_entity_id,
@@ -251,10 +281,7 @@ class MysteryAuthorityGraph:
         return binding
 
     def dependencies_for(self, entity_id: str) -> tuple[AuthorityDependency, ...]:
-        head = self._heads.get(entity_id)
-        if head is None:
-            return ()
-        return self._bindings_by_revision.get((entity_id, head.revision_id), ())
+        return self._current_dependencies(entity_id)
 
     def stale_entities(self) -> frozenset[str]:
         """Return current heads stale from missing/moved exact upstream revisions.
