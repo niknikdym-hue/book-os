@@ -1,11 +1,11 @@
-# MYSTERY OS — QUALITY GATES / MYSTERYBENCH v0.1
+# MYSTERY OS — QUALITY GATES / MYSTERYBENCH v0.2
 
 **Status:** INCUBATION DRAFT  
-**Date:** 2026-09-17
+**Date:** 2026-09-18
 
 ## 1. Principle
 
-Mystery quality is multi-dimensional. No aggregate score can average away a broken solution, impossible timeline, unfair decisive clue, unbounded supernatural rule, cliche-dependent architecture or contradictory character knowledge.
+Mystery quality is multi-dimensional. No aggregate score can average away a broken solution, impossible timeline, unfair decisive clue, dishonest POV withholding, unresolved plot-critical research dependency, unbounded supernatural rule, cliche-dependent architecture, contradictory character knowledge or manuscript materially below the professional fiction benchmark.
 
 Quality decisions use findings by severity:
 
@@ -20,6 +20,7 @@ Quality decisions use findings by severity:
 
 PASS requires:
 - clear target reader/subgenre;
+- current market/comparable evidence appropriate to the decision;
 - premise understandable without a long explanation;
 - specific hook beyond generic trope labels;
 - recognizable genre promise;
@@ -27,17 +28,27 @@ PASS requires:
 - plausible series position if applicable;
 - no unresolved BLOCKED-BY-DEFAULT cliche.
 
-FAIL examples:
-- “mysterious murders happen in a small town” with no further identity;
-- premise is a bundle of fashionable tropes;
-- novelty exists only in profession/location naming;
-- series sequel repeats prior book with a new victim.
-
 ### G1 — Story Definition
 
 PASS requires approved StoryDefinition with scope, stakes, tone, reality contract, protagonist engine, target length, exclusions and primary mystery question.
 
-### G2 — Case Solution integrity
+### G2 — Narrative Contract
+
+PASS requires approved NarrativeContract with:
+- narrative mode;
+- person/tense;
+- viewpoint roster;
+- psychic-distance rule;
+- narrator reliability model;
+- knowledge boundary;
+- allowed/prohibited withholding;
+- culprit-POV policy if applicable;
+- flashback/dream/document policies where used;
+- reader-fairness constraints.
+
+BLOCKING when the intended reveal requires the narration to suppress conscious decisive information unfairly.
+
+### G3 — Case Solution integrity
 
 BLOCKING checks:
 - culprit/responsible actor known internally;
@@ -48,7 +59,18 @@ BLOCKING checks:
 - final proof path exists independently of confession;
 - no indispensable late invention.
 
-### G3 — Supernatural rules
+### G4 — Realism dependency plan
+
+PASS requires:
+- factual dependencies classified;
+- R3/R4 plot-critical research questions identified;
+- jurisdiction/time context where material;
+- intentional fictionalizations declared;
+- story-object dependencies recorded.
+
+BLOCKING when unresolved real-world assumptions can invalidate CaseSolution, Timeline, Clue or material SceneContract logic.
+
+### G5 — Supernatural rules
 
 Required when supernatural causality is material.
 
@@ -59,7 +81,7 @@ BLOCKING checks:
 - visions/messages have defined reliability constraints;
 - no unlimited clue-delivery power.
 
-### G4 — Suspect / clue / timeline architecture
+### G6 — Suspect / clue / timeline / knowledge architecture
 
 PASS requires:
 - plausible suspect field appropriate to profile;
@@ -68,9 +90,10 @@ PASS requires:
 - enough evidence for eventual solution;
 - meaningful alternate hypotheses;
 - case timeline feasible;
-- narrative disclosure plan supports fair play.
+- character knowledge states coherent;
+- reader disclosure plan supports fair play.
 
-### G5 — Anti-cliche / series novelty
+### G7 — Anti-cliche / series novelty
 
 BLOCKING when:
 - a blocked device has no approved exception;
@@ -78,18 +101,40 @@ BLOCKING when:
 - culprit, motive, reveal and supernatural mechanism reproduce an earlier pattern closely enough to make outcome predictable;
 - concept depends on multiple cheap cliches rather than one distinctive causal engine.
 
+### G8 — Representative Fiction Sample
+
+Before mass drafting, a bounded representative sample must be evaluated.
+
+PASS requires material adequacy in:
+- NarrativeContract compliance;
+- POV integrity;
+- voice/StyleProfile;
+- dialogue;
+- scene causality;
+- suspense/information control;
+- anti-cliche drift;
+- factual realism;
+- listenability where applicable;
+- Professional Fiction Benchmark comparison.
+
+A weak prose mode must be fixed before it is scaled to a full manuscript.
+
 ## 3. Writing admission
 
 Every scene/chapter receives `WRITING_ALLOWED` only when its SceneContract is fresh relative to current authority.
 
 Admission checks:
 - time/location available;
+- POV permitted by NarrativeContract;
 - character knowledge states valid;
-- clue/reveal operations valid;
+- reader-knowledge/reveal operations valid;
+- no unfair withholding;
 - no premature disclosure;
-- research dependencies either satisfied or explicitly bounded;
+- R3/R4 research dependencies satisfied/bounded;
 - anti-cliche warnings present;
-- scene has a state-changing function.
+- scene has a state-changing function;
+- representative Writer/Style path remains qualified;
+- execution/cost authorization valid.
 
 Writer execution must fail closed before provider/model access if admission is missing or stale.
 
@@ -105,12 +150,14 @@ Checks:
 - day/date/week continuity;
 - supernatural timing constraints.
 
-### Knowledge audit
+### Knowledge / narrative audit
 Checks:
 - character refers to facts never learned;
 - viewpoint withholds its own conscious decisive knowledge unfairly;
+- narrator reliability/psychic distance violates NarrativeContract;
 - investigator forgets known evidence for convenience;
-- suspect changes story without the manuscript registering inconsistency.
+- suspect changes story without manuscript registering inconsistency;
+- reader receives a decisive fact later than contract allows solely to preserve twist.
 
 ### Clue lifecycle audit
 Each material clue must be:
@@ -123,7 +170,15 @@ Each material clue must be:
 Orphaned decisive clue = BLOCKING. Repeated nonfunctional clue = MAJOR.
 
 ### Rule audit
-No case/supernatural rule may silently change to fit a later scene.
+No case/supernatural/narrative rule may silently change to fit a later scene.
+
+### Realism audit
+Checks:
+- R3/R4 research state;
+- jurisdiction/time correctness;
+- plot-critical technology/procedure assumptions;
+- factual-research staleness;
+- declared vs accidental fictionalization.
 
 ## 5. Mid-book gate
 
@@ -137,17 +192,26 @@ Has the working model of the case changed materially, or have scenes merely accu
 ### Evidence balance
 Are enough clues visible to sustain fair play? Is the true solution trivially over-signalled? Are alternate hypotheses alive for real reasons?
 
+### Narrative integrity
+Has POV distribution drifted? Is psychic distance changing conveniently near decisive information? Are flashbacks/documents being added to repair architecture rather than fulfill contract?
+
 ### Character pressure
 Are choices becoming harder? Are recurring leads changing through action rather than exposition?
 
 ### Supernatural discipline
 Has any phenomenon gained undeclared capabilities? Is mysticism replacing detection rather than complicating it?
 
+### Factual realism
+Did drafting add new material procedural/technical assumptions that are unresolved or contradictory?
+
 ### Pacing
 Is there a dead zone of recap, travel, repeated questioning or atmosphere without change?
 
 ### Cliche drift
 Did drafting fall back onto stock horror beats, stock dialogue, standard villain behavior or AI prose patterns not present in architecture?
+
+### Benchmark trajectory
+Does the representative/accumulated manuscript still sit on a plausible path toward professional range, or has execution degraded into merely competent generic genre prose?
 
 Any BLOCKING finding pauses further admitted drafting.
 
@@ -185,14 +249,23 @@ Any BLOCKING finding pauses further admitted drafting.
 - competence limits;
 - emotional/relationship arcs.
 
-### F. Supernatural integrity
+### F. Narrative integrity
+- NarrativeContract compliance;
+- valid POV ownership;
+- narrator reliability consistency;
+- fair withholding;
+- psychic-distance integrity;
+- ReaderKnowledgeState alignment;
+- no head-hopping convenience.
+
+### G. Supernatural integrity
 - consistent rules;
 - bounded powers;
 - causal integration;
 - no deus ex machina;
 - retained mystery is intentional.
 
-### G. Tension / pacing
+### H. Tension / pacing
 - early genre promise;
 - escalating cost;
 - scene state change;
@@ -200,28 +273,38 @@ Any BLOCKING finding pauses further admitted drafting.
 - absence of dead loops;
 - earned climax.
 
-### H. Originality / anti-cliche
+### I. Originality / anti-cliche
 - no unresolved blocked devices;
 - trope transformation quality;
 - distinctive characters/case/setting;
 - absence of machine-template structures;
 - series novelty.
 
-### I. Prose / voice
+### J. Prose / voice
 - StyleProfile compliance;
-- viewpoint integrity;
+- viewpoint embodiment;
 - dialogue distinctiveness;
 - concrete/sensory specificity;
 - AI-prose pathology detection;
 - absence of fake profundity and melodramatic shorthand.
 
-### J. Setting function
+### K. Setting function
 Setting must affect choices, access, danger, atmosphere or theme; decorative location swaps should not leave the book unchanged.
 
-### K. Research realism
-Material real-world procedures/facts are verified or intentionally fictionalized with recorded rationale.
+### L. Research realism
+- plot-critical facts verified/qualified/fictionalized deliberately;
+- procedure/technology consistent with setting/time;
+- no accidental factual mechanism required to solve the case;
+- stale R3/R4 dependencies resolved.
 
-### L. Audio readiness
+### M. Emotional architecture
+- attachment;
+- consequence after revelations;
+- relationship movement;
+- earned vulnerability;
+- no melodramatic shortcut replacing causality.
+
+### N. Audio readiness
 When audio is selected:
 - names/terms pronounceable;
 - dialogue attribution intelligible;
@@ -275,11 +358,38 @@ BLOCKING if:
 - timeline cannot be made feasible;
 - more plausible alternate culprit fits accepted evidence better;
 - final solution contradicts narrative facts;
-- supernatural rule required by solution was never established.
+- supernatural rule required by solution was never established;
+- narration concealed indispensable conscious knowledge unfairly.
 
-## 9. Anti-cliche scan
+## 9. Professional Fiction Benchmark gate
 
-Runs at concept, architecture, midpoint and final manuscript.
+Benchmark the exact candidate against the curated, rights-safe benchmark set.
+
+Dimensions include:
+- premise identity;
+- narrative engine;
+- characters;
+- scenes;
+- dialogue;
+- mystery construction;
+- suspense;
+- prose/voice;
+- setting;
+- emotional architecture;
+- whole-book structure;
+- originality;
+- audio readiness where applicable.
+
+For premium release target:
+- unresolved BLOCKING benchmark finding = release BLOCK;
+- material MAJOR findings require revision or explicit human disposition;
+- target readiness band is at least `PROFESSIONAL_RANGE_CANDIDATE` before final human release consideration.
+
+Benchmark labels do not replace human judgment.
+
+## 10. Anti-cliche scan
+
+Runs at concept, architecture, representative sample, midpoint and final manuscript.
 
 Checks at least:
 - blocked trope registry;
@@ -293,7 +403,7 @@ Checks at least:
 
 A flag must show exact location/examples and rationale; no opaque “cliche score”.
 
-## 10. Series closure gate
+## 11. Series closure gate
 
 Before release of a series book, bind exact Literary Master to:
 - Series Bible version;
@@ -304,19 +414,22 @@ Before release of a series book, bind exact Literary Master to:
 - unresolved series questions;
 - anti-collision findings/dispositions.
 
-## 11. Release blockers
+## 12. Release blockers
 
 Literary Master cannot be approved with unresolved:
 - impossible case/timeline;
 - decisive unfair clue/fact;
+- dishonest narrative withholding required for solution;
 - contradictory culprit/motive mechanism;
 - undeclared decisive supernatural power;
 - broken character knowledge causality;
+- unresolved R3/R4 factual dependency that affects solution/major scene truth;
 - unapproved blocked cliche;
 - material plagiarism/clone concern;
 - series duplicate architecture;
-- missing main mystery payoff promised by StoryDefinition.
+- missing main mystery payoff promised by StoryDefinition;
+- professional benchmark BLOCKING gap.
 
-## 12. No false certainty
+## 13. No false certainty
 
-Deterministic checks can prove some structural properties. LLM judges and Cold Reader tests provide diagnostic evidence. Human editorial judgment remains mandatory for literary quality, emotional power, originality and final release.
+Deterministic checks can prove some structural properties. LLM judges, benchmark comparisons and Cold Reader tests provide diagnostic evidence. Human editorial judgment remains mandatory for literary quality, emotional power, originality and final release.
