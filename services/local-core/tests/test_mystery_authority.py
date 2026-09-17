@@ -26,15 +26,9 @@ def _draft_revision(
 
 
 def _approve(revision: MysteryAuthorityRevision) -> MysteryAuthorityRevision:
-    revision = transition_authority_status(
-        revision, target_status="PROPOSED", actor_kind="AI"
-    )
-    revision = transition_authority_status(
-        revision, target_status="REVIEWED", actor_kind="AI"
-    )
-    return transition_authority_status(
-        revision, target_status="APPROVED", actor_kind="HUMAN"
-    )
+    revision = transition_authority_status(revision, target_status="PROPOSED", actor_kind="AI")
+    revision = transition_authority_status(revision, target_status="REVIEWED", actor_kind="AI")
+    return transition_authority_status(revision, target_status="APPROVED", actor_kind="HUMAN")
 
 
 def _accepted_revision(
@@ -59,25 +53,15 @@ def test_ai_cannot_approve_or_lock_authority() -> None:
         kind="CASE_SOLUTION",
         payload={"culprit": "A"},
     )
-    proposed = transition_authority_status(
-        revision, target_status="PROPOSED", actor_kind="AI"
-    )
-    reviewed = transition_authority_status(
-        proposed, target_status="REVIEWED", actor_kind="AI"
-    )
+    proposed = transition_authority_status(revision, target_status="PROPOSED", actor_kind="AI")
+    reviewed = transition_authority_status(proposed, target_status="REVIEWED", actor_kind="AI")
 
     with pytest.raises(HumanApprovalRequired):
-        transition_authority_status(
-            reviewed, target_status="APPROVED", actor_kind="AI"
-        )
+        transition_authority_status(reviewed, target_status="APPROVED", actor_kind="AI")
 
-    approved = transition_authority_status(
-        reviewed, target_status="APPROVED", actor_kind="HUMAN"
-    )
+    approved = transition_authority_status(reviewed, target_status="APPROVED", actor_kind="HUMAN")
     with pytest.raises(HumanApprovalRequired):
-        transition_authority_status(
-            approved, target_status="LOCKED", actor_kind="SYSTEM"
-        )
+        transition_authority_status(approved, target_status="LOCKED", actor_kind="SYSTEM")
 
 
 def test_revision_preserves_old_accepted_content_and_hash() -> None:
@@ -277,9 +261,7 @@ def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authorit
         (
             AuthorityRequirement("story"),
             AuthorityRequirement("case"),
-            AuthorityRequirement(
-                "scene", frozenset({"DRAFT", "APPROVED", "LOCKED"})
-            ),
+            AuthorityRequirement("scene", frozenset({"DRAFT", "APPROVED", "LOCKED"})),
         ),
     )
     assert not stale_result.allowed
@@ -315,8 +297,7 @@ def test_writing_admission_passes_only_with_fresh_accepted_authority() -> None:
     result = evaluate_writing_admission(
         graph,
         tuple(
-            AuthorityRequirement(entity_id)
-            for entity_id in ("story", "case", "narrative", "scene")
+            AuthorityRequirement(entity_id) for entity_id in ("story", "case", "narrative", "scene")
         ),
     )
 
