@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Literal, TypeAlias, cast
+from typing import Literal, TypeAlias
 
 from .authority_types import (
     ActorKind,
@@ -32,14 +32,14 @@ MysteryAuthorityKind: TypeAlias = Literal[
     "EDITORIAL_GATE_STATE",
 ]
 
-_ACCEPTED_STATUSES: frozenset[AuthorityStatus] = frozenset({"APPROVED", "LOCKED"})
+_ACCEPTED_STATUSES: frozenset[AuthorityStatus] = frozenset(("APPROVED", "LOCKED"))
 
 _ALLOWED_TRANSITIONS: dict[AuthorityStatus, frozenset[AuthorityStatus]] = {
-    "DRAFT": frozenset({"PROPOSED"}),
-    "PROPOSED": frozenset({"REVIEWED", "DRAFT"}),
-    "REVIEWED": frozenset({"APPROVED", "DRAFT"}),
-    "APPROVED": frozenset({"LOCKED", "SUPERSEDED"}),
-    "LOCKED": frozenset({"SUPERSEDED"}),
+    "DRAFT": frozenset(("PROPOSED",)),
+    "PROPOSED": frozenset(("REVIEWED", "DRAFT")),
+    "REVIEWED": frozenset(("APPROVED", "DRAFT")),
+    "APPROVED": frozenset(("LOCKED", "SUPERSEDED")),
+    "LOCKED": frozenset(("SUPERSEDED",)),
     "SUPERSEDED": frozenset(),
 }
 
@@ -68,9 +68,10 @@ class MysteryAuthorityRevision:
 
 @dataclass(frozen=True)
 class AuthorityDependency:
-    """Exact upstream revision consumed by a dependent authority object."""
+    """Exact upstream revision consumed by one exact dependent revision."""
 
     dependent_entity_id: str
+    dependent_revision_id: str
     upstream_entity_id: str
     upstream_revision_id: str
     reason: str
@@ -105,6 +106,8 @@ def create_authority_revision(
             "new authority content cannot be created directly as APPROVED/LOCKED; "
             "create DRAFT and pass the human transition gate"
         )
+    if status == "SUPERSEDED":
+        raise InvalidAuthorityOperation("new authority content cannot start SUPERSEDED")
     return MysteryAuthorityRevision(
         entity_id=entity_id,
         kind=kind,
@@ -154,15 +157,17 @@ def transition_authority_status(
 
 
 class MysteryAuthorityGraph:
-    """In-memory dependency/staleness model for exact fiction authority revisions.
+    """In-memory exact-revision dependency and staleness model.
 
-    MYS-01 intentionally has no database concerns. Later persistence may project
+    MYS-01 intentionally has no database concerns. Persistence may later project
     these semantics onto BOOK OS revision storage without changing the rules.
     """
 
     def __init__(self) -> None:
         self._heads: dict[str, MysteryAuthorityRevision] = {}
-        self._bindings_by_dependent: dict[str, tuple[AuthorityDependency, ...]] = {}
+        self._bindings_by_revision: dict[
+            tuple[str, str], tuple[AuthorityDependency, ...]
+        ] = {}
 
     def register_head(self, revision: MysteryAuthorityRevision) -> None:
         current = self._heads.get(revision.entity_id)
@@ -170,6 +175,21 @@ class MysteryAuthorityGraph:
             raise InvalidAuthorityOperation(
                 f"entity {revision.entity_id} changed kind {current.kind} -> {revision.kind}"
             )
+
+        if (
+            current is not None
+            and revision.revision_id != current.revision_id
+            and revision.supersedes_revision_id == current.revision_id
+        ):
+            old_key = (current.entity_id, current.revision_id)
+            new_key = (revision.entity_id, revision.revision_id)
+            if new_key not in self._bindings_by_revision:
+                inherited = tuple(
+                    replace(item, dependent_revision_id=revision.revision_id)
+                    for item in self._bindings_by_revision.get(old_key, ())
+                )
+                self._bindings_by_revision[new_key] = inherited
+
         self._heads[revision.entity_id] = revision
 
     def head(self, entity_id: str) -> MysteryAuthorityRevision | None:
@@ -198,24 +218,46 @@ class MysteryAuthorityGraph:
         if dependent_entity_id == upstream_entity_id:
             raise InvalidAuthorityOperation("authority entity cannot depend on itself")
 
+        key = (dependent.entity_id, dependent.revision_id)
+        existing = self._bindings_by_revision.get(key, ())
+        same_upstream = next(
+            (
+                item
+                for item in existing
+                if item.upstream_entity_id == upstream_entity_id
+            ),
+            None,
+        )
+        if same_upstream is not None:
+            if same_upstream.upstream_revision_id == upstream.revision_id:
+                return same_upstream
+            if dependent.status in {"APPROVED", "LOCKED", "SUPERSEDED"}:
+                raise InvalidAuthorityOperation(
+                    "accepted authority dependencies are immutable; create a new "
+                    "dependent revision before rebinding"
+                )
+
         binding = AuthorityDependency(
             dependent_entity_id=dependent_entity_id,
+            dependent_revision_id=dependent.revision_id,
             upstream_entity_id=upstream_entity_id,
             upstream_revision_id=upstream.revision_id,
             reason=reason,
         )
-        existing = self._bindings_by_dependent.get(dependent_entity_id, ())
         without_same_upstream = tuple(
             item for item in existing if item.upstream_entity_id != upstream_entity_id
         )
-        self._bindings_by_dependent[dependent_entity_id] = (*without_same_upstream, binding)
+        self._bindings_by_revision[key] = (*without_same_upstream, binding)
         return binding
 
     def dependencies_for(self, entity_id: str) -> tuple[AuthorityDependency, ...]:
-        return self._bindings_by_dependent.get(entity_id, ())
+        head = self._heads.get(entity_id)
+        if head is None:
+            return ()
+        return self._bindings_by_revision.get((entity_id, head.revision_id), ())
 
     def stale_entities(self) -> frozenset[str]:
-        """Return all entities stale from missing/moved exact upstream revisions.
+        """Return current heads stale from missing/moved exact upstream revisions.
 
         Staleness is transitive: if B consumes stale A, then everything consuming B
         is stale even if B's own direct upstream revision IDs still exist.
@@ -223,7 +265,10 @@ class MysteryAuthorityGraph:
         reverse_edges: dict[str, set[str]] = defaultdict(set)
         stale: set[str] = set()
 
-        for dependent_id, bindings in self._bindings_by_dependent.items():
+        for dependent_id, dependent_head in self._heads.items():
+            bindings = self._bindings_by_revision.get(
+                (dependent_id, dependent_head.revision_id), ()
+            )
             for binding in bindings:
                 reverse_edges[binding.upstream_entity_id].add(dependent_id)
                 upstream = self._heads.get(binding.upstream_entity_id)
@@ -279,5 +324,5 @@ def requirements_for_entities(entity_ids: Iterable[str]) -> tuple[AuthorityRequi
 
 
 def accepted_statuses() -> frozenset[AuthorityStatus]:
-    """Return a typed copy-safe view used by downstream admission policies."""
-    return cast(frozenset[AuthorityStatus], _ACCEPTED_STATUSES)
+    """Return the immutable accepted-status set used by default admission policy."""
+    return _ACCEPTED_STATUSES
