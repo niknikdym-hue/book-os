@@ -15,14 +15,17 @@ from book_os_core.mystery_authority import (
 )
 
 
-def _accepted_revision(
+def _draft_revision(
     entity_id: str, kind: MysteryAuthorityKind, marker: str
 ) -> MysteryAuthorityRevision:
-    revision = create_authority_revision(
+    return create_authority_revision(
         entity_id=entity_id,
         kind=kind,
         payload={"marker": marker},
     )
+
+
+def _approve(revision: MysteryAuthorityRevision) -> MysteryAuthorityRevision:
     revision = transition_authority_status(
         revision, target_status="PROPOSED", actor_kind="AI"
     )
@@ -32,6 +35,12 @@ def _accepted_revision(
     return transition_authority_status(
         revision, target_status="APPROVED", actor_kind="HUMAN"
     )
+
+
+def _accepted_revision(
+    entity_id: str, kind: MysteryAuthorityKind, marker: str
+) -> MysteryAuthorityRevision:
+    return _approve(_draft_revision(entity_id, kind, marker))
 
 
 def test_new_content_cannot_skip_human_approval() -> None:
@@ -86,8 +95,8 @@ def test_revision_preserves_old_accepted_content_and_hash() -> None:
 
 def test_dependency_binding_uses_both_exact_revision_ids() -> None:
     graph = MysteryAuthorityGraph()
-    story = _accepted_revision("story", "STORY_DEFINITION", "v1")
-    case = _accepted_revision("case", "CASE_SOLUTION", "v1")
+    story = _draft_revision("story", "STORY_DEFINITION", "v1")
+    case = _draft_revision("case", "CASE_SOLUTION", "v1")
     graph.register_head(story)
     graph.register_head(case)
 
@@ -104,12 +113,11 @@ def test_dependency_binding_uses_both_exact_revision_ids() -> None:
 
 def test_upstream_revision_change_makes_dependents_stale_transitively() -> None:
     graph = MysteryAuthorityGraph()
-    story = _accepted_revision("story", "STORY_DEFINITION", "v1")
-    case = _accepted_revision("case", "CASE_SOLUTION", "v1")
-    scene = _accepted_revision("scene", "SCENE_CONTRACT", "v1")
-    graph.register_head(story)
-    graph.register_head(case)
-    graph.register_head(scene)
+    story = _draft_revision("story", "STORY_DEFINITION", "v1")
+    case = _draft_revision("case", "CASE_SOLUTION", "v1")
+    scene = _draft_revision("scene", "SCENE_CONTRACT", "v1")
+    for revision in (story, case, scene):
+        graph.register_head(revision)
     graph.bind_dependency(
         dependent_entity_id="case",
         upstream_entity_id="story",
@@ -120,6 +128,11 @@ def test_upstream_revision_change_makes_dependents_stale_transitively() -> None:
         upstream_entity_id="case",
         reason="scene consumes case truth",
     )
+    story = _approve(story)
+    case = _approve(case)
+    scene = _approve(scene)
+    for revision in (story, case, scene):
+        graph.register_head(revision)
 
     revised_story = revise_authority(story, {"marker": "v2"})
     graph.register_head(revised_story)
@@ -129,25 +142,38 @@ def test_upstream_revision_change_makes_dependents_stale_transitively() -> None:
     assert not graph.is_fresh("scene")
 
 
-def test_accepted_revision_cannot_be_silently_rebound() -> None:
+def test_accepted_revision_cannot_gain_or_change_dependencies() -> None:
     graph = MysteryAuthorityGraph()
     story = _accepted_revision("story", "STORY_DEFINITION", "v1")
-    case = _accepted_revision("case", "CASE_SOLUTION", "v1")
+    case_without_binding = _accepted_revision("case-a", "CASE_SOLUTION", "v1")
     graph.register_head(story)
-    graph.register_head(case)
-    graph.bind_dependency(
-        dependent_entity_id="case",
-        upstream_entity_id="story",
-        reason="case consumes story",
-    )
-
-    new_story = _accepted_revision("story", "STORY_DEFINITION", "v2")
-    graph.register_head(new_story)
-    assert "case" in graph.stale_entities()
+    graph.register_head(case_without_binding)
 
     with pytest.raises(InvalidAuthorityOperation):
         graph.bind_dependency(
-            dependent_entity_id="case",
+            dependent_entity_id="case-a",
+            upstream_entity_id="story",
+            reason="late dependency addition",
+        )
+
+    case = _draft_revision("case-b", "CASE_SOLUTION", "v1")
+    graph.register_head(case)
+    graph.bind_dependency(
+        dependent_entity_id="case-b",
+        upstream_entity_id="story",
+        reason="case consumes story",
+    )
+    case = _approve(case)
+    graph.register_head(case)
+
+    new_story = revise_authority(story, {"marker": "v2"})
+    new_story = _approve(new_story)
+    graph.register_head(new_story)
+    assert "case-b" in graph.stale_entities()
+
+    with pytest.raises(InvalidAuthorityOperation):
+        graph.bind_dependency(
+            dependent_entity_id="case-b",
             upstream_entity_id="story",
             reason="illegal silent rebind",
         )
@@ -155,8 +181,8 @@ def test_accepted_revision_cannot_be_silently_rebound() -> None:
 
 def test_new_dependent_revision_inherits_staleness_until_reviewed_and_rebound() -> None:
     graph = MysteryAuthorityGraph()
-    story = _accepted_revision("story", "STORY_DEFINITION", "v1")
-    case = _accepted_revision("case", "CASE_SOLUTION", "v1")
+    story = _draft_revision("story", "STORY_DEFINITION", "v1")
+    case = _draft_revision("case", "CASE_SOLUTION", "v1")
     graph.register_head(story)
     graph.register_head(case)
     graph.bind_dependency(
@@ -164,8 +190,13 @@ def test_new_dependent_revision_inherits_staleness_until_reviewed_and_rebound() 
         upstream_entity_id="story",
         reason="case consumes story",
     )
+    story = _approve(story)
+    case = _approve(case)
+    graph.register_head(story)
+    graph.register_head(case)
 
-    new_story = _accepted_revision("story", "STORY_DEFINITION", "v2")
+    new_story = revise_authority(story, {"marker": "v2"})
+    new_story = _approve(new_story)
     graph.register_head(new_story)
     case_v2 = revise_authority(case, {"marker": "v2 reviewed against new story"})
     graph.register_head(case_v2)
@@ -184,6 +215,26 @@ def test_new_dependent_revision_inherits_staleness_until_reviewed_and_rebound() 
     assert rebound.dependent_revision_id == case_v2.revision_id
     assert rebound.upstream_revision_id == new_story.revision_id
     assert "case" not in graph.stale_entities()
+
+
+def test_dependency_cycles_are_rejected() -> None:
+    graph = MysteryAuthorityGraph()
+    story = _draft_revision("story", "STORY_DEFINITION", "v1")
+    case = _draft_revision("case", "CASE_SOLUTION", "v1")
+    graph.register_head(story)
+    graph.register_head(case)
+    graph.bind_dependency(
+        dependent_entity_id="case",
+        upstream_entity_id="story",
+        reason="case consumes story",
+    )
+
+    with pytest.raises(InvalidAuthorityOperation, match="dependency cycle rejected"):
+        graph.bind_dependency(
+            dependent_entity_id="story",
+            upstream_entity_id="case",
+            reason="invalid reverse dependency",
+        )
 
 
 def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authority() -> None:
@@ -218,7 +269,8 @@ def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authorit
     assert "UNACCEPTED_AUTHORITY:scene:DRAFT" in result.blocking_reasons
     assert "MISSING_AUTHORITY:narrative" in result.blocking_reasons
 
-    new_case = _accepted_revision("case", "CASE_SOLUTION", "v2")
+    new_case = revise_authority(case, {"marker": "v2"})
+    new_case = _approve(new_case)
     graph.register_head(new_case)
     stale_result = evaluate_writing_admission(
         graph,
@@ -236,10 +288,10 @@ def test_writing_admission_fails_closed_for_missing_unaccepted_or_stale_authorit
 
 def test_writing_admission_passes_only_with_fresh_accepted_authority() -> None:
     graph = MysteryAuthorityGraph()
-    story = _accepted_revision("story", "STORY_DEFINITION", "v1")
-    case = _accepted_revision("case", "CASE_SOLUTION", "v1")
-    narrative = _accepted_revision("narrative", "NARRATIVE_CONTRACT", "v1")
-    scene = _accepted_revision("scene", "SCENE_CONTRACT", "v1")
+    story = _draft_revision("story", "STORY_DEFINITION", "v1")
+    case = _draft_revision("case", "CASE_SOLUTION", "v1")
+    narrative = _draft_revision("narrative", "NARRATIVE_CONTRACT", "v1")
+    scene = _draft_revision("scene", "SCENE_CONTRACT", "v1")
     for revision in (story, case, narrative, scene):
         graph.register_head(revision)
     graph.bind_dependency(
@@ -257,6 +309,8 @@ def test_writing_admission_passes_only_with_fresh_accepted_authority() -> None:
         upstream_entity_id="narrative",
         reason="scene consumes narrative contract",
     )
+    for revision in (story, case, narrative, scene):
+        graph.register_head(_approve(revision))
 
     result = evaluate_writing_admission(
         graph,
