@@ -100,6 +100,11 @@ def create_authority_revision(
     """Create new content authority; new content always starts as DRAFT."""
     if not entity_id.strip():
         raise InvalidAuthorityOperation("entity_id must not be empty")
+    if status in _ACCEPTED_STATUSES:
+        raise HumanApprovalRequired(
+            "new authority content cannot be created directly as APPROVED/LOCKED; "
+            "create DRAFT and pass the human transition gate"
+        )
     if status != "DRAFT":
         raise InvalidAuthorityOperation(
             "new authority content must start as DRAFT and pass explicit transitions"
@@ -328,9 +333,15 @@ class MysteryAuthorityGraph:
         dependent_entity_id: str,
         upstream_entity_id: str,
         reason: str,
+        use_working_upstream: bool = False,
     ) -> AuthorityDependency:
         dependent = self._latest.get(dependent_entity_id)
-        upstream = self._latest.get(upstream_entity_id)
+        if use_working_upstream:
+            upstream = self._latest.get(upstream_entity_id)
+        else:
+            upstream = self._effective.get(upstream_entity_id) or self._latest.get(
+                upstream_entity_id
+            )
         if dependent is None:
             raise InvalidAuthorityOperation(
                 f"cannot bind dependency: missing dependent revision {dependent_entity_id}"
