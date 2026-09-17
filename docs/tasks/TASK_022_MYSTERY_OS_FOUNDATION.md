@@ -51,7 +51,7 @@ Owner requirements captured in this task:
 - series/commercial governance;
 - future BOOK OS integration boundary;
 - first pilot profile for «Линия 112»;
-- machine-readable authority/narrative/research/benchmark schemas;
+- machine-readable authority/narrative/research/benchmark/gate-state schemas;
 - optional Codex/Agents API engineering execution contract;
 - optional Codex/Agents API editorial-preparation contract;
 - secure separation between engineering and editorial-prep agent modes;
@@ -121,6 +121,9 @@ Internal MysteryBench cannot certify world-class/professional quality by itself.
 ### 3.16 Representative-sample-first
 Do not scale an unproven prose mode to a full manuscript. A bounded representative sample must pass material voice, POV, scene, dialogue, anti-cliche and benchmark checks before mass drafting.
 
+### 3.17 Fail-closed editorial state
+Future runtime must represent gate state explicitly. `WRITING_ALLOWED` is scoped, version-bound and false when required authority/evaluations are missing, stale or blocking. A completed model call never implies gate PASS.
+
 ## 4. Deliverables in this branch
 
 Required project pack:
@@ -147,6 +150,7 @@ Required project pack:
 - `contracts/mystery-os/narrative_contract.schema.json`;
 - `contracts/mystery-os/fiction_research_ledger.schema.json`;
 - `contracts/mystery-os/professional_fiction_benchmark.schema.json`;
+- `contracts/mystery-os/editorial_machine_gate.schema.json`;
 - `contracts/mystery-os/editorial_prep_agent.schema.json`.
 
 ## 5. Quality-routing requirement
@@ -237,7 +241,7 @@ No runtime implementation is authorized by Task 022 itself. If approved, use bou
 2. `MYS-02` — deterministic case/timeline/knowledge/clue validators;
 3. `MYS-03` — NarrativeContract / ReaderKnowledge / narrative-fairness validators;
 4. `MYS-04` — FictionResearchLedger / realism dependencies / research staleness;
-5. `MYS-05` — SceneContract + `WRITING_ALLOWED` admission;
+5. `MYS-05` — EditorialMachineGateState + SceneContract + `WRITING_ALLOWED` admission;
 6. `MYS-06` — representative-sample workflow + StyleProfile/Writer qualification;
 7. `MYS-07` — MysteryBench + ColdReader/adversarial harness;
 8. `MYS-08` — Professional Fiction Benchmark harness/eval contracts;
@@ -281,6 +285,7 @@ Task 022 design can be accepted when Owner agrees that:
 - quality gates can become executable tests/evaluations;
 - external benchmark prevents MYSTERY OS from grading only its own homework;
 - representative-sample gate prevents scaling mediocre prose;
+- explicit machine gate state can fail closed before paid/model execution;
 - series/commercial rules protect against repeated formula books;
 - routing spends premium intelligence where marginal quality is most valuable rather than on every page;
 - «Линия 112» can be piloted without hard-coding its story into generic software;
