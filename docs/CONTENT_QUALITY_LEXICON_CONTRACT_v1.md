@@ -103,6 +103,15 @@ Both applications must mutate the same shared private store. A field that writes
 - `TERM`: token/word-boundary-aware match where possible for the language; do not match arbitrary substrings inside longer words.
 - `REGEX`: system-authored only in v1. User-entered regex is forbidden in v1 to avoid accidental catastrophic or overbroad rules.
 
+### Russian wordform rule
+
+- A prohibited Russian lexical item cannot bypass a BOOK_PROSE rule merely by changing grammatical form.
+- For SYSTEM rules, common inflectional wordforms that preserve the same lemma/lexical meaning must be covered deterministically (for example case, number, gender, person or tense where applicable).
+- Derivational relatives are not automatically prohibited: the matcher must not expand a rule to unrelated words that merely share a root.
+- `TERM` still means token/word-boundary matching; when Russian morphology requires more than an exact token, the system pack must encode the approved wordform family explicitly (for example with a bounded SYSTEM `REGEX`).
+- Generation constraints must state that changing a banned word into another grammatical form does not make the expression acceptable.
+
+
 Findings must include at minimum:
 
 - `rule_id`

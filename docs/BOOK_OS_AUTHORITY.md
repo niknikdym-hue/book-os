@@ -1,8 +1,8 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.7.0  
-**Date:** 2026-09-09  
+**Version:** 0.7.2  
+**Date:** 2026-09-18  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
@@ -63,6 +63,74 @@ Quality includes, where applicable:
 - professional text readability and, when applicable, professional listenability;
 - preservation of meaning/concept/evidence when adapting an existing work;
 - whole-book consistency, novelty and release readiness.
+
+## 1B. Owner junk-lexicon invariant — ACCEPTED / NON-NEGOTIABLE
+
+This rule applies to **all BOOK OS nonfiction books and series**, including manuscript prose, headings/subheadings, examples, cases, tables, callouts, conclusions, annotations and other book-facing text generated or revised by BOOK OS.
+
+Any word or phrase that the Owner has explicitly designated as a **junk word / junk phrase** in the active BOOK OS anti-junk lexicon is prohibited in BOOK PROSE. It must not be used as a stylistic shortcut, rhetorical filler, marketing formula or decorative abstraction.
+
+### Wordform rule
+
+A prohibited junk item **cannot be made acceptable by changing its grammatical form**.
+
+For Russian lexical items, the prohibition includes ordinary inflectional wordforms that preserve the same lexical meaning, including where applicable:
+
+- case;
+- number;
+- gender;
+- person;
+- tense.
+
+Examples: if `опора` is prohibited, `опоры`, `опорой`, `опорах` are also prohibited; if `откликнулась` is prohibited, ordinary forms such as `откликнулся` and `откликнулись` are also prohibited; if `больше не обязан` is prohibited, gender/number variants such as `больше не обязана` and `больше не обязаны` are also prohibited.
+
+Derivational relatives are **not** automatically prohibited merely because they share a root. BOOK OS must distinguish an inflectional wordform from a different lexical item.
+
+### Enforcement consequence
+
+- Writer/Planner generation constraints must include the current Owner-designated junk lexicon.
+- Deterministic post-generation checks must reject prohibited junk items and their covered wordforms before the text can be accepted as book prose.
+- A model, editor or downstream formatter may not bypass the rule by replacing a banned item with another grammatical form of the same item.
+- Exceptions require an explicit new Owner decision that changes the lexicon authority; they are not inferred from context by the model.
+
+The detailed lexicon contract and machine-readable rules remain in `docs/CONTENT_QUALITY_LEXICON_CONTRACT_v1.md`, `docs/PROSE_ANTI_JUNK_v0.1.md` and `contracts/content-quality-core-ru-v1.json`. This Authority section governs the book-level invariant.
+
+## 1C. Nonfiction anti-template invariant — ACCEPTED / NON-NEGOTIABLE
+
+This rule applies to **all nonfiction books and nonfiction series produced by BOOK OS**.
+
+BOOK OS must not generate or preserve a manuscript by repeatedly filling the same prose, chapter or book template with different topics, examples, platforms, professions or nouns.
+
+### Prohibited template reuse
+
+The following are prohibited when they recur as a production pattern rather than arise from the material itself:
+
+- repeated chapter openings built from the same rhetorical move;
+- repeated chapter endings built from the same summary / exhortation formula;
+- identical chapter skeletons such as `problem → N mistakes → what to do → checklist` used across the manuscript;
+- repeated listicle, case, dialogue, diagnostic or worksheet structures used merely to fill volume;
+- recycled transitions, rhetorical frames, hooks, conclusions or call-to-action formulas;
+- reuse of the same example, case function, metaphor, analogy, practical artifact or mechanism with only the surface domain changed;
+- cloning a chapter/template/composition pattern from another book in the same series;
+- padding required length by repeating an argument in a different wording or by manufacturing structurally equivalent sections.
+
+### Required nonfiction behavior
+
+Each admitted chapter must have its own intellectual function, unique question, contribution, reader-before / reader-after change, and composition justified by the material.
+
+The structure of a chapter must follow its actual task. Similar structures are allowed only when the subject matter independently requires them; BOOK OS must not impose a reusable house template merely for consistency or production speed.
+
+Across a series, books may share quality standards, voice constraints and delivery level, but must remain substantively, structurally and rhetorically distinct.
+
+### Enforcement consequence
+
+- Chapter Admission must reject a chapter whose function or composition merely duplicates another chapter under a different topic.
+- Mid-book Audit must detect repetitive chapter rhythm/composition, repeated mechanisms, examples and practical outputs.
+- Whole-book / SeriesBench review must detect template reuse across the manuscript and across accepted books in the series.
+- Adversarial Review must challenge formulaic rhetoric, structurally cloned chapters and length created by repetition rather than new substance.
+- A technically correct manuscript that reads as template-filled nonfiction is not release-ready.
+
+This invariant strengthens the existing Series Production Discipline and Hard Anti-Clone rules; it does not replace them.
 
 ### Current-best-methods rule
 

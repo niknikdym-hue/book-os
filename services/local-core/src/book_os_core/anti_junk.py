@@ -55,6 +55,10 @@ _SYSTEM_VALUES: tuple[tuple[str, AntiJunkKind], ...] = (
     ("без лишнего шума", "BANNED_TEMPLATE"),
     ("без перегруза", "BANNED_TEMPLATE"),
     ("без лишней теории", "BANNED_TEMPLATE"),
+    ("без воды", "BANNED_TEMPLATE"),
+    ("без паники", "BANNED_TEMPLATE"),
+    ("больше не обязан", "BANNED_TEMPLATE"),
+    ("откликнулась", "BANNED_TEMPLATE"),
     ("без потери контроля", "BANNED_TEMPLATE"),
     ("без стресса", "BANNED_TEMPLATE"),
     ("без выгорания", "BANNED_TEMPLATE"),
@@ -89,7 +93,7 @@ _SYSTEM_VALUES: tuple[tuple[str, AntiJunkKind], ...] = (
     ("попробуем разобраться", "BANNED_TEMPLATE"),
     ("давайте посмотрим", "BANNED_TEMPLATE"),
     ("звучать", "CONTEXT_REVIEW"),
-    ("опора", "CONTEXT_REVIEW"),
+    ("опора", "BANNED_TEMPLATE"),
     ("важно понимать", "BANNED_TEMPLATE"),
     ("стоит отметить", "BANNED_TEMPLATE"),
     ("в конечном итоге", "BANNED_TEMPLATE"),
@@ -105,6 +109,14 @@ _NEGATIVE_FIRST_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bэта\s+книга\s+не\s+(?:о|про)\b", re.IGNORECASE),
     re.compile(r"\b(?:это|речь|дело)\s+не\b[^.!?\n]{1,120}\b(?:а|но)\b", re.IGNORECASE),
     re.compile(r"\bне\b[^.!?\n]{1,90}\bа\b", re.IGNORECASE),
+)
+
+
+_SYSTEM_WORDFORM_PATTERNS: tuple[tuple[re.Pattern[str], str, AntiJunkKind], ...] = (
+    (re.compile(r"\\bопор(?:а|ы|е|у|ой|ою|ам|ами|ах)?\\b", re.IGNORECASE), "опора", "BANNED_TEMPLATE"),
+    (re.compile(r"\\bбольше\\s+не\\s+обязан(?:а|о|ы)?\\b", re.IGNORECASE), "больше не обязан", "BANNED_TEMPLATE"),
+    (re.compile(r"\\bотклик(?:нуться|нулся|нулась|нулось|нулись|нусь|нешься|нется|немся|нетесь|нутся|нись|нитесь)\\b", re.IGNORECASE), "откликнулась", "BANNED_TEMPLATE"),
+    (re.compile(r"\\bбез\\s+лишн(?:ей\\s+теории|их\\s+теорий)\\b", re.IGNORECASE), "без лишней теории", "BANNED_TEMPLATE"),
 )
 
 
@@ -207,8 +219,9 @@ class AntiJunkService:
                 entry.value for entry in entries if entry.kind == "CONTEXT_REVIEW"
             ],
             "rule": (
-                "Avoid banned templates in generated prose. Context-review terms are not globally "
-                "forbidden, but prefer a more concrete formulation unless the literal meaning is necessary."
+                "Avoid banned templates in generated prose, including ordinary inflectional wordforms "
+                "of banned Russian lexical items. Context-review terms are not globally forbidden, but "
+                "prefer a more concrete formulation unless the literal meaning is necessary."
             ),
         }
 
@@ -238,6 +251,19 @@ class AntiJunkService:
                         }
                     )
                 start = index + max(1, len(needle))
+        for pattern_index, (pattern, value, kind) in enumerate(_SYSTEM_WORDFORM_PATTERNS, start=1):
+            for match in pattern.finditer(text):
+                findings.append(
+                    {
+                        "entry_id": f"PATTERN-WORDFORM-{pattern_index}",
+                        "value": value,
+                        "kind": kind,
+                        "source": "SYSTEM",
+                        "start": match.start(),
+                        "end": match.end(),
+                        "match": match.group(0),
+                    }
+                )
         for pattern_index, pattern in enumerate(_NEGATIVE_FIRST_PATTERNS, start=1):
             for match in pattern.finditer(text):
                 findings.append(
