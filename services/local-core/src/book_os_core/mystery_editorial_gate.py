@@ -147,17 +147,11 @@ def scene_contract_payload(contract: SceneContract) -> dict[str, JSONValue]:
         "clue_operation_refs": _json_strings(contract.clue_operation_refs),
         "reveal_operation_refs": _json_strings(contract.reveal_operation_refs),
         "suspect_hypothesis_movement": _json_strings(contract.suspect_hypothesis_movement),
-        "character_relationship_movement": _json_strings(
-            contract.character_relationship_movement
-        ),
+        "character_relationship_movement": _json_strings(contract.character_relationship_movement),
         "tension_source": contract.tension_source,
-        "prohibited_disclosure_fact_ids": _json_strings(
-            contract.prohibited_disclosure_fact_ids
-        ),
+        "prohibited_disclosure_fact_ids": _json_strings(contract.prohibited_disclosure_fact_ids),
         "continuity_constraint_refs": _json_strings(contract.continuity_constraint_refs),
-        "required_authority_entity_ids": _json_strings(
-            contract.required_authority_entity_ids
-        ),
+        "required_authority_entity_ids": _json_strings(contract.required_authority_entity_ids),
         "required_research_ids": _json_strings(contract.required_research_ids),
         "anti_cliche_warning_codes": _json_strings(contract.anti_cliche_warning_codes),
         "audio_listenability_notes": _json_strings(contract.audio_listenability_notes),
@@ -241,7 +235,9 @@ def _scene_revision_blockers(
     latest = graph.latest(expected_entity_id)
     if latest is None:
         blockers.append("SCENE_REVISION.NOT_REGISTERED")
-    elif latest.revision_id != revision.revision_id or latest.revision_hash != revision.revision_hash:
+    elif (
+        latest.revision_id != revision.revision_id or latest.revision_hash != revision.revision_hash
+    ):
         blockers.append("SCENE_REVISION.NOT_LATEST")
     if revision.status not in {"REVIEWED", "APPROVED", "LOCKED"}:
         blockers.append(f"SCENE_REVISION.STATUS_NOT_ADMISSIBLE:{revision.status}")
@@ -331,9 +327,7 @@ def _authority_gate_evidence(
         bound_ids.add(binding.upstream_entity_id)
         effective = graph.effective(binding.upstream_entity_id)
         if effective is None:
-            blockers.append(
-                f"SCENE_DEPENDENCY.UPSTREAM_NOT_EFFECTIVE:{binding.upstream_entity_id}"
-            )
+            blockers.append(f"SCENE_DEPENDENCY.UPSTREAM_NOT_EFFECTIVE:{binding.upstream_entity_id}")
             continue
         authority_refs.add(effective.revision_ref)
         if binding.upstream_entity_id in stale:
@@ -377,13 +371,8 @@ def _narrative_gate(
     *,
     scene_id: str,
 ) -> GateRecord:
-    blockers_set = {
-        f"NARRATIVE:{finding.code}" for finding in narrative.blocking_findings
-    }
-    if not any(
-        checkpoint.scene_id == scene_id
-        for checkpoint in narrative.reader_checkpoints
-    ):
+    blockers_set = {f"NARRATIVE:{finding.code}" for finding in narrative.blocking_findings}
+    if not any(checkpoint.scene_id == scene_id for checkpoint in narrative.reader_checkpoints):
         blockers_set.add(f"NARRATIVE.SCENE_NOT_EVALUATED:{scene_id}")
     blockers = tuple(sorted(blockers_set))
     rows = [
@@ -420,8 +409,7 @@ def _relevant_research_entities(
     authority_evidence: _AuthorityGateEvidence,
 ) -> frozenset[str]:
     relevant: set[str] = {
-        research_entity_id(research_id)
-        for research_id in contract.required_research_ids
+        research_entity_id(research_id) for research_id in contract.required_research_ids
     }
     pending = list(authority_evidence.bound_upstream_entity_ids)
     visited: set[str] = set()
@@ -488,9 +476,7 @@ def _research_gate(
 
     deadlines = dict(research.research_recheck_epochs)
     relevant_deadlines = [
-        epoch
-        for entity_id, epoch in deadlines.items()
-        if entity_id in relevant_research_entities
+        epoch for entity_id, epoch in deadlines.items() if entity_id in relevant_research_entities
     ]
     not_after_epoch = min(relevant_deadlines) if relevant_deadlines else None
     if not_after_epoch is not None and now_epoch >= not_after_epoch:
@@ -503,8 +489,7 @@ def _research_gate(
     for finding in research.findings:
         if not finding.object_refs or relevant_object_refs.intersection(finding.object_refs):
             rows.append(
-                f"{finding.code}|{finding.severity}|"
-                f"{'/'.join(sorted(finding.object_refs))}"
+                f"{finding.code}|{finding.severity}|{'/'.join(sorted(finding.object_refs))}"
             )
     for entity_id in sorted(invalid_relevant):
         rows.append(f"invalid:{entity_id}")
@@ -656,15 +641,7 @@ def _admission_token(
     gates: tuple[GateRecord, ...],
     not_after_epoch: int | None,
 ) -> WritingAdmissionToken:
-    evaluation_refs = tuple(
-        sorted(
-            {
-                ref
-                for gate in gates
-                for ref in gate.evaluation_refs
-            }
-        )
-    )
+    evaluation_refs = tuple(sorted({ref for gate in gates for ref in gate.evaluation_refs}))
     authority_refs = tuple(
         sorted(
             {
@@ -750,15 +727,7 @@ def evaluate_scene_writing_gate(
         qualification_gate,
         execution_gate,
     )
-    blockers = tuple(
-        sorted(
-            {
-                blocker
-                for gate in gates
-                for blocker in gate.blocking_findings
-            }
-        )
-    )
+    blockers = tuple(sorted({blocker for gate in gates for blocker in gate.blocking_findings}))
     writing_allowed = not blockers
     token = (
         _admission_token(
@@ -781,11 +750,7 @@ def evaluate_scene_writing_gate(
         stale_reasons=tuple(
             blocker
             for blocker in blockers
-            if (
-                "STALE" in blocker
-                or "RECHECK_DUE" in blocker
-                or "EXPIRED" in blocker
-            )
+            if ("STALE" in blocker or "RECHECK_DUE" in blocker or "EXPIRED" in blocker)
         ),
     )
     return WritingGateResult(state=state, token=token)
