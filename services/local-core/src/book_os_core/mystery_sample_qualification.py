@@ -727,8 +727,8 @@ def qualify_representative_sample(
             )
 
     for sample_id, sample in samples_by_id.items():
-        evaluation = evaluations_by_sample.get(sample_id)
-        if evaluation is None:
+        sample_evaluation = evaluations_by_sample.get(sample_id)
+        if sample_evaluation is None:
             findings.append(
                 _finding(
                     "SAMPLE.EVALUATION.MISSING",
@@ -739,7 +739,7 @@ def qualify_representative_sample(
             continue
         invalid_dimensions = sorted(
             dimension
-            for dimension in evaluation.coverage_dimensions
+            for dimension in sample_evaluation.coverage_dimensions
             if dimension not in _VALID_DIMENSIONS
         )
         for dimension in invalid_dimensions:
@@ -753,10 +753,12 @@ def qualify_representative_sample(
             )
         coverage = frozenset(
             dimension
-            for dimension in evaluation.coverage_dimensions
+            for dimension in sample_evaluation.coverage_dimensions
             if dimension in _VALID_DIMENSIONS
         )
-        if len(frozenset(evaluation.coverage_dimensions)) != len(evaluation.coverage_dimensions):
+        if len(frozenset(sample_evaluation.coverage_dimensions)) != len(
+            sample_evaluation.coverage_dimensions
+        ):
             findings.append(
                 _finding(
                     "SAMPLE.EVALUATION.DUPLICATE_DIMENSION",
