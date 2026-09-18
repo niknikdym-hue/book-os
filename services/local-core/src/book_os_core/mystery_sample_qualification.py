@@ -485,10 +485,7 @@ def qualify_representative_sample(
                 findings.append(
                     _finding(
                         "SAMPLE.ARTIFACT.ADMISSION_UNKNOWN",
-                        (
-                            f"sample {sample.sample_id} references an unverified "
-                            "writing admission"
-                        ),
+                        (f"sample {sample.sample_id} references an unverified writing admission"),
                         sample.sample_id,
                         sample.writing_admission_id,
                     )
@@ -592,10 +589,7 @@ def qualify_representative_sample(
                         sample.sample_id,
                     )
                 )
-        elif (
-            sample.post_writer_revision_ref is None
-            or not sample.post_writer_revision_ref.strip()
-        ):
+        elif sample.post_writer_revision_ref is None or not sample.post_writer_revision_ref.strip():
             findings.append(
                 _finding(
                     "SAMPLE.ARTIFACT.REVISION_REF_MISSING",
@@ -727,10 +721,7 @@ def qualify_representative_sample(
             findings.append(
                 _finding(
                     f"SAMPLE.EVALUATION.{evaluation.status}",
-                    (
-                        f"sample {evaluation.sample_id} evaluation status is "
-                        f"{evaluation.status}"
-                    ),
+                    (f"sample {evaluation.sample_id} evaluation status is {evaluation.status}"),
                     evaluation.sample_id,
                 )
             )
@@ -765,9 +756,7 @@ def qualify_representative_sample(
             for dimension in evaluation.coverage_dimensions
             if dimension in _VALID_DIMENSIONS
         )
-        if len(frozenset(evaluation.coverage_dimensions)) != len(
-            evaluation.coverage_dimensions
-        ):
+        if len(frozenset(evaluation.coverage_dimensions)) != len(evaluation.coverage_dimensions):
             findings.append(
                 _finding(
                     "SAMPLE.EVALUATION.DUPLICATE_DIMENSION",
