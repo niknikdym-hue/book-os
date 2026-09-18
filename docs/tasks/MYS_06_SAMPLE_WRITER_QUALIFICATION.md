@@ -86,7 +86,8 @@ Every sample artifact stores:
 - final sample text hash;
 - final character count;
 - representative function codes;
-- post-Writer revision class.
+- post-Writer revision class;
+- post-Writer revision evidence ref when cleanup/rewrite occurred.
 
 The caller supplies verified MYS-05 `admission_id -> scene_revision_ref` mappings.
 
@@ -171,9 +172,9 @@ Allowed revision classes:
 - `MECHANICAL`;
 - `MATERIAL`.
 
-`MECHANICAL` allows bounded cleanup without automatically disqualifying the Writer.
+`MECHANICAL` allows bounded cleanup without automatically disqualifying the Writer, but it requires an explicit revision-evidence ref.
 
-`MATERIAL` means the final sample does not demonstrate the original Writer's quality.
+`MATERIAL` also requires revision evidence and means the final sample does not demonstrate the original Writer's quality.
 
 ## Qualification refs
 
@@ -187,6 +188,7 @@ Successful Writer evaluation additionally produces:
 
 Refs bind exact:
 
+- qualification policy (minimum sample count/length and required mystic/quiet/audio coverage);
 - book;
 - StyleProfile;
 - Writer identity/route/prompt;
