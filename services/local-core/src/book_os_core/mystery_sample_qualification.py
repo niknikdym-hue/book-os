@@ -228,8 +228,22 @@ def _benchmark_payload(benchmark: ProfessionalBenchmarkEvidence) -> dict[str, JS
     }
 
 
-def _representative_sample_ref(pack: RepresentativeSamplePack) -> str:
+def _policy_payload(policy: RepresentativeSamplePolicy) -> dict[str, JSONValue]:
+    return {
+        "min_distinct_samples": policy.min_distinct_samples,
+        "min_characters_per_sample": policy.min_characters_per_sample,
+        "require_tension_mystic": policy.require_tension_mystic,
+        "require_quiet_character": policy.require_quiet_character,
+        "audio_selected": policy.audio_selected,
+    }
+
+
+def _representative_sample_ref(
+    pack: RepresentativeSamplePack,
+    policy: RepresentativeSamplePolicy,
+) -> str:
     payload: dict[str, JSONValue] = {
+        "policy": _policy_payload(policy),
         "book_id": pack.book_id,
         "style_profile_ref": _style_ref(pack.style_profile),
         "writer": _writer_payload(pack.writer_candidate),
@@ -243,7 +257,10 @@ def _representative_sample_ref(pack: RepresentativeSamplePack) -> str:
         "evaluations": _json_objects(
             tuple(
                 _evaluation_payload(evaluation)
-                for evaluation in sorted(pack.evaluations, key=lambda x: x.sample_id)
+                for evaluation in sorted(
+                    pack.evaluations,
+                    key=lambda x: (x.sample_id, x.evaluation_ref, x.evaluator_identity),
+                )
             )
         ),
         "professional_benchmark": _benchmark_payload(pack.professional_benchmark),
@@ -813,7 +830,7 @@ def qualify_representative_sample(
             )
         )
 
-    representative_ref = _representative_sample_ref(pack)
+    representative_ref = _representative_sample_ref(pack, policy)
     sample_qualified = not findings
     writer_qualified = sample_qualified and not writer_findings
     writer_ref = (
