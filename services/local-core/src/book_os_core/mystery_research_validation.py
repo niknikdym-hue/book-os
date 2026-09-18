@@ -116,6 +116,7 @@ class ResearchLedgerResult:
     evaluated_research_revision_refs: tuple[str, ...] = ()
     research_recheck_epochs: tuple[tuple[str, int], ...] = ()
     next_recheck_epoch: int | None = None
+    evaluation_snapshot_ref: str | None = None
 
     @property
     def passed(self) -> bool:
@@ -861,6 +862,46 @@ def evaluate_research_ledger(
             invalid.add(revision.entity_id)
 
     affected = research_affected_authorities(graph, frozenset(invalid))
+
+    snapshot_rows: list[str] = []
+    for revision in graph.effective_heads():
+        if revision.kind != "FICTION_RESEARCH_ITEM":
+            continue
+        snapshot_rows.append(f"authority:{revision.revision_ref}")
+        item = items_by_revision_id.get(revision.revision_id)
+        if item is None:
+            continue
+        for source_ref in sorted(item.source_refs):
+            source_state = (
+                "UNKNOWN"
+                if available_source_refs is None
+                else "AVAILABLE"
+                if source_ref in available_source_refs
+                else "MISSING"
+            )
+            snapshot_rows.append(f"source:{source_ref}:{source_state}")
+        for evidence_ref in sorted(item.evidence_refs):
+            evidence = catalog.get(evidence_ref)
+            if evidence is None:
+                snapshot_rows.append(f"evidence:{evidence_ref}:MISSING")
+                continue
+            snapshot_rows.append(
+                "evidence:"
+                f"{evidence_ref}:{evidence.evidence_ref}:{evidence.source_ref}:"
+                f"{evidence.relationship}:{evidence.strength}:"
+                f"{evidence.source_access_status}:{evidence.primary_secondary}:"
+                f"{'ACTIVE' if evidence.active else 'INACTIVE'}"
+            )
+        snapshot_rows.append(
+            f"freshness:{revision.entity_id}:{item.freshness_mode}:"
+            f"{item.fresh_until_epoch if item.fresh_until_epoch is not None else 'NONE'}"
+        )
+
+    snapshot_payload: dict[str, JSONValue] = {
+        "rows": _json_string_list(tuple(snapshot_rows)),
+    }
+    evaluation_snapshot_ref = f"fiction-research:{content_hash(snapshot_payload)}"
+
     return ResearchLedgerResult(
         findings=tuple(findings),
         invalid_research_entity_ids=frozenset(invalid),
@@ -872,4 +913,5 @@ def evaluate_research_ledger(
             if recheck_epochs_by_entity
             else None
         ),
+        evaluation_snapshot_ref=evaluation_snapshot_ref,
     )
