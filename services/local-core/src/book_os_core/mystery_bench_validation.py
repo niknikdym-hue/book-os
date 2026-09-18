@@ -92,7 +92,7 @@ class MysteryBenchPolicy:
     supernatural_material: bool = False
     audio_selected: bool = False
     require_cold_reader: bool = True
-    require_adversarial_reconstruction: bool = True
+    require_adversarial_reconstruction: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -233,6 +233,12 @@ def _required_dimensions(policy: MysteryBenchPolicy) -> frozenset[str]:
     return frozenset(required)
 
 
+def _adversarial_required(policy: MysteryBenchPolicy) -> bool:
+    if policy.require_adversarial_reconstruction is None:
+        return policy.stage == "FINAL"
+    return policy.require_adversarial_reconstruction
+
+
 def _required_cold_reader_checkpoints(
     policy: MysteryBenchPolicy,
 ) -> frozenset[str]:
@@ -347,9 +353,7 @@ def _policy_payload(policy: MysteryBenchPolicy) -> dict[str, JSONValue]:
         "supernatural_material": policy.supernatural_material,
         "audio_selected": policy.audio_selected,
         "require_cold_reader": policy.require_cold_reader,
-        "require_adversarial_reconstruction": (
-            policy.require_adversarial_reconstruction
-        ),
+        "require_adversarial_reconstruction": _adversarial_required(policy),
     }
 
 
@@ -519,7 +523,7 @@ def _validate_adversarial(
     findings: list[MysteryBenchFinding],
 ) -> str | None:
     evidence = pack.adversarial_reconstruction
-    if not policy.require_adversarial_reconstruction:
+    if not _adversarial_required(policy):
         if evidence is not None:
             findings.append(
                 _finding(
@@ -902,7 +906,7 @@ def evaluate_mystery_bench(
 
     if (
         policy.stage == "FINAL"
-        and policy.require_adversarial_reconstruction
+        and _adversarial_required(policy)
         and adversarial_ref is not None
     ):
         for dimension in ("CASE_COHERENCE", "FAIR_PLAY", "NARRATIVE_INTEGRITY"):
