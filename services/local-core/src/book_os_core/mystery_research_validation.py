@@ -113,6 +113,11 @@ class ResearchLedgerResult:
     findings: tuple[ResearchFinding, ...]
     invalid_research_entity_ids: frozenset[str]
     affected_authority_entity_ids: frozenset[str]
+    evaluated_research_revision_refs: tuple[str, ...] = ()
+    research_recheck_epochs: tuple[tuple[str, int], ...] = ()
+    next_recheck_epoch: int | None = None
+    evaluation_snapshot_ref: str | None = None
+    evaluation_snapshot_refs_by_entity: tuple[tuple[str, str], ...] = ()
 
     @property
     def passed(self) -> bool:
@@ -804,12 +809,15 @@ def evaluate_research_ledger(
     """Evaluate effective research authority plus freshness/evidence external state."""
     findings: list[ResearchFinding] = []
     invalid: set[str] = set()
+    evaluated_revision_refs: set[str] = set()
+    recheck_epochs_by_entity: dict[str, int] = {}
     catalog = evidence_catalog or {}
     graph_stale = graph.stale_entities()
 
     for revision in graph.effective_heads():
         if revision.kind != "FICTION_RESEARCH_ITEM":
             continue
+        evaluated_revision_refs.add(revision.revision_ref)
         item = items_by_revision_id.get(revision.revision_id)
         if item is None:
             invalid.add(revision.entity_id)
@@ -841,6 +849,9 @@ def evaluate_research_ledger(
             )
             continue
 
+        if item.freshness_mode == "VALID_UNTIL" and item.fresh_until_epoch is not None:
+            recheck_epochs_by_entity[revision.entity_id] = item.fresh_until_epoch
+
         validation = validate_fiction_research_item(
             item,
             evidence_catalog=catalog,
@@ -852,8 +863,63 @@ def evaluate_research_ledger(
             invalid.add(revision.entity_id)
 
     affected = research_affected_authorities(graph, frozenset(invalid))
+
+    snapshot_rows: list[str] = []
+    snapshot_refs_by_entity: dict[str, str] = {}
+    for revision in graph.effective_heads():
+        if revision.kind != "FICTION_RESEARCH_ITEM":
+            continue
+        entity_rows: list[str] = [f"authority:{revision.revision_ref}"]
+        item = items_by_revision_id.get(revision.revision_id)
+        if item is None:
+            entity_rows.append("projection:MISSING")
+        else:
+            for source_ref in sorted(item.source_refs):
+                source_state = (
+                    "UNKNOWN"
+                    if available_source_refs is None
+                    else "AVAILABLE"
+                    if source_ref in available_source_refs
+                    else "MISSING"
+                )
+                entity_rows.append(f"source:{source_ref}:{source_state}")
+            for evidence_ref in sorted(item.evidence_refs):
+                evidence = catalog.get(evidence_ref)
+                if evidence is None:
+                    entity_rows.append(f"evidence:{evidence_ref}:MISSING")
+                    continue
+                entity_rows.append(
+                    "evidence:"
+                    f"{evidence_ref}:{evidence.evidence_ref}:{evidence.source_ref}:"
+                    f"{evidence.relationship}:{evidence.strength}:"
+                    f"{evidence.source_access_status}:{evidence.primary_secondary}:"
+                    f"{'ACTIVE' if evidence.active else 'INACTIVE'}"
+                )
+            entity_rows.append(
+                f"freshness:{revision.entity_id}:{item.freshness_mode}:"
+                f"{item.fresh_until_epoch if item.fresh_until_epoch is not None else 'NONE'}"
+            )
+        entity_payload: dict[str, JSONValue] = {
+            "rows": _json_string_list(tuple(entity_rows)),
+        }
+        entity_snapshot_ref = f"fiction-research-item:{content_hash(entity_payload)}"
+        snapshot_refs_by_entity[revision.entity_id] = entity_snapshot_ref
+        snapshot_rows.extend(entity_rows)
+
+    snapshot_payload: dict[str, JSONValue] = {
+        "rows": _json_string_list(tuple(snapshot_rows)),
+    }
+    evaluation_snapshot_ref = f"fiction-research:{content_hash(snapshot_payload)}"
+
     return ResearchLedgerResult(
         findings=tuple(findings),
         invalid_research_entity_ids=frozenset(invalid),
         affected_authority_entity_ids=affected,
+        evaluated_research_revision_refs=tuple(sorted(evaluated_revision_refs)),
+        research_recheck_epochs=tuple(sorted(recheck_epochs_by_entity.items())),
+        next_recheck_epoch=(
+            min(recheck_epochs_by_entity.values()) if recheck_epochs_by_entity else None
+        ),
+        evaluation_snapshot_ref=evaluation_snapshot_ref,
+        evaluation_snapshot_refs_by_entity=tuple(sorted(snapshot_refs_by_entity.items())),
     )
