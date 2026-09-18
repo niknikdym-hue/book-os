@@ -902,9 +902,7 @@ def evaluate_research_ledger(
         entity_payload: dict[str, JSONValue] = {
             "rows": _json_string_list(tuple(entity_rows)),
         }
-        entity_snapshot_ref = (
-            f"fiction-research-item:{content_hash(entity_payload)}"
-        )
+        entity_snapshot_ref = f"fiction-research-item:{content_hash(entity_payload)}"
         snapshot_refs_by_entity[revision.entity_id] = entity_snapshot_ref
         snapshot_rows.extend(entity_rows)
 
@@ -920,12 +918,8 @@ def evaluate_research_ledger(
         evaluated_research_revision_refs=tuple(sorted(evaluated_revision_refs)),
         research_recheck_epochs=tuple(sorted(recheck_epochs_by_entity.items())),
         next_recheck_epoch=(
-            min(recheck_epochs_by_entity.values())
-            if recheck_epochs_by_entity
-            else None
+            min(recheck_epochs_by_entity.values()) if recheck_epochs_by_entity else None
         ),
         evaluation_snapshot_ref=evaluation_snapshot_ref,
-        evaluation_snapshot_refs_by_entity=tuple(
-            sorted(snapshot_refs_by_entity.items())
-        ),
+        evaluation_snapshot_refs_by_entity=tuple(sorted(snapshot_refs_by_entity.items())),
     )
