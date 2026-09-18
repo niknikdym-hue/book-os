@@ -114,6 +114,7 @@ class ResearchLedgerResult:
     invalid_research_entity_ids: frozenset[str]
     affected_authority_entity_ids: frozenset[str]
     evaluated_research_revision_refs: tuple[str, ...] = ()
+    research_recheck_epochs: tuple[tuple[str, int], ...] = ()
     next_recheck_epoch: int | None = None
 
     @property
@@ -807,7 +808,7 @@ def evaluate_research_ledger(
     findings: list[ResearchFinding] = []
     invalid: set[str] = set()
     evaluated_revision_refs: set[str] = set()
-    recheck_epochs: list[int] = []
+    recheck_epochs_by_entity: dict[str, int] = {}
     catalog = evidence_catalog or {}
     graph_stale = graph.stale_entities()
 
@@ -847,7 +848,7 @@ def evaluate_research_ledger(
             continue
 
         if item.freshness_mode == "VALID_UNTIL" and item.fresh_until_epoch is not None:
-            recheck_epochs.append(item.fresh_until_epoch)
+            recheck_epochs_by_entity[revision.entity_id] = item.fresh_until_epoch
 
         validation = validate_fiction_research_item(
             item,
@@ -865,5 +866,10 @@ def evaluate_research_ledger(
         invalid_research_entity_ids=frozenset(invalid),
         affected_authority_entity_ids=affected,
         evaluated_research_revision_refs=tuple(sorted(evaluated_revision_refs)),
-        next_recheck_epoch=min(recheck_epochs) if recheck_epochs else None,
+        research_recheck_epochs=tuple(sorted(recheck_epochs_by_entity.items())),
+        next_recheck_epoch=(
+            min(recheck_epochs_by_entity.values())
+            if recheck_epochs_by_entity
+            else None
+        ),
     )
