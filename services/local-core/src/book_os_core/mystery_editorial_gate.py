@@ -94,9 +94,7 @@ def readiness_with_sample_qualification(
         ),
         writer_qualified=qualification.writer_qualified,
         writer_qualification_ref=(
-            qualification.writer_qualification_ref
-            if qualification.writer_qualified
-            else None
+            qualification.writer_qualification_ref if qualification.writer_qualified else None
         ),
     )
 
