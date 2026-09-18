@@ -26,11 +26,14 @@ from book_os_core.mystery_editorial_gate import (
 from book_os_core.mystery_narrative_validation import (
     NarrativeFinding,
     NarrativeValidationResult,
+    ReaderKnowledgeCheckpoint,
 )
 from book_os_core.mystery_research_validation import (
     ResearchLedgerResult,
     research_entity_id,
 )
+
+NOW = 1_800_000_000
 
 
 def _approve_in_graph(
@@ -72,7 +75,16 @@ def _clean_case() -> CaseIntegrityResult:
 
 
 def _clean_narrative() -> NarrativeValidationResult:
-    return NarrativeValidationResult(findings=(), reader_checkpoints=())
+    return NarrativeValidationResult(
+        findings=(),
+        reader_checkpoints=(
+            ReaderKnowledgeCheckpoint(
+                scene_id="scene-01",
+                reader_order=10,
+                known_fact_ids=frozenset(),
+            ),
+        ),
+    )
 
 
 def _clean_research() -> ResearchLedgerResult:
@@ -211,6 +223,7 @@ def _evaluate(
     narrative: NarrativeValidationResult | None = None,
     research: ResearchLedgerResult | None = None,
     readiness: ExternalWritingReadiness | None = None,
+    now_epoch: int = NOW,
 ):
     return evaluate_scene_writing_gate(
         graph=graph,
@@ -221,6 +234,7 @@ def _evaluate(
         narrative_validation=narrative or _clean_narrative(),
         research_ledger=research or _clean_research(),
         readiness=readiness or _clean_readiness(),
+        now_epoch=now_epoch,
     )
 
 
@@ -335,6 +349,7 @@ def test_unaccepted_upstream_draft_does_not_invalidate_existing_token_but_accept
         narrative_validation=_clean_narrative(),
         research_ledger=_clean_research(),
         readiness=_clean_readiness(),
+        now_epoch=NOW,
     )
     assert while_draft.valid
 
@@ -361,6 +376,7 @@ def test_unaccepted_upstream_draft_does_not_invalidate_existing_token_but_accept
         narrative_validation=_clean_narrative(),
         research_ledger=_clean_research(),
         readiness=_clean_readiness(),
+        now_epoch=NOW,
     )
     assert not after_acceptance.valid
     assert after_acceptance.reason == "CURRENT_GATE_BLOCKED"
@@ -556,6 +572,7 @@ def test_dependency_change_after_review_invalidates_old_token_even_if_new_depend
         narrative_validation=_clean_narrative(),
         research_ledger=_clean_research(),
         readiness=_clean_readiness(),
+        now_epoch=NOW,
     )
 
     assert not verification.valid
@@ -582,7 +599,13 @@ def test_nonblocking_evaluation_change_invalidates_old_admission_snapshot() -> N
                 object_refs=("scene-01",),
             ),
         ),
-        reader_checkpoints=(),
+        reader_checkpoints=(
+            ReaderKnowledgeCheckpoint(
+                scene_id="scene-01",
+                reader_order=10,
+                known_fact_ids=frozenset({"updated-reader-state"}),
+            ),
+        ),
     )
     verification = verify_writing_admission_token(
         initial.token,
@@ -594,6 +617,7 @@ def test_nonblocking_evaluation_change_invalidates_old_admission_snapshot() -> N
         narrative_validation=changed_narrative,
         research_ledger=_clean_research(),
         readiness=_clean_readiness(),
+        now_epoch=NOW,
     )
 
     assert not verification.valid
@@ -645,3 +669,125 @@ def test_invalid_research_bound_as_extra_scene_dependency_blocks_even_if_not_dec
 
     assert f"RESEARCH.INVALID:{research_entity}" in _blockers(result)
     assert not result.state.writing_allowed
+
+
+def test_narrative_evaluation_must_cover_the_exact_scene_scope() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    wrong_scope = NarrativeValidationResult(
+        findings=(),
+        reader_checkpoints=(
+            ReaderKnowledgeCheckpoint(
+                scene_id="scene-02",
+                reader_order=10,
+                known_fact_ids=frozenset(),
+            ),
+        ),
+    )
+
+    result = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        narrative=wrong_scope,
+    )
+
+    assert "NARRATIVE.SCENE_NOT_EVALUATED:scene-01" in _blockers(result)
+    assert not result.state.writing_allowed
+
+
+def test_relevant_research_snapshot_change_invalidates_existing_token() -> None:
+    graph, policy, contract, scene_revision, _ = _setup(
+        required_research_ids=("dispatch-rule",)
+    )
+    entity_id = research_entity_id("dispatch-rule")
+    research_v1 = ResearchLedgerResult(
+        findings=(),
+        invalid_research_entity_ids=frozenset(),
+        affected_authority_entity_ids=frozenset(),
+        evaluation_snapshot_refs_by_entity=((entity_id, "research-snapshot:v1"),),
+    )
+    initial = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        research=research_v1,
+    )
+    assert initial.state.writing_allowed
+    assert initial.token is not None
+
+    research_v2 = ResearchLedgerResult(
+        findings=(),
+        invalid_research_entity_ids=frozenset(),
+        affected_authority_entity_ids=frozenset(),
+        evaluation_snapshot_refs_by_entity=((entity_id, "research-snapshot:v2"),),
+    )
+    verification = verify_writing_admission_token(
+        initial.token,
+        graph=graph,
+        policy=policy,
+        contract=contract,
+        scene_revision=scene_revision,
+        case_integrity=_clean_case(),
+        narrative_validation=_clean_narrative(),
+        research_ledger=research_v2,
+        readiness=_clean_readiness(),
+        now_epoch=NOW,
+    )
+
+    assert not verification.valid
+    assert verification.reason == "ADMISSION_SNAPSHOT_CHANGED"
+    assert verification.current_result.state.writing_allowed
+
+
+def test_research_recheck_deadline_bounds_admission_even_with_cached_green_ledger() -> None:
+    graph, policy, contract, scene_revision, _ = _setup(
+        required_research_ids=("dispatch-rule",)
+    )
+    entity_id = research_entity_id("dispatch-rule")
+    cached_green = ResearchLedgerResult(
+        findings=(),
+        invalid_research_entity_ids=frozenset(),
+        affected_authority_entity_ids=frozenset(),
+        research_recheck_epochs=((entity_id, NOW + 10),),
+        next_recheck_epoch=NOW + 10,
+        evaluation_snapshot_refs_by_entity=((entity_id, "research-snapshot:v1"),),
+    )
+
+    initial = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        research=cached_green,
+        now_epoch=NOW,
+    )
+    assert initial.state.writing_allowed
+    assert initial.token is not None
+    assert initial.token.not_after_epoch == NOW + 10
+
+    verification = verify_writing_admission_token(
+        initial.token,
+        graph=graph,
+        policy=policy,
+        contract=contract,
+        scene_revision=scene_revision,
+        case_integrity=_clean_case(),
+        narrative_validation=_clean_narrative(),
+        research_ledger=cached_green,
+        readiness=_clean_readiness(),
+        now_epoch=NOW + 10,
+    )
+
+    assert not verification.valid
+    assert verification.reason == "CURRENT_GATE_BLOCKED"
+    assert f"RESEARCH.RECHECK_DUE:{entity_id}:{NOW + 10}" in _blockers(
+        verification.current_result
+    )
+    research_gate = next(
+        gate
+        for gate in verification.current_result.state.gates
+        if gate.gate_id == "REALISM_RESEARCH"
+    )
+    assert research_gate.status == "STALE"
