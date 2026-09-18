@@ -33,9 +33,7 @@ ResearchContextScope: TypeAlias = Literal[
     "JURISDICTION_AND_TIME",
 ]
 FreshnessMode: TypeAlias = Literal["STABLE", "VALID_UNTIL", "RECHECK_REQUIRED"]
-ExpertReviewState: TypeAlias = Literal[
-    "NOT_NEEDED", "RECOMMENDED", "REQUIRED", "COMPLETED"
-]
+ExpertReviewState: TypeAlias = Literal["NOT_NEEDED", "RECOMMENDED", "REQUIRED", "COMPLETED"]
 SourceAccessStatus: TypeAlias = Literal[
     "METADATA_ONLY", "ABSTRACT_AVAILABLE", "FULL_SOURCE_INSPECTED"
 ]
@@ -265,9 +263,7 @@ def _validate_disposition(item: FictionResearchItem, findings: list[ResearchFind
             )
 
 
-def _validate_fictionalization(
-    item: FictionResearchItem, findings: list[ResearchFinding]
-) -> None:
+def _validate_fictionalization(item: FictionResearchItem, findings: list[ResearchFinding]) -> None:
     if item.disposition == "FICTIONALIZED":
         if not item.intentional_fictionalization:
             findings.append(
@@ -473,10 +469,11 @@ def _validate_evidence(
                 )
             )
 
-    needs_material_evidence = (
-        item.risk_class in {"R2", "R3", "R4"}
-        and item.disposition in {"VERIFIED", "QUALIFIED", "FICTIONALIZED"}
-    )
+    needs_material_evidence = item.risk_class in {"R2", "R3", "R4"} and item.disposition in {
+        "VERIFIED",
+        "QUALIFIED",
+        "FICTIONALIZED",
+    }
     if needs_material_evidence and not item.evidence_refs:
         findings.append(
             _finding(
@@ -523,8 +520,7 @@ def _validate_evidence(
 
         contradictions = [row for row in active_rows if row.relationship == "CONTRADICTS"]
         if contradictions and (
-            item.contradiction_resolution is None
-            or not item.contradiction_resolution.strip()
+            item.contradiction_resolution is None or not item.contradiction_resolution.strip()
         ):
             findings.append(
                 _finding(
@@ -544,16 +540,12 @@ def _validate_evidence(
     }:
         if item.disposition == "VERIFIED":
             strength_rows = [
-                row
-                for row in active_rows
-                if row.relationship in {"SUPPORTS", "PARTIALLY_SUPPORTS"}
+                row for row in active_rows if row.relationship in {"SUPPORTS", "PARTIALLY_SUPPORTS"}
             ]
         else:
             # Fictionalization evidence establishes the real-world baseline, not the
             # invented story rule, so relationship-to-conclusion is not authoritative.
-            strength_rows = [
-                row for row in active_rows if row.relationship != "CONTRADICTS"
-            ]
+            strength_rows = [row for row in active_rows if row.relationship != "CONTRADICTS"]
         strong_primary = any(
             row.strength == "STRONG"
             and row.source_access_status == "FULL_SOURCE_INSPECTED"
@@ -580,9 +572,7 @@ def _validate_evidence(
             )
 
 
-def _validate_risk_review(
-    item: FictionResearchItem, findings: list[ResearchFinding]
-) -> None:
+def _validate_risk_review(item: FictionResearchItem, findings: list[ResearchFinding]) -> None:
     if item.expert_review == "REQUIRED" and item.risk_class != "R4":
         findings.append(
             _finding(
