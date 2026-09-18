@@ -64,9 +64,7 @@ def test_clean_limited_pov_information_flow_passes() -> None:
     assert result.passed
     assert result.findings == ()
     assert result.reader_checkpoints[0].known_fact_ids == frozenset({"clue-a"})
-    assert result.reader_checkpoints[1].known_fact_ids == frozenset(
-        {"clue-a", "door-open"}
-    )
+    assert result.reader_checkpoints[1].known_fact_ids == frozenset({"clue-a", "door-open"})
 
 
 def test_conscious_decisive_fact_cannot_be_silently_hidden() -> None:
@@ -290,9 +288,7 @@ def test_viewpointless_scene_requires_explicit_contract_permission() -> None:
         tense="PAST",
     )
 
-    blocked = validate_narrative_fairness(
-        contract=_third_limited_contract(), scenes=(scene,)
-    )
+    blocked = validate_narrative_fairness(contract=_third_limited_contract(), scenes=(scene,))
     assert "NARRATIVE.POV.MISSING" in _codes(blocked)
 
     allowed = validate_narrative_fairness(
@@ -326,9 +322,7 @@ def test_reader_knowledge_accumulates_by_reader_order_not_input_order() -> None:
         reader_exposed_fact_ids=frozenset({"a"}),
     )
 
-    result = validate_narrative_fairness(
-        contract=contract, scenes=(later, earlier)
-    )
+    result = validate_narrative_fairness(contract=contract, scenes=(later, earlier))
 
     assert [checkpoint.scene_id for checkpoint in result.reader_checkpoints] == [
         "earlier",
