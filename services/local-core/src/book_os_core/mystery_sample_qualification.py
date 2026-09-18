@@ -34,6 +34,26 @@ ProfileStatus: TypeAlias = Literal["DRAFT", "APPROVED"]
 PostWriterRevisionClass: TypeAlias = Literal["NONE", "MECHANICAL", "MATERIAL"]
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_VALID_FUNCTIONS: frozenset[str] = frozenset(
+    {"OPENING", "INVESTIGATION_DIALOGUE", "TENSION_MYSTIC", "QUIET_CHARACTER"}
+)
+_VALID_DIMENSIONS: frozenset[str] = frozenset(
+    {
+        "NARRATIVE_CONTRACT",
+        "POV_INTEGRITY",
+        "VOICE_STYLE",
+        "DIALOGUE",
+        "SCENE_CAUSALITY",
+        "SUSPENSE_INFORMATION_CONTROL",
+        "ANTI_CLICHE",
+        "FACTUAL_REALISM",
+        "AUDIO_LISTENABILITY",
+    }
+)
+_VALID_EVALUATION_STATUSES: frozenset[str] = frozenset(
+    {"PASS", "MAJOR_GAP", "BLOCKING_GAP", "NOT_EVALUATED"}
+)
+_VALID_REVISION_CLASSES: frozenset[str] = frozenset({"NONE", "MECHANICAL", "MATERIAL"})
 
 
 @dataclass(frozen=True)
@@ -65,6 +85,7 @@ class SampleArtifact:
     final_character_count: int
     function_codes: tuple[SampleFunction, ...]
     post_writer_revision_class: PostWriterRevisionClass = "NONE"
+    post_writer_revision_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -184,6 +205,7 @@ def _sample_payload(sample: SampleArtifact) -> dict[str, JSONValue]:
         "final_character_count": sample.final_character_count,
         "function_codes": _json_strings(tuple(sample.function_codes)),
         "post_writer_revision_class": sample.post_writer_revision_class,
+        "post_writer_revision_ref": sample.post_writer_revision_ref,
     }
 
 
@@ -494,6 +516,20 @@ def qualify_representative_sample(
                     sample.sample_id,
                 )
             )
+        invalid_functions = sorted(
+            function_code
+            for function_code in sample.function_codes
+            if function_code not in _VALID_FUNCTIONS
+        )
+        for function_code in invalid_functions:
+            findings.append(
+                _finding(
+                    "SAMPLE.ARTIFACT.FUNCTION_UNKNOWN",
+                    f"sample {sample.sample_id} uses unknown function {function_code}",
+                    sample.sample_id,
+                    function_code,
+                )
+            )
         if not sample.function_codes:
             findings.append(
                 _finding(
@@ -510,7 +546,49 @@ def qualify_representative_sample(
                     sample.sample_id,
                 )
             )
-        functions_seen.update(sample.function_codes)
+        functions_seen.update(
+            function_code
+            for function_code in sample.function_codes
+            if function_code in _VALID_FUNCTIONS
+        )
+
+        if sample.post_writer_revision_class not in _VALID_REVISION_CLASSES:
+            findings.append(
+                _finding(
+                    "SAMPLE.ARTIFACT.REVISION_CLASS_UNKNOWN",
+                    (
+                        f"sample {sample.sample_id} uses unknown post-Writer "
+                        f"revision class {sample.post_writer_revision_class}"
+                    ),
+                    sample.sample_id,
+                )
+            )
+        elif sample.post_writer_revision_class == "NONE":
+            if sample.post_writer_revision_ref is not None:
+                findings.append(
+                    _finding(
+                        "SAMPLE.ARTIFACT.UNEXPECTED_REVISION_REF",
+                        (
+                            f"sample {sample.sample_id} declares revision class NONE "
+                            "but also has a post-Writer revision ref"
+                        ),
+                        sample.sample_id,
+                    )
+                )
+        elif (
+            sample.post_writer_revision_ref is None
+            or not sample.post_writer_revision_ref.strip()
+        ):
+            findings.append(
+                _finding(
+                    "SAMPLE.ARTIFACT.REVISION_REF_MISSING",
+                    (
+                        f"sample {sample.sample_id} revision class "
+                        f"{sample.post_writer_revision_class} requires evidence ref"
+                    ),
+                    sample.sample_id,
+                )
+            )
 
         if sample.writer_candidate_id != candidate.writer_candidate_id:
             writer_findings.append(
@@ -617,7 +695,18 @@ def qualify_representative_sample(
                     evaluation.sample_id,
                 )
             )
-        if evaluation.status != "PASS":
+        if evaluation.status not in _VALID_EVALUATION_STATUSES:
+            findings.append(
+                _finding(
+                    "SAMPLE.EVALUATION.STATUS_UNKNOWN",
+                    (
+                        f"sample {evaluation.sample_id} uses unknown evaluation "
+                        f"status {evaluation.status}"
+                    ),
+                    evaluation.sample_id,
+                )
+            )
+        elif evaluation.status != "PASS":
             findings.append(
                 _finding(
                     f"SAMPLE.EVALUATION.{evaluation.status}",
@@ -640,8 +729,28 @@ def qualify_representative_sample(
                 )
             )
             continue
-        coverage = frozenset(evaluation.coverage_dimensions)
-        if len(coverage) != len(evaluation.coverage_dimensions):
+        invalid_dimensions = sorted(
+            dimension
+            for dimension in evaluation.coverage_dimensions
+            if dimension not in _VALID_DIMENSIONS
+        )
+        for dimension in invalid_dimensions:
+            findings.append(
+                _finding(
+                    "SAMPLE.EVALUATION.DIMENSION_UNKNOWN",
+                    f"sample {sample_id} uses unknown dimension {dimension}",
+                    sample_id,
+                    dimension,
+                )
+            )
+        coverage = frozenset(
+            dimension
+            for dimension in evaluation.coverage_dimensions
+            if dimension in _VALID_DIMENSIONS
+        )
+        if len(frozenset(evaluation.coverage_dimensions)) != len(
+            evaluation.coverage_dimensions
+        ):
             findings.append(
                 _finding(
                     "SAMPLE.EVALUATION.DUPLICATE_DIMENSION",
@@ -661,7 +770,14 @@ def qualify_representative_sample(
             )
 
     benchmark = pack.professional_benchmark
-    if benchmark.status != "PASS":
+    if benchmark.status not in _VALID_EVALUATION_STATUSES:
+        findings.append(
+            _finding(
+                "SAMPLE.BENCHMARK.STATUS_UNKNOWN",
+                f"professional benchmark uses unknown status {benchmark.status}",
+            )
+        )
+    elif benchmark.status != "PASS":
         findings.append(
             _finding(
                 f"SAMPLE.BENCHMARK.{benchmark.status}",
