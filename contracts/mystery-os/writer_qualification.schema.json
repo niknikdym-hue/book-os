@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/writer_qualification.schema.json",
+  "title": "MYSTERY OS Representative Sample / Writer Qualification Result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "representative_sample_qualified",
+    "representative_sample_ref",
+    "writer_qualified",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "representative_sample_qualified": {"type": "boolean"},
+    "representative_sample_ref": {"type": "string", "minLength": 1},
+    "writer_qualified": {"type": "boolean"},
+    "writer_qualification_ref": {"type": ["string", "null"]},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message", "object_refs"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1},
+          "object_refs": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
