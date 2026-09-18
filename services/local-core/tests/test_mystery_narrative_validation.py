@@ -465,3 +465,60 @@ def test_unreliable_narration_requires_source_domains_and_reader_signals() -> No
     assert "NARRATIVE.CONTRACT.UNRELIABLE_SOURCE_MISSING" in codes
     assert "NARRATIVE.CONTRACT.UNRELIABLE_DOMAINS_MISSING" in codes
     assert "NARRATIVE.CONTRACT.UNRELIABLE_WITHOUT_SIGNAL" in codes
+
+
+def test_pre_act_culprit_pov_tracks_act_awareness_not_identity() -> None:
+    missing_awareness_contract = NarrativeContractRules(
+        narrative_mode="THIRD_LIMITED_SINGLE",
+        grammatical_person="THIRD",
+        tense="PAST",
+        viewpoints=(
+            ViewpointRule(
+                "future-culprit",
+                "antagonist",
+                culprit_pov=True,
+                culprit_pov_policy="PRE_ACT_CONSCIOUSNESS",
+            ),
+        ),
+    )
+    missing = validate_narrative_fairness(contract=missing_awareness_contract, scenes=())
+    assert "NARRATIVE.CONTRACT.CULPRIT_ACT_AWARENESS_FACT_MISSING" in _codes(missing)
+
+    contract = NarrativeContractRules(
+        narrative_mode="THIRD_LIMITED_SINGLE",
+        grammatical_person="THIRD",
+        tense="PAST",
+        viewpoints=(
+            ViewpointRule(
+                "future-culprit",
+                "antagonist",
+                culprit_pov=True,
+                culprit_pov_policy="PRE_ACT_CONSCIOUSNESS",
+                culprit_act_awareness_fact_ids=frozenset({"understands-relevant-act"}),
+            ),
+        ),
+    )
+    before_awareness = NarrativeSceneState(
+        scene_id="before",
+        reader_order=10,
+        viewpoint_character_id="future-culprit",
+        grammatical_person="THIRD",
+        tense="PAST",
+        pov_known_fact_ids=frozenset({"own-name"}),
+        pov_conscious_fact_ids=frozenset({"own-name"}),
+        reader_exposed_fact_ids=frozenset({"own-name"}),
+    )
+    before = validate_narrative_fairness(contract=contract, scenes=(before_awareness,))
+    assert "NARRATIVE.CULPRIT_POV.PRE_ACT_AWARENESS_ACTIVE" not in _codes(before)
+
+    after_awareness = NarrativeSceneState(
+        scene_id="after",
+        reader_order=20,
+        viewpoint_character_id="future-culprit",
+        grammatical_person="THIRD",
+        tense="PAST",
+        pov_known_fact_ids=frozenset({"understands-relevant-act"}),
+        pov_conscious_fact_ids=frozenset({"understands-relevant-act"}),
+    )
+    after = validate_narrative_fairness(contract=contract, scenes=(after_awareness,))
+    assert "NARRATIVE.CULPRIT_POV.PRE_ACT_AWARENESS_ACTIVE" in _codes(after)
