@@ -160,22 +160,16 @@ def test_decisive_clue_fair_play_is_profile_aware_but_payoff_is_always_required(
     events = (CaseEvent("origin", 0, 10),)
     clue = ClueRecord("key", "origin", decisive=True)
 
-    required = validate_case_integrity(
-        events=events, clues=(clue,), fair_play_mode="REQUIRED"
-    )
+    required = validate_case_integrity(events=events, clues=(clue,), fair_play_mode="REQUIRED")
     required_findings = {finding.code: finding for finding in required.findings}
     assert required_findings["CASE.CLUE.DECISIVE_NOT_EXPOSED"].severity == "BLOCKING"
     assert required_findings["CASE.CLUE.DECISIVE_NO_PAYOFF"].severity == "BLOCKING"
 
-    expected = validate_case_integrity(
-        events=events, clues=(clue,), fair_play_mode="EXPECTED"
-    )
+    expected = validate_case_integrity(events=events, clues=(clue,), fair_play_mode="EXPECTED")
     expected_findings = {finding.code: finding for finding in expected.findings}
     assert expected_findings["CASE.CLUE.DECISIVE_NOT_EXPOSED"].severity == "MAJOR"
 
-    relaxed = validate_case_integrity(
-        events=events, clues=(clue,), fair_play_mode="RELAXED"
-    )
+    relaxed = validate_case_integrity(events=events, clues=(clue,), fair_play_mode="RELAXED")
     relaxed_findings = {finding.code: finding for finding in relaxed.findings}
     assert relaxed_findings["CASE.CLUE.DECISIVE_NOT_EXPOSED"].severity == "NOTE"
     assert relaxed_findings["CASE.CLUE.DECISIVE_NO_PAYOFF"].severity == "BLOCKING"
@@ -230,8 +224,7 @@ def test_clue_event_references_and_reader_order_are_validated_separately() -> No
     assert "CASE.CLUE.EXPOSURE_MISSING_EVENT" in codes
     assert "CASE.CLUE.PAYOFF_MISSING_EVENT" in codes
     assert not any(
-        finding.code == "CASE.CLUE.PAYOFF_BEFORE_EXPOSURE"
-        and "nonlinear" in finding.object_refs
+        finding.code == "CASE.CLUE.PAYOFF_BEFORE_EXPOSURE" and "nonlinear" in finding.object_refs
         for finding in result.findings
     )
 
