@@ -81,6 +81,9 @@ def _sample(
         final_character_count=character_count,
         function_codes=(function,),  # type: ignore[arg-type]
         post_writer_revision_class=revision_class,  # type: ignore[arg-type]
+        post_writer_revision_ref=(
+            None if revision_class == "NONE" else f"revision-evidence:{sample_id}:v1"
+        ),
     )
 
 
@@ -497,3 +500,58 @@ def test_material_rewrite_never_sets_mys05_writer_qualified() -> None:
     assert readiness.representative_sample_ref is not None
     assert not readiness.writer_qualified
     assert readiness.writer_qualification_ref is None
+
+
+def test_nontrivial_post_writer_revision_requires_evidence_ref() -> None:
+    pack = _pack()
+    first = replace(
+        pack.samples[0],
+        post_writer_revision_class="MECHANICAL",
+        post_writer_revision_ref=None,
+    )
+    samples = (first, *pack.samples[1:])
+    revised = replace(
+        pack,
+        samples=samples,
+        evaluations=tuple(_evaluation(sample) for sample in samples),
+    )
+
+    result = _qualify(revised)
+
+    assert "SAMPLE.ARTIFACT.REVISION_REF_MISSING" in _codes(result)
+    assert not result.representative_sample_qualified
+
+
+def test_unknown_runtime_codes_are_blocked_even_if_python_types_are_bypassed() -> None:
+    pack = _pack()
+    first = replace(
+        pack.samples[0],
+        function_codes=("OPENING", "NOT_A_FUNCTION"),  # type: ignore[arg-type]
+        post_writer_revision_class="NOT_A_REVISION_CLASS",  # type: ignore[arg-type]
+    )
+    bad_eval = replace(
+        _evaluation(first),
+        status="ALIEN_STATUS",  # type: ignore[arg-type]
+        coverage_dimensions=(
+            *CORE,
+            "NOT_A_DIMENSION",  # type: ignore[arg-type]
+        ),
+    )
+    evaluations = (
+        bad_eval,
+        *tuple(_evaluation(sample) for sample in pack.samples[1:]),
+    )
+    revised = replace(
+        pack,
+        samples=(first, *pack.samples[1:]),
+        evaluations=evaluations,
+    )
+
+    result = _qualify(revised)
+
+    codes = _codes(result)
+    assert "SAMPLE.ARTIFACT.FUNCTION_UNKNOWN" in codes
+    assert "SAMPLE.ARTIFACT.REVISION_CLASS_UNKNOWN" in codes
+    assert "SAMPLE.EVALUATION.STATUS_UNKNOWN" in codes
+    assert "SAMPLE.EVALUATION.DIMENSION_UNKNOWN" in codes
+    assert not result.representative_sample_qualified
