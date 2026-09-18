@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.7.3  
+**Version:** 0.7.4  
 **Date:** 2026-09-18  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
@@ -155,10 +155,25 @@ The default whole-book check must cover, where applicable:
 - target-market applicability where local law, platforms or commercial practice materially change the advice;
 - practical value and AI-substitution risk of chapters/sections;
 - cross-book overlap, protected series territories and cumulative exclusion requirements;
-- accidental leakage of internal editorial instructions, BOOK OS process language or production notes into reader-facing prose;
+- **zero-tolerance service/editorial-note leakage check**: reader-facing prose must contain no internal editorial instructions, author/editor reminders, production notes, QA notes, revision instructions, TODO/FIXME markers, placeholders, status labels, future-edition reminders, source-verification reminders, BOOK OS process language or other text addressed to the production team rather than the reader;
 - whole-book coherence, progression, transitions, unresolved contradictions and forgotten promises;
 - literary/style quality and consistency with the active Author / Series / Book Style Profile;
 - an adversarial whole-book pass whose purpose is to find reasons the manuscript is not yet ready.
+
+### Service/editorial-note zero-tolerance rule
+
+Any service/editorial note found in reader-facing manuscript text is a **BLOCKING Pre-Author QA defect**.
+
+Examples include, but are not limited to:
+
+- instructions to the author, editor, fact checker, designer, formatter or future reviser;
+- reminders such as “verify before publication / before a new edition”, “add source”, “update statistic”, “check law/platform rule”, “insert example”, “rewrite later”;
+- internal labels such as draft/review/QA/BookBench/Chapter Contract/WRITING_ALLOWED status;
+- placeholders, TODO/FIXME text, unresolved brackets or production comments;
+- explanations of series territory, future-book allocation or internal BOOK OS workflow that are not intentionally written for the reader;
+- comments about why a passage exists, what should be checked later, or how the manuscript should be produced.
+
+The required result before author presentation is **zero unresolved service/editorial notes in book-facing text**. If a note contains a useful fact for the reader, it must be rewritten as normal reader-facing prose; otherwise it must be removed.
 
 ### Default repair loop
 
