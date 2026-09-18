@@ -36,6 +36,7 @@ class ViewpointRule:
     culprit_pov: bool = False
     culprit_pov_policy: CulpritPovPolicy | None = None
     culprit_identity_fact_ids: frozenset[str] = frozenset()
+    culprit_act_awareness_fact_ids: frozenset[str] = frozenset()
     protected_fact_ids: frozenset[str] = frozenset()
 
 
@@ -157,10 +158,19 @@ def _validate_contract(
                         viewpoint.character_id,
                     )
                 )
-            elif (
-                viewpoint.culprit_pov_policy != "PRE_ACT_CONSCIOUSNESS"
-                and not viewpoint.culprit_identity_fact_ids
-            ):
+            elif viewpoint.culprit_pov_policy == "PRE_ACT_CONSCIOUSNESS":
+                if not viewpoint.culprit_act_awareness_fact_ids:
+                    findings.append(
+                        _finding(
+                            "NARRATIVE.CONTRACT.CULPRIT_ACT_AWARENESS_FACT_MISSING",
+                            (
+                                f"culprit POV {viewpoint.character_id} PRE_ACT_CONSCIOUSNESS "
+                                "requires explicit culprit_act_awareness_fact_ids"
+                            ),
+                            viewpoint.character_id,
+                        )
+                    )
+            elif not viewpoint.culprit_identity_fact_ids:
                 findings.append(
                     _finding(
                         "NARRATIVE.CONTRACT.CULPRIT_IDENTITY_FACT_MISSING",
@@ -172,7 +182,11 @@ def _validate_contract(
                         viewpoint.character_id,
                     )
                 )
-        elif viewpoint.culprit_pov_policy is not None or viewpoint.culprit_identity_fact_ids:
+        elif (
+            viewpoint.culprit_pov_policy is not None
+            or viewpoint.culprit_identity_fact_ids
+            or viewpoint.culprit_act_awareness_fact_ids
+        ):
             findings.append(
                 _finding(
                     "NARRATIVE.CONTRACT.CULPRIT_POLICY_WITHOUT_CULPRIT_POV",
@@ -457,19 +471,23 @@ def _validate_culprit_pov_scene(
     active_identity_facts = viewpoint_rule.culprit_identity_fact_ids & scene.pov_conscious_fact_ids
     hidden_identity_facts = active_identity_facts - scene.reader_exposed_fact_ids
 
-    if policy == "PRE_ACT_CONSCIOUSNESS" and active_identity_facts:
-        findings.append(
-            _finding(
-                "NARRATIVE.CULPRIT_POV.PRE_ACT_IDENTITY_ACTIVE",
-                (
-                    f"scene {scene.scene_id} uses PRE_ACT_CONSCIOUSNESS after culprit identity "
-                    "is consciously active"
-                ),
-                scene.scene_id,
-                viewpoint_rule.character_id,
-                *sorted(active_identity_facts),
-            )
+    if policy == "PRE_ACT_CONSCIOUSNESS":
+        active_awareness_facts = (
+            viewpoint_rule.culprit_act_awareness_fact_ids & scene.pov_conscious_fact_ids
         )
+        if active_awareness_facts:
+            findings.append(
+                _finding(
+                    "NARRATIVE.CULPRIT_POV.PRE_ACT_AWARENESS_ACTIVE",
+                    (
+                        f"scene {scene.scene_id} uses PRE_ACT_CONSCIOUSNESS after relevant "
+                        "culprit-act awareness is consciously active"
+                    ),
+                    scene.scene_id,
+                    viewpoint_rule.character_id,
+                    *sorted(active_awareness_facts),
+                )
+            )
         return
 
     if policy == "IDENTITY_KNOWN_TO_READER":
