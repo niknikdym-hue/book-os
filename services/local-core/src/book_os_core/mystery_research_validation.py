@@ -113,6 +113,8 @@ class ResearchLedgerResult:
     findings: tuple[ResearchFinding, ...]
     invalid_research_entity_ids: frozenset[str]
     affected_authority_entity_ids: frozenset[str]
+    evaluated_research_revision_refs: tuple[str, ...] = ()
+    next_recheck_epoch: int | None = None
 
     @property
     def passed(self) -> bool:
@@ -804,12 +806,15 @@ def evaluate_research_ledger(
     """Evaluate effective research authority plus freshness/evidence external state."""
     findings: list[ResearchFinding] = []
     invalid: set[str] = set()
+    evaluated_revision_refs: set[str] = set()
+    recheck_epochs: list[int] = []
     catalog = evidence_catalog or {}
     graph_stale = graph.stale_entities()
 
     for revision in graph.effective_heads():
         if revision.kind != "FICTION_RESEARCH_ITEM":
             continue
+        evaluated_revision_refs.add(revision.revision_ref)
         item = items_by_revision_id.get(revision.revision_id)
         if item is None:
             invalid.add(revision.entity_id)
@@ -841,6 +846,9 @@ def evaluate_research_ledger(
             )
             continue
 
+        if item.freshness_mode == "VALID_UNTIL" and item.fresh_until_epoch is not None:
+            recheck_epochs.append(item.fresh_until_epoch)
+
         validation = validate_fiction_research_item(
             item,
             evidence_catalog=catalog,
@@ -856,4 +864,6 @@ def evaluate_research_ledger(
         findings=tuple(findings),
         invalid_research_entity_ids=frozenset(invalid),
         affected_authority_entity_ids=affected,
+        evaluated_research_revision_refs=tuple(sorted(evaluated_revision_refs)),
+        next_recheck_epoch=min(recheck_epochs) if recheck_epochs else None,
     )
