@@ -472,7 +472,8 @@ def _research_gate(
     for entity_id in invalid_relevant:
         blockers.add(f"RESEARCH.INVALID:{entity_id}")
 
-    affected = research.affected_authority_entity_ids & relevant_authorities
+    affected_scope = relevant_authorities | frozenset({scene_revision.entity_id})
+    affected = research.affected_authority_entity_ids & affected_scope
     for entity_id in affected:
         blockers.add(f"RESEARCH.AFFECTS_AUTHORITY:{entity_id}")
 
