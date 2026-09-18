@@ -68,9 +68,7 @@ class CaseIntegrityResult:
 
     @property
     def blocking_findings(self) -> tuple[ValidationFinding, ...]:
-        return tuple(
-            finding for finding in self.findings if finding.severity == "BLOCKING"
-        )
+        return tuple(finding for finding in self.findings if finding.severity == "BLOCKING")
 
     @property
     def passed(self) -> bool:
@@ -179,9 +177,7 @@ def _validate_actor_timeline(
             by_actor[actor_id].append(event)
 
     for actor_id, actor_events in by_actor.items():
-        actor_events.sort(
-            key=lambda item: (item.start_second, item.end_second, item.event_id)
-        )
+        actor_events.sort(key=lambda item: (item.start_second, item.end_second, item.event_id))
         previous: CaseEvent | None = None
         for event in actor_events:
             if previous is None:
@@ -263,10 +259,7 @@ def _validate_knowledge(
             findings.append(
                 _finding(
                     "CASE.KNOWLEDGE.EVENT_MISSING",
-                    (
-                        "knowledge acquisition references missing event "
-                        f"{acquisition.event_id}"
-                    ),
+                    (f"knowledge acquisition references missing event {acquisition.event_id}"),
                     acquisition.character_id,
                     acquisition.fact_id,
                     acquisition.event_id,
@@ -344,9 +337,7 @@ def _clue_map(
     result: dict[str, ClueRecord] = {}
     for clue in clues:
         if not clue.clue_id:
-            findings.append(
-                _finding("CASE.CLUE.EMPTY_ID", "clue must have a non-empty clue_id")
-            )
+            findings.append(_finding("CASE.CLUE.EMPTY_ID", "clue must have a non-empty clue_id"))
             continue
         if clue.clue_id in result:
             findings.append(
@@ -415,17 +406,12 @@ def _validate_clue_dependencies(
         visit(clue_id, ())
 
 
-def _validate_reader_order_fields(
-    clue: ClueRecord, findings: list[ValidationFinding]
-) -> None:
+def _validate_reader_order_fields(clue: ClueRecord, findings: list[ValidationFinding]) -> None:
     if clue.exposure_event_id is None and clue.exposure_order is not None:
         findings.append(
             _finding(
                 "CASE.CLUE.EXPOSURE_EVENT_REQUIRED",
-                (
-                    f"clue {clue.clue_id} has exposure_order without an "
-                    "exposure_event_id"
-                ),
+                (f"clue {clue.clue_id} has exposure_order without an exposure_event_id"),
                 clue.clue_id,
             )
         )
@@ -433,10 +419,7 @@ def _validate_reader_order_fields(
         findings.append(
             _finding(
                 "CASE.CLUE.EXPOSURE_ORDER_MISSING",
-                (
-                    f"clue {clue.clue_id} has an exposure event but no reader "
-                    "exposure_order"
-                ),
+                (f"clue {clue.clue_id} has an exposure event but no reader exposure_order"),
                 clue.clue_id,
                 clue.exposure_event_id,
             )
@@ -453,10 +436,7 @@ def _validate_reader_order_fields(
         findings.append(
             _finding(
                 "CASE.CLUE.PAYOFF_ORDER_MISSING",
-                (
-                    f"clue {clue.clue_id} has a payoff event but no reader "
-                    "payoff_order"
-                ),
+                (f"clue {clue.clue_id} has a payoff event but no reader payoff_order"),
                 clue.clue_id,
                 clue.payoff_event_id,
             )
@@ -492,10 +472,7 @@ def _validate_clues(
             findings.append(
                 _finding(
                     "CASE.CLUE.ORIGIN_MISSING",
-                    (
-                        f"clue {clue.clue_id} references missing origin event "
-                        f"{clue.origin_event_id}"
-                    ),
+                    (f"clue {clue.clue_id} references missing origin event {clue.origin_event_id}"),
                     clue.clue_id,
                     clue.origin_event_id,
                 )
@@ -591,10 +568,7 @@ def _validate_clues(
             findings.append(
                 _finding(
                     "CASE.CLUE.DECISIVE_NO_PAYOFF",
-                    (
-                        f"decisive clue {clue.clue_id} has no "
-                        "payoff/recontextualization event"
-                    ),
+                    (f"decisive clue {clue.clue_id} has no payoff/recontextualization event"),
                     clue.clue_id,
                 )
             )
