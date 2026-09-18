@@ -46,7 +46,7 @@ Its authority kind is:
 
 `FICTION_RESEARCH_ITEM`
 
-Story authority binds to its exact accepted revision:
+Story authority binds to its exact accepted revision. Runtime ledger projections are also keyed by exact `revision_id`, never only by research entity ID, so an unaccepted working draft cannot displace the governing conclusion:
 
 `CaseSolution -> FictionResearchItem@revision`
 
@@ -91,11 +91,11 @@ The validator does not guess whether a fact is jurisdictional. Research decompos
 
 R2/R3/R4 accepted conclusions require exact shared evidence refs.
 
-Material evidence must include at least one `FULL_SOURCE_INSPECTED` source.
+Material evidence must include at least one `FULL_SOURCE_INSPECTED` source. Evidence catalog key, evidence identity and declared source relationship must all agree.
 
 A VERIFIED R2/R3/R4 conclusion must have active `SUPPORTS` evidence.
 
-For VERIFIED R3/R4 the deterministic minimum is:
+For VERIFIED R3/R4 — and for the real-world baseline of FICTIONALIZED R3/R4 — the deterministic minimum is:
 
 - one strong inspected PRIMARY supporting evidence; **or**
 - two independent inspected material sources of MODERATE/STRONG strength.
