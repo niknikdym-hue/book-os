@@ -137,6 +137,13 @@ def research_entity_id(research_id: str) -> str:
     return f"fiction-research:{research_id}"
 
 
+def _json_string_list(values: tuple[str, ...]) -> list[JSONValue]:
+    result: list[JSONValue] = []
+    for value in sorted(values):
+        result.append(value)
+    return result
+
+
 def research_item_payload(item: FictionResearchItem) -> dict[str, JSONValue]:
     """Canonical authority payload; shared evidence content is referenced, not copied."""
     return {
@@ -150,9 +157,9 @@ def research_item_payload(item: FictionResearchItem) -> dict[str, JSONValue]:
         "jurisdiction": item.jurisdiction,
         "time_period": item.time_period,
         "assumed_answer": item.assumed_answer,
-        "source_refs": sorted(item.source_refs),
-        "evidence_refs": sorted(item.evidence_refs),
-        "limitations": sorted(item.limitations),
+        "source_refs": _json_string_list(item.source_refs),
+        "evidence_refs": _json_string_list(item.evidence_refs),
+        "limitations": _json_string_list(item.limitations),
         "contradiction_resolution": item.contradiction_resolution,
         "intentional_fictionalization": item.intentional_fictionalization,
         "real_world_baseline": item.real_world_baseline,
