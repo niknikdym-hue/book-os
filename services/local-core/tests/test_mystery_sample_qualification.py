@@ -307,6 +307,7 @@ def test_material_editor_rewrite_can_qualify_final_sample_but_not_writer() -> No
         first,
         final_text_hash=_hash("human-rewritten-final"),
         post_writer_revision_class="MATERIAL",
+        post_writer_revision_ref="revision-evidence:human-material-rewrite:v1",
     )
     samples = (rewritten, *pack.samples[1:])
     evaluations = tuple(_evaluation(sample) for sample in samples)
@@ -475,6 +476,7 @@ def test_material_rewrite_never_sets_mys05_writer_qualified() -> None:
         pack.samples[0],
         final_text_hash=_hash("material-final"),
         post_writer_revision_class="MATERIAL",
+        post_writer_revision_ref="revision-evidence:material-rewrite:v1",
     )
     samples = (rewritten, *pack.samples[1:])
     revised_pack = replace(
