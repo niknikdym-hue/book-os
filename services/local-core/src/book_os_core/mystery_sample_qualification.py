@@ -140,7 +140,17 @@ def _finding(
 
 
 def _json_strings(values: tuple[str, ...]) -> list[JSONValue]:
-    return [value for value in sorted(values)]
+    result: list[JSONValue] = []
+    for value in sorted(values):
+        result.append(value)
+    return result
+
+
+def _json_objects(values: tuple[dict[str, JSONValue], ...]) -> list[JSONValue]:
+    result: list[JSONValue] = []
+    for value in values:
+        result.append(value)
+    return result
 
 
 def _valid_hash(value: str) -> bool:
@@ -202,11 +212,18 @@ def _representative_sample_ref(pack: RepresentativeSamplePack) -> str:
         "style_profile_ref": _style_ref(pack.style_profile),
         "writer": _writer_payload(pack.writer_candidate),
         "authority_revision_refs": _json_strings(pack.authority_revision_refs),
-        "samples": [_sample_payload(sample) for sample in sorted(pack.samples, key=lambda x: x.sample_id)],
-        "evaluations": [
-            _evaluation_payload(evaluation)
-            for evaluation in sorted(pack.evaluations, key=lambda x: x.sample_id)
-        ],
+        "samples": _json_objects(
+            tuple(
+                _sample_payload(sample)
+                for sample in sorted(pack.samples, key=lambda x: x.sample_id)
+            )
+        ),
+        "evaluations": _json_objects(
+            tuple(
+                _evaluation_payload(evaluation)
+                for evaluation in sorted(pack.evaluations, key=lambda x: x.sample_id)
+            )
+        ),
         "professional_benchmark": _benchmark_payload(pack.professional_benchmark),
     }
     return f"representative-sample:{content_hash(payload)}"
