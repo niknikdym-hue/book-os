@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": 2,
+  "revision": 3,
   "updated_at": "2026-09-18T00:00:00+00:00",
   "entries": [
     {
@@ -343,13 +343,13 @@
       "rule_id": "CQ-RU-TERM-007",
       "value": "опора",
       "match_type": "TERM",
-      "action": "WARN",
+      "action": "BLOCK",
       "profiles": [
         "BOOK_PROSE",
         "AUDIOBOOK_PRE_SYNTHESIS"
       ],
       "origin": "SYSTEM",
-      "rationale": "Нормальное слово, но в абстрактной self-help риторике часто становится пустой метафорой.",
+      "rationale": "Владелец определил слово как мусорное; обычные словоформы блокируются отдельным системным wordform-правилом.",
       "created_at": null,
       "updated_at": null
     },
@@ -406,6 +406,62 @@
       ],
       "origin": "SYSTEM",
       "rationale": "Часто используется как шаблонная эмоциональная формула вместо точного описания реакции или результата.",
+      "created_at": null,
+      "updated_at": null
+    },
+    {
+      "rule_id": "CQ-RU-WORDFORM-001",
+      "value": "\\\\bопор(?:а|ы|е|у|ой|ою|ам|ами|ах)?\\\\b",
+      "match_type": "REGEX",
+      "action": "BLOCK",
+      "profiles": [
+        "BOOK_PROSE",
+        "AUDIOBOOK_PRE_SYNTHESIS"
+      ],
+      "origin": "SYSTEM",
+      "rationale": "Словоформы запрещённого слова «опора»; производные слова вроде «опорный» не включаются.",
+      "created_at": null,
+      "updated_at": null
+    },
+    {
+      "rule_id": "CQ-RU-WORDFORM-002",
+      "value": "\\\\bбольше\\\\s+не\\\\s+обязан(?:а|о|ы)?\\\\b",
+      "match_type": "REGEX",
+      "action": "BLOCK",
+      "profiles": [
+        "BOOK_PROSE",
+        "AUDIOBOOK_PRE_SYNTHESIS"
+      ],
+      "origin": "SYSTEM",
+      "rationale": "Родовые и числовые формы запрещённой формулы «больше не обязан».",
+      "created_at": null,
+      "updated_at": null
+    },
+    {
+      "rule_id": "CQ-RU-WORDFORM-003",
+      "value": "\\\\bотклик(?:нуться|нулся|нулась|нулось|нулись|нусь|нешься|нется|немся|нетесь|нутся|нись|нитесь)\\\\b",
+      "match_type": "REGEX",
+      "action": "BLOCK",
+      "profiles": [
+        "BOOK_PROSE",
+        "AUDIOBOOK_PRE_SYNTHESIS"
+      ],
+      "origin": "SYSTEM",
+      "rationale": "Обычные словоформы запрещённой шаблонной формулы с глаголом «откликнуться».",
+      "created_at": null,
+      "updated_at": null
+    },
+    {
+      "rule_id": "CQ-RU-WORDFORM-004",
+      "value": "\\\\bбез\\\\s+лишн(?:ей\\\\s+теории|их\\\\s+теорий)\\\\b",
+      "match_type": "REGEX",
+      "action": "BLOCK",
+      "profiles": [
+        "BOOK_PROSE",
+        "AUDIOBOOK_PRE_SYNTHESIS"
+      ],
+      "origin": "SYSTEM",
+      "rationale": "Числовые словоформы запрещённой формулы «без лишней теории».",
       "created_at": null,
       "updated_at": null
     }
