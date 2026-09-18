@@ -370,7 +370,7 @@ def test_freshness_expiry_invalidates_research_and_all_effective_dependents() ->
     assert graph.effective(research_revision.entity_id) == research_revision
     before = evaluate_research_ledger(
         graph,
-        items_by_entity_id={research_revision.entity_id: item},
+        items_by_revision_id={research_revision.revision_id: item},
         evidence_catalog=evidence,
         now_epoch=NOW,
     )
@@ -378,7 +378,7 @@ def test_freshness_expiry_invalidates_research_and_all_effective_dependents() ->
 
     after = evaluate_research_ledger(
         graph,
-        items_by_entity_id={research_revision.entity_id: item},
+        items_by_revision_id={research_revision.revision_id: item},
         evidence_catalog=evidence,
         now_epoch=NOW + 101,
     )
@@ -415,7 +415,7 @@ def test_superseded_shared_evidence_invalidates_dependents_without_changing_stor
     inactive_catalog = {"ev-1": _primary_strong(active=False)}
     result = evaluate_research_ledger(
         graph,
-        items_by_entity_id={research_revision.entity_id: item},
+        items_by_revision_id={research_revision.revision_id: item},
         evidence_catalog=inactive_catalog,
         now_epoch=NOW,
     )
@@ -517,3 +517,43 @@ def test_research_approval_is_fail_closed_and_bound_to_exact_item_hash() -> None
             actor_kind="HUMAN",
             now_epoch=NOW,
         )
+
+
+def test_working_research_draft_does_not_replace_effective_ledger_projection() -> None:
+    graph = MysteryAuthorityGraph()
+    evidence = {"ev-1": _primary_strong()}
+    item_v1 = _good_r3_item(assumed_answer="accepted v1")
+    revision_v1 = _approve_research_in_graph(
+        graph,
+        create_fiction_research_revision(item_v1),
+        item_v1,
+        evidence_catalog=evidence,
+    )
+
+    item_v2 = _good_r3_item(assumed_answer="working draft v2")
+    draft_v2 = revise_fiction_research_revision(revision_v1, item_v2)
+    graph.register_head(draft_v2)
+
+    result = evaluate_research_ledger(
+        graph,
+        items_by_revision_id={revision_v1.revision_id: item_v1},
+        evidence_catalog=evidence,
+        now_epoch=NOW,
+    )
+
+    assert result.passed
+    assert graph.effective(revision_v1.entity_id) == revision_v1
+    assert graph.latest(revision_v1.entity_id) == draft_v2
+
+
+def test_evidence_catalog_key_must_match_snapshot_identity() -> None:
+    item = _good_r3_item()
+    mismatched = _primary_strong(evidence_ref="ev-other")
+    result = validate_fiction_research_item(
+        item,
+        evidence_catalog={"ev-1": mismatched},
+        now_epoch=NOW,
+    )
+
+    assert "RESEARCH.EVIDENCE.CATALOG_ID_MISMATCH" in _codes(result)
+    assert not result.passed
