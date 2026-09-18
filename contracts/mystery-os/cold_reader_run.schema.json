@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/cold_reader_run.schema.json",
+  "title": "MYSTERY OS Cold Reader Checkpoint",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "checkpoint",
+    "manuscript_snapshot_ref",
+    "evaluation_ref",
+    "evaluator_identity",
+    "private_case_solution_exposed",
+    "private_spoiler_authority_refs",
+    "engagement_state"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "checkpoint": {
+      "enum": [
+        "EARLY",
+        "QUARTER",
+        "MIDPOINT",
+        "THREE_QUARTER",
+        "PRE_REVEAL",
+        "POST_REVEAL"
+      ]
+    },
+    "manuscript_snapshot_ref": {"type": "string", "minLength": 1},
+    "evaluation_ref": {"type": "string", "minLength": 1},
+    "evaluator_identity": {"type": "string", "minLength": 1},
+    "private_case_solution_exposed": {"type": "boolean"},
+    "private_spoiler_authority_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "maxItems": 0
+    },
+    "top_suspect_ids": {"type": "array", "items": {"type": "string"}},
+    "hypothesis_refs": {"type": "array", "items": {"type": "string"}},
+    "perceived_clue_refs": {"type": "array", "items": {"type": "string"}},
+    "confusion_point_refs": {"type": "array", "items": {"type": "string"}},
+    "predicted_twist_refs": {"type": "array", "items": {"type": "string"}},
+    "engagement_state": {"enum": ["ENGAGED", "ATTENTION", "BREAKDOWN"]},
+    "solution_inferable": {"type": ["boolean", "null"]},
+    "solution_earned": {"type": ["boolean", "null"]},
+    "late_invention_detected": {"type": ["boolean", "null"]},
+    "stronger_alternative_detected": {"type": ["boolean", "null"]}
+  },
+  "additionalProperties": false
+}
