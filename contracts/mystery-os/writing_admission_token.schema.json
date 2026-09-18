@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/writing_admission_token.schema.json",
+  "title": "MYSTERY OS Writing Admission Token",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "admission_id",
+    "book_id",
+    "scene_id",
+    "production_mode",
+    "scene_revision_ref",
+    "dependency_fingerprint",
+    "authority_revision_refs",
+    "evaluation_refs"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "admission_id": {"type": "string", "minLength": 1},
+    "book_id": {"type": "string", "minLength": 1},
+    "scene_id": {"type": "string", "minLength": 1},
+    "production_mode": {"enum": ["REPRESENTATIVE_SAMPLE", "MASS_DRAFT"]},
+    "scene_revision_ref": {"type": "string", "minLength": 1},
+    "dependency_fingerprint": {"type": "string", "minLength": 64, "maxLength": 64},
+    "authority_revision_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "evaluation_refs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "not_after_epoch": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}
