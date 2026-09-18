@@ -186,12 +186,30 @@ def _final_pack(
         manuscript_snapshot_ref=SNAPSHOT_REF,
         manuscript_snapshot_hash=SNAPSHOT_HASH,
         authority_revision_refs=AUTHORITY_REFS,
+        private_spoiler_authority_refs=(CASE_REF,),
         writer_executor_identity=WRITER_ID,
         dimension_evidence=dimensions,
         cold_reader_checkpoints=cold_rows,
         adversarial_reconstruction=adversary,
     )
     return pack, selected_policy
+
+
+def _verified_evaluation_refs(pack: MysteryBenchPack) -> frozenset[str]:
+    values = {
+        evidence.evaluation_ref
+        for evidence in pack.dimension_evidence
+        if evidence.evaluation_ref
+    }
+    values.update(
+        checkpoint.evaluation_ref
+        for checkpoint in pack.cold_reader_checkpoints
+        if checkpoint.evaluation_ref
+    )
+    if pack.adversarial_reconstruction is not None:
+        values.add(pack.adversarial_reconstruction.reconstruction_ref)
+        values.add(pack.adversarial_reconstruction.comparison_ref)
+    return frozenset(values)
 
 
 def _evaluate(
@@ -201,6 +219,8 @@ def _evaluate(
     current_snapshot_ref: str = SNAPSHOT_REF,
     current_snapshot_hash: str = SNAPSHOT_HASH,
     authority_refs: tuple[str, ...] = AUTHORITY_REFS,
+    verified_evaluation_refs: frozenset[str] | None = None,
+    verified_human_disposition_refs: frozenset[str] = frozenset(),
 ):
     return evaluate_mystery_bench(
         pack=pack,
@@ -208,6 +228,12 @@ def _evaluate(
         current_manuscript_snapshot_ref=current_snapshot_ref,
         current_manuscript_snapshot_hash=current_snapshot_hash,
         current_authority_revision_refs=authority_refs,
+        verified_evaluation_refs=(
+            verified_evaluation_refs
+            if verified_evaluation_refs is not None
+            else _verified_evaluation_refs(pack)
+        ),
+        verified_human_disposition_refs=verified_human_disposition_refs,
     )
 
 
@@ -279,7 +305,13 @@ def test_major_gap_requires_explicit_human_disposition() -> None:
         else row
         for row in pack.dimension_evidence
     )
-    allowed = _evaluate(replace(pack, dimension_evidence=disposed), policy)
+    allowed = _evaluate(
+        replace(pack, dimension_evidence=disposed),
+        policy,
+        verified_human_disposition_refs=frozenset(
+            {"human-disposition:prose-voice:v1"}
+        ),
+    )
     assert allowed.qualified
 
 
@@ -381,7 +413,7 @@ def test_adversarial_reconstruction_is_blind_then_compared_to_accepted_case() ->
 
     result = _evaluate(pack, policy)
 
-    assert "MYSTERYBENCH.ADVERSARIAL.CASE_SOLUTION_IN_BLIND_INPUT" in _codes(result)
+    assert "MYSTERYBENCH.ADVERSARIAL.PRIVATE_AUTHORITY_IN_BLIND_INPUT" in _codes(result)
 
 
 def test_adversarial_case_defects_block_final_bench() -> None:
@@ -460,6 +492,7 @@ def test_midbook_requires_only_midbook_dimensions_and_checkpoints_by_default() -
         manuscript_snapshot_ref=SNAPSHOT_REF,
         manuscript_snapshot_hash=SNAPSHOT_HASH,
         authority_revision_refs=AUTHORITY_REFS,
+        private_spoiler_authority_refs=(CASE_REF,),
         writer_executor_identity=WRITER_ID,
         dimension_evidence=dimensions,
         cold_reader_checkpoints=cold,
@@ -484,6 +517,7 @@ def test_mysterybench_ref_is_version_bound_to_policy_and_evidence() -> None:
         current_manuscript_snapshot_ref=SNAPSHOT_REF,
         current_manuscript_snapshot_hash=SNAPSHOT_HASH,
         current_authority_revision_refs=AUTHORITY_REFS,
+        verified_evaluation_refs=_verified_evaluation_refs(pack),
     )
     assert verified.valid
 
@@ -495,9 +529,60 @@ def test_mysterybench_ref_is_version_bound_to_policy_and_evidence() -> None:
         current_manuscript_snapshot_ref=SNAPSHOT_REF,
         current_manuscript_snapshot_hash=SNAPSHOT_HASH,
         current_authority_revision_refs=AUTHORITY_REFS,
+        verified_evaluation_refs=_verified_evaluation_refs(pack),
     )
     assert not changed.valid
     assert changed.reason in {
         "CURRENT_MYSTERYBENCH_BLOCKED",
         "MYSTERYBENCH_SNAPSHOT_CHANGED",
     }
+
+
+def test_unverified_evaluation_ref_cannot_be_used_as_bookbench_evidence() -> None:
+    pack, policy = _final_pack()
+    verified = set(_verified_evaluation_refs(pack))
+    target = next(
+        row for row in pack.dimension_evidence if row.dimension == "PROSE_VOICE"
+    )
+    verified.remove(target.evaluation_ref)
+
+    result = _evaluate(
+        pack,
+        policy,
+        verified_evaluation_refs=frozenset(verified),
+    )
+
+    assert "MYSTERYBENCH.EVIDENCE.REF_UNVERIFIED" in _codes(result)
+    assert not result.qualified
+
+
+def test_fake_human_disposition_string_does_not_clear_major_gap() -> None:
+    pack, policy = _final_pack()
+    dimensions = tuple(
+        replace(
+            row,
+            status="MAJOR_GAP",
+            human_disposition_ref="human:invented-by-model",
+        )
+        if row.dimension == "PROSE_VOICE"
+        else row
+        for row in pack.dimension_evidence
+    )
+    revised = replace(pack, dimension_evidence=dimensions)
+
+    result = _evaluate(revised, policy)
+
+    assert "MYSTERYBENCH.EVIDENCE.HUMAN_DISPOSITION_UNVERIFIED" in _codes(result)
+    assert not result.qualified
+
+
+def test_private_spoiler_authority_must_be_part_of_exact_authority_snapshot() -> None:
+    pack, policy = _final_pack()
+    revised = replace(
+        pack,
+        private_spoiler_authority_refs=(CASE_REF, "reveal-plan@private"),
+    )
+
+    result = _evaluate(revised, policy)
+
+    assert "MYSTERYBENCH.AUTHORITY.PRIVATE_SPOILER_NOT_IN_SNAPSHOT" in _codes(result)
