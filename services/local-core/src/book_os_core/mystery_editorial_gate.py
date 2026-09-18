@@ -444,17 +444,16 @@ def _research_gate(
 
 def _anti_cliche_gate(readiness: ExternalWritingReadiness) -> GateRecord:
     unresolved = _unique_nonempty(readiness.unresolved_blocked_cliche_codes)
-    blockers = tuple(f"ANTI_CLICHE.UNRESOLVED:{code}" for code in unresolved)
+    blockers = [f"ANTI_CLICHE.UNRESOLVED:{code}" for code in unresolved]
     evaluation_refs: tuple[str, ...] = ()
     if readiness.anti_cliche_evaluation_ref:
         evaluation_refs = (readiness.anti_cliche_evaluation_ref,)
-    elif unresolved:
-        payload: dict[str, JSONValue] = {"codes": _json_strings(unresolved)}
-        evaluation_refs = (f"anti-cliche:{content_hash(payload)}",)
+    else:
+        blockers.append("ANTI_CLICHE.EVALUATION_REF_MISSING")
     return GateRecord(
         gate_id="ANTI_CLICHE_EXTERNAL",
         status="BLOCKED" if blockers else "PASS",
-        blocking_findings=blockers,
+        blocking_findings=tuple(blockers),
         evaluation_refs=evaluation_refs,
     )
 
