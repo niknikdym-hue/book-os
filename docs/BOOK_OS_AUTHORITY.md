@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.7.2  
+**Version:** 0.7.3  
 **Date:** 2026-09-18  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
@@ -131,6 +131,42 @@ Across a series, books may share quality standards, voice constraints and delive
 - A technically correct manuscript that reads as template-filled nonfiction is not release-ready.
 
 This invariant strengthens the existing Series Production Discipline and Hard Anti-Clone rules; it does not replace them.
+
+## 1D. Pre-author whole-book QA invariant — ACCEPTED / NON-NEGOTIABLE
+
+This rule applies to **all nonfiction manuscripts produced or revised under BOOK OS rules**, including temporary manual/chat-assisted production while the BOOK OS application is not yet the execution environment.
+
+A completed manuscript must **not be presented to the human Author as author-ready, finished, checked or publication-ready immediately after drafting**. Before such presentation, BOOK OS must run a whole-manuscript **Pre-Author QA** against the exact candidate revision.
+
+Intermediate drafts may be shown only when the Author explicitly requests them or when they are clearly labeled as a working draft / diagnostic artifact rather than a completed manuscript.
+
+### Mandatory Pre-Author QA coverage
+
+The default whole-book check must cover, where applicable:
+
+- conformity with the human-approved Book Definition / Book Contract and Architecture;
+- target length and density, with no padding used to reach volume;
+- semantic repetition within chapters and across the whole manuscript;
+- repeated examples, mechanisms, conclusions, practical outputs and argument functions;
+- template reuse, repetitive composition, repeated openings/endings/transitions and other AI-prose pathologies;
+- the active Owner anti-junk lexicon, including covered Russian inflectional wordforms;
+- material factual claims, evidence quality, source coverage and provenance;
+- freshness of time-sensitive law, platform rules, interfaces, algorithms, market data and statistics;
+- target-market applicability where local law, platforms or commercial practice materially change the advice;
+- practical value and AI-substitution risk of chapters/sections;
+- cross-book overlap, protected series territories and cumulative exclusion requirements;
+- accidental leakage of internal editorial instructions, BOOK OS process language or production notes into reader-facing prose;
+- whole-book coherence, progression, transitions, unresolved contradictions and forgotten promises;
+- literary/style quality and consistency with the active Author / Series / Book Style Profile;
+- an adversarial whole-book pass whose purpose is to find reasons the manuscript is not yet ready.
+
+### Default repair loop
+
+If Pre-Author QA finds a blocking defect, the system must repair or rework the candidate and rerun the affected checks before presenting it as author-ready.
+
+Passing deterministic checks alone is insufficient. A manuscript with unresolved structural, evidentiary, stylistic, originality, series-overlap or practical-value defects is not author-ready.
+
+The human Author remains the final authority. Pre-Author QA does not approve the manuscript on the Author's behalf; it prevents avoidable draft-quality defects from being handed to the Author as if the manuscript were already ready for review.
 
 ### Current-best-methods rule
 
