@@ -70,17 +70,11 @@ def _approve_generic_in_graph(
     graph: MysteryAuthorityGraph, revision: MysteryAuthorityRevision
 ) -> MysteryAuthorityRevision:
     graph.register_head(revision)
-    revision = transition_authority_status(
-        revision, target_status="PROPOSED", actor_kind="AI"
-    )
+    revision = transition_authority_status(revision, target_status="PROPOSED", actor_kind="AI")
     graph.register_head(revision)
-    revision = transition_authority_status(
-        revision, target_status="REVIEWED", actor_kind="AI"
-    )
+    revision = transition_authority_status(revision, target_status="REVIEWED", actor_kind="AI")
     graph.register_head(revision)
-    revision = transition_authority_status(
-        revision, target_status="APPROVED", actor_kind="HUMAN"
-    )
+    revision = transition_authority_status(revision, target_status="APPROVED", actor_kind="HUMAN")
     graph.register_head(revision)
     return revision
 
@@ -232,9 +226,7 @@ def test_r2_qualified_uncertainty_is_allowed_only_when_logic_is_explicitly_safe(
     blocked = validate_fiction_research_item(
         unsafe, evidence_catalog={"ev": evidence}, now_epoch=NOW
     )
-    allowed = validate_fiction_research_item(
-        safe, evidence_catalog={"ev": evidence}, now_epoch=NOW
-    )
+    allowed = validate_fiction_research_item(safe, evidence_catalog={"ev": evidence}, now_epoch=NOW)
 
     assert "RESEARCH.DISPOSITION.R2_UNSAFE_QUALIFICATION" in _codes(blocked)
     assert not blocked.passed
@@ -494,7 +486,9 @@ def test_research_approval_is_fail_closed_and_bound_to_exact_item_hash() -> None
     )
     graph.register_head(revision)
 
-    with pytest.raises(InvalidAuthorityOperation, match="research authority cannot become APPROVED"):
+    with pytest.raises(
+        InvalidAuthorityOperation, match="research authority cannot become APPROVED"
+    ):
         transition_fiction_research_status(
             revision,
             invalid_item,
