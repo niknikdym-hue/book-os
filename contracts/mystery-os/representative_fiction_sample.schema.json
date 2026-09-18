@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/representative_fiction_sample.schema.json",
+  "title": "MYSTERY OS Representative Fiction Sample Pack",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "book_id",
+    "style_profile",
+    "writer_candidate",
+    "authority_revision_refs",
+    "samples",
+    "evaluations",
+    "professional_benchmark"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "book_id": {"type": "string", "minLength": 1},
+    "style_profile": {
+      "type": "object",
+      "required": ["profile_id", "content_hash", "status"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1},
+        "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "status": {"enum": ["DRAFT", "APPROVED"]}
+      },
+      "additionalProperties": false
+    },
+    "writer_candidate": {
+      "type": "object",
+      "required": [
+        "writer_candidate_id",
+        "executor_identity",
+        "provider",
+        "model",
+        "route_ref",
+        "prompt_ref"
+      ],
+      "properties": {
+        "writer_candidate_id": {"type": "string", "minLength": 1},
+        "executor_identity": {"type": "string", "minLength": 1},
+        "provider": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "route_ref": {"type": "string", "minLength": 1},
+        "prompt_ref": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "authority_revision_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "samples": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "sample_id",
+          "scene_id",
+          "scene_revision_ref",
+          "writing_admission_id",
+          "writer_candidate_id",
+          "writer_output_hash",
+          "final_text_hash",
+          "final_character_count",
+          "function_codes",
+          "post_writer_revision_class"
+        ],
+        "properties": {
+          "sample_id": {"type": "string", "minLength": 1},
+          "scene_id": {"type": "string", "minLength": 1},
+          "scene_revision_ref": {"type": "string", "minLength": 1},
+          "writing_admission_id": {"type": "string", "minLength": 1},
+          "writer_candidate_id": {"type": "string", "minLength": 1},
+          "writer_output_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "final_text_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "final_character_count": {"type": "integer", "minimum": 1},
+          "function_codes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "OPENING",
+                "INVESTIGATION_DIALOGUE",
+                "TENSION_MYSTIC",
+                "QUIET_CHARACTER"
+              ]
+            }
+          },
+          "post_writer_revision_class": {
+            "enum": ["NONE", "MECHANICAL", "MATERIAL"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evaluations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "sample_id",
+          "status",
+          "coverage_dimensions",
+          "evaluation_ref",
+          "evaluator_identity"
+        ],
+        "properties": {
+          "sample_id": {"type": "string", "minLength": 1},
+          "status": {
+            "enum": ["PASS", "MAJOR_GAP", "BLOCKING_GAP", "NOT_EVALUATED"]
+          },
+          "coverage_dimensions": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "NARRATIVE_CONTRACT",
+                "POV_INTEGRITY",
+                "VOICE_STYLE",
+                "DIALOGUE",
+                "SCENE_CAUSALITY",
+                "SUSPENSE_INFORMATION_CONTROL",
+                "ANTI_CLICHE",
+                "FACTUAL_REALISM",
+                "AUDIO_LISTENABILITY"
+              ]
+            }
+          },
+          "evaluation_ref": {"type": "string", "minLength": 1},
+          "evaluator_identity": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "professional_benchmark": {
+      "type": "object",
+      "required": [
+        "status",
+        "benchmark_ref",
+        "benchmark_set_ref",
+        "evaluator_identity"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["PASS", "MAJOR_GAP", "BLOCKING_GAP", "NOT_EVALUATED"]
+        },
+        "benchmark_ref": {"type": "string", "minLength": 1},
+        "benchmark_set_ref": {"type": "string", "minLength": 1},
+        "evaluator_identity": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
