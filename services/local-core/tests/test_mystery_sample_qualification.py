@@ -555,3 +555,26 @@ def test_unknown_runtime_codes_are_blocked_even_if_python_types_are_bypassed() -
     assert "SAMPLE.EVALUATION.STATUS_UNKNOWN" in codes
     assert "SAMPLE.EVALUATION.DIMENSION_UNKNOWN" in codes
     assert not result.representative_sample_qualified
+
+
+def test_writer_qualification_ref_changes_when_gate_policy_changes() -> None:
+    pack = _pack()
+    initial = _qualify(pack)
+    assert initial.writer_qualification_ref is not None
+
+    stricter_policy = replace(POLICY, min_characters_per_sample=1200)
+    current = _qualify(pack, policy=stricter_policy)
+    assert current.writer_qualified
+    assert current.writer_qualification_ref is not None
+    assert current.writer_qualification_ref != initial.writer_qualification_ref
+
+    verification = verify_writer_qualification(
+        prior_writer_qualification_ref=initial.writer_qualification_ref,
+        pack=pack,
+        policy=stricter_policy,
+        current_style_profile=STYLE,
+        current_authority_revision_refs=AUTHORITY_REFS,
+        valid_admission_scene_refs=_admissions(pack),
+    )
+    assert not verification.valid
+    assert verification.reason == "QUALIFICATION_SNAPSHOT_CHANGED"
