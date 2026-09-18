@@ -152,6 +152,7 @@ class MysteryBenchPack:
     manuscript_snapshot_ref: str
     manuscript_snapshot_hash: str
     authority_revision_refs: tuple[str, ...]
+    private_spoiler_authority_refs: tuple[str, ...]
     writer_executor_identity: str
     dimension_evidence: tuple[MysteryDimensionEvidence, ...]
     cold_reader_checkpoints: tuple[ColdReaderCheckpoint, ...] = ()
@@ -370,6 +371,9 @@ def _pack_ref(
         "manuscript_snapshot_ref": pack.manuscript_snapshot_ref,
         "manuscript_snapshot_hash": pack.manuscript_snapshot_hash,
         "authority_revision_refs": _json_strings(pack.authority_revision_refs),
+        "private_spoiler_authority_refs": _json_strings(
+            pack.private_spoiler_authority_refs
+        ),
         "writer_executor_identity": pack.writer_executor_identity,
         "dimension_evidence": _json_objects(
             tuple(
@@ -392,14 +396,7 @@ def _validate_cold_reader(
     policy: MysteryBenchPolicy,
     findings: list[MysteryBenchFinding],
 ) -> str | None:
-    if not policy.require_cold_reader:
-        if pack.cold_reader_checkpoints:
-            findings.append(
-                _finding(
-                    "MYSTERYBENCH.COLD_READER.UNEXPECTED",
-                    "cold-reader evidence exists while policy disables the protocol",
-                )
-            )
+    if not policy.require_cold_reader and not pack.cold_reader_checkpoints:
         return None
 
     by_kind: dict[str, ColdReaderCheckpoint] = {}
@@ -523,14 +520,8 @@ def _validate_adversarial(
     findings: list[MysteryBenchFinding],
 ) -> str | None:
     evidence = pack.adversarial_reconstruction
-    if not _adversarial_required(policy):
-        if evidence is not None:
-            findings.append(
-                _finding(
-                    "MYSTERYBENCH.ADVERSARIAL.UNEXPECTED",
-                    "adversarial reconstruction exists while policy disables it",
-                )
-            )
+    required = _adversarial_required(policy)
+    if not required and evidence is None:
         return None
     if evidence is None:
         findings.append(
@@ -594,12 +585,20 @@ def _validate_adversarial(
                 evidence.accepted_case_solution_revision_ref,
             )
         )
-    if evidence.accepted_case_solution_revision_ref in evidence.blind_input_refs:
+    forbidden_blind_refs = set(pack.private_spoiler_authority_refs)
+    forbidden_blind_refs.add(evidence.accepted_case_solution_revision_ref)
+    contaminated_refs = sorted(
+        forbidden_blind_refs.intersection(evidence.blind_input_refs)
+    )
+    if contaminated_refs:
         findings.append(
             _finding(
-                "MYSTERYBENCH.ADVERSARIAL.CASE_SOLUTION_IN_BLIND_INPUT",
-                "private CaseSolution was included in blind reconstruction inputs",
-                evidence.accepted_case_solution_revision_ref,
+                "MYSTERYBENCH.ADVERSARIAL.PRIVATE_AUTHORITY_IN_BLIND_INPUT",
+                (
+                    "private spoiler authority was included in blind reconstruction "
+                    "inputs"
+                ),
+                *contaminated_refs,
             )
         )
     if evidence.reveal_order != "RECONSTRUCTION_THEN_CASE_SOLUTION":
@@ -642,6 +641,8 @@ def evaluate_mystery_bench(
     current_manuscript_snapshot_ref: str,
     current_manuscript_snapshot_hash: str,
     current_authority_revision_refs: tuple[str, ...],
+    verified_evaluation_refs: frozenset[str],
+    verified_human_disposition_refs: frozenset[str] = frozenset(),
 ) -> MysteryBenchResult:
     """Validate version-bound MysteryBench evidence without running any evaluator."""
     findings: list[MysteryBenchFinding] = []
@@ -697,6 +698,28 @@ def evaluate_mystery_bench(
                 "MysteryBench authority snapshot differs from current authority",
             )
         )
+
+    private_spoiler_refs = tuple(sorted(set(pack.private_spoiler_authority_refs)))
+    if len(private_spoiler_refs) != len(pack.private_spoiler_authority_refs):
+        findings.append(
+            _finding(
+                "MYSTERYBENCH.AUTHORITY.DUPLICATE_PRIVATE_SPOILER_REF",
+                "private spoiler authority refs contain duplicates",
+            )
+        )
+    unknown_private_refs = sorted(set(private_spoiler_refs) - set(authority_refs))
+    for private_ref in unknown_private_refs:
+        findings.append(
+            _finding(
+                "MYSTERYBENCH.AUTHORITY.PRIVATE_SPOILER_NOT_IN_SNAPSHOT",
+                (
+                    "private spoiler authority ref is absent from the exact "
+                    "MysteryBench authority snapshot"
+                ),
+                private_ref,
+            )
+        )
+
     if not pack.writer_executor_identity.strip():
         findings.append(
             _finding(
@@ -706,11 +729,45 @@ def evaluate_mystery_bench(
         )
 
     cold_ref = _validate_cold_reader(pack=pack, policy=policy, findings=findings)
+    for checkpoint in pack.cold_reader_checkpoints:
+        if (
+            checkpoint.evaluation_ref.strip()
+            and checkpoint.evaluation_ref not in verified_evaluation_refs
+        ):
+            findings.append(
+                _finding(
+                    "MYSTERYBENCH.COLD_READER.EVALUATION_REF_UNVERIFIED",
+                    (
+                        f"checkpoint {checkpoint.checkpoint} evaluation ref is not "
+                        "present in the verified evaluation catalog"
+                    ),
+                    checkpoint.checkpoint,
+                    checkpoint.evaluation_ref,
+                )
+            )
+
     adversarial_ref = _validate_adversarial(
         pack=pack,
         policy=policy,
         findings=findings,
     )
+    adversarial = pack.adversarial_reconstruction
+    if adversarial is not None:
+        for evidence_ref in (
+            adversarial.reconstruction_ref,
+            adversarial.comparison_ref,
+        ):
+            if evidence_ref.strip() and evidence_ref not in verified_evaluation_refs:
+                findings.append(
+                    _finding(
+                        "MYSTERYBENCH.ADVERSARIAL.EVALUATION_REF_UNVERIFIED",
+                        (
+                            "adversarial evidence ref is not present in the verified "
+                            "evaluation catalog"
+                        ),
+                        evidence_ref,
+                    )
+                )
 
     by_dimension: dict[str, MysteryDimensionEvidence] = {}
     evaluation_refs_seen: set[str] = set()
@@ -756,6 +813,18 @@ def evaluate_mystery_bench(
             )
         else:
             evaluation_refs_seen.add(evidence.evaluation_ref)
+            if evidence.evaluation_ref not in verified_evaluation_refs:
+                findings.append(
+                    _finding(
+                        "MYSTERYBENCH.EVIDENCE.REF_UNVERIFIED",
+                        (
+                            f"dimension {evidence.dimension} evaluation ref is not "
+                            "present in the verified evaluation catalog"
+                        ),
+                        evidence.dimension,
+                        evidence.evaluation_ref,
+                    )
+                )
 
         if evidence.bookbench_snapshot_ref != pack.manuscript_snapshot_ref:
             findings.append(
@@ -863,20 +932,33 @@ def evaluate_mystery_bench(
                     evidence.dimension,
                 )
             )
-        elif evidence.status == "MAJOR_GAP" and (
-            evidence.human_disposition_ref is None
-            or not evidence.human_disposition_ref.strip()
-        ):
-            findings.append(
-                _finding(
-                    "MYSTERYBENCH.EVIDENCE.MAJOR_UNDISPOSED",
-                    (
-                        f"dimension {evidence.dimension} has MAJOR gap without "
-                        "explicit human disposition"
-                    ),
-                    evidence.dimension,
+        elif evidence.status == "MAJOR_GAP":
+            if (
+                evidence.human_disposition_ref is None
+                or not evidence.human_disposition_ref.strip()
+            ):
+                findings.append(
+                    _finding(
+                        "MYSTERYBENCH.EVIDENCE.MAJOR_UNDISPOSED",
+                        (
+                            f"dimension {evidence.dimension} has MAJOR gap without "
+                            "explicit human disposition"
+                        ),
+                        evidence.dimension,
+                    )
                 )
-            )
+            elif evidence.human_disposition_ref not in verified_human_disposition_refs:
+                findings.append(
+                    _finding(
+                        "MYSTERYBENCH.EVIDENCE.HUMAN_DISPOSITION_UNVERIFIED",
+                        (
+                            f"dimension {evidence.dimension} human disposition ref "
+                            "is not present in verified human authority"
+                        ),
+                        evidence.dimension,
+                        evidence.human_disposition_ref,
+                    )
+                )
 
     for dimension in sorted(_required_dimensions(policy)):
         if dimension not in by_dimension:
@@ -950,6 +1032,8 @@ def verify_mystery_bench(
     current_manuscript_snapshot_ref: str,
     current_manuscript_snapshot_hash: str,
     current_authority_revision_refs: tuple[str, ...],
+    verified_evaluation_refs: frozenset[str],
+    verified_human_disposition_refs: frozenset[str] = frozenset(),
 ) -> MysteryBenchVerification:
     current = evaluate_mystery_bench(
         pack=pack,
@@ -957,6 +1041,8 @@ def verify_mystery_bench(
         current_manuscript_snapshot_ref=current_manuscript_snapshot_ref,
         current_manuscript_snapshot_hash=current_manuscript_snapshot_hash,
         current_authority_revision_refs=current_authority_revision_refs,
+        verified_evaluation_refs=verified_evaluation_refs,
+        verified_human_disposition_refs=verified_human_disposition_refs,
     )
     if not current.qualified:
         return MysteryBenchVerification(
