@@ -105,6 +105,7 @@ def _scene_contract(
         purpose="test the current suspect hypothesis under pressure",
         entering_state_ref="state:before",
         exiting_state_ref="state:after",
+        knowledge_state_ref="knowledge:lead@scene-01",
         state_change_codes=state_change_codes,
         mystery_question_refs=("question:who-called",),
         clue_operation_refs=("clue:c1:observe",),
@@ -248,6 +249,7 @@ def test_scene_requires_state_change_and_core_contract_fields() -> None:
     invalid_contract = replace(
         contract,
         purpose="",
+        knowledge_state_ref="",
         state_change_codes=(),
     )
 
@@ -255,6 +257,7 @@ def test_scene_requires_state_change_and_core_contract_fields() -> None:
 
     blockers = _blockers(result)
     assert "SCENE_CONTRACT.PURPOSE_MISSING" in blockers
+    assert "SCENE_CONTRACT.KNOWLEDGE_STATE_MISSING" in blockers
     assert "SCENE_CONTRACT.STATE_CHANGE_MISSING" in blockers
     assert "SCENE_REVISION.HASH_MISMATCH" in blockers
     assert not result.state.writing_allowed
@@ -608,3 +611,37 @@ def test_scene_entity_identity_is_bound_to_book_and_scene() -> None:
     blockers = _blockers(result)
     assert "SCENE_REVISION.WRONG_ENTITY" in blockers
     assert "SCENE_REVISION.HASH_MISMATCH" in blockers
+
+
+def test_invalid_research_bound_as_extra_scene_dependency_blocks_even_if_not_declared_required() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    research_entity = research_entity_id("late-realism")
+    _approve_in_graph(
+        graph,
+        create_authority_revision(
+            entity_id=research_entity,
+            kind="FICTION_RESEARCH_ITEM",
+            payload={"research_id": "late-realism", "marker": "effective"},
+        ),
+    )
+    graph.bind_dependency(
+        dependent_entity_id=scene_revision.entity_id,
+        upstream_entity_id=research_entity,
+        reason="scene acquired an additional factual dependency",
+    )
+    research = ResearchLedgerResult(
+        findings=(),
+        invalid_research_entity_ids=frozenset({research_entity}),
+        affected_authority_entity_ids=frozenset(),
+    )
+
+    result = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        research=research,
+    )
+
+    assert f"RESEARCH.INVALID:{research_entity}" in _blockers(result)
+    assert not result.state.writing_allowed
