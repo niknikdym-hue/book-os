@@ -38,6 +38,7 @@ class SceneContract:
     purpose: str
     entering_state_ref: str
     exiting_state_ref: str
+    knowledge_state_ref: str
     state_change_codes: tuple[str, ...]
     mystery_question_refs: tuple[str, ...] = ()
     clue_operation_refs: tuple[str, ...] = ()
@@ -139,6 +140,7 @@ def scene_contract_payload(contract: SceneContract) -> dict[str, JSONValue]:
         "purpose": contract.purpose,
         "entering_state_ref": contract.entering_state_ref,
         "exiting_state_ref": contract.exiting_state_ref,
+        "knowledge_state_ref": contract.knowledge_state_ref,
         "state_change_codes": _json_strings(contract.state_change_codes),
         "mystery_question_refs": _json_strings(contract.mystery_question_refs),
         "clue_operation_refs": _json_strings(contract.clue_operation_refs),
@@ -209,6 +211,7 @@ def _scene_structure_blockers(contract: SceneContract) -> tuple[str, ...]:
         ("PURPOSE", contract.purpose),
         ("ENTERING_STATE", contract.entering_state_ref),
         ("EXITING_STATE", contract.exiting_state_ref),
+        ("KNOWLEDGE_STATE", contract.knowledge_state_ref),
         ("TENSION_SOURCE", contract.tension_source),
     )
     for field_name, value in required_text:
@@ -410,10 +413,10 @@ def _research_gate(
     relevant_authorities = authority_evidence.bound_upstream_entity_ids
     blockers: set[str] = set()
 
-    invalid_required = (
-        research.invalid_research_entity_ids & required_research_entities
+    invalid_relevant = research.invalid_research_entity_ids & (
+        required_research_entities | relevant_authorities
     )
-    for entity_id in invalid_required:
+    for entity_id in invalid_relevant:
         blockers.add(f"RESEARCH.INVALID:{entity_id}")
 
     affected = research.affected_authority_entity_ids & relevant_authorities
@@ -428,7 +431,7 @@ def _research_gate(
                 f"{finding.code}|{finding.severity}|"
                 f"{'/'.join(sorted(finding.object_refs))}"
             )
-    for entity_id in sorted(invalid_required):
+    for entity_id in sorted(invalid_relevant):
         rows.append(f"invalid:{entity_id}")
     for entity_id in sorted(affected):
         rows.append(f"affected:{entity_id}")
