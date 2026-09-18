@@ -126,6 +126,18 @@ For high-value text/architecture decisions:
 
 The same model may be reused when no alternative exists, but the run must be independently prompted/configured and must never be treated as equivalent to independent multi-model evidence. High-stakes BookBench can require different providers when available.
 
+## 7A. Pre-author whole-book QA
+
+Before a completed nonfiction manuscript is presented to the Author as ready for review, the exact candidate revision must pass a whole-book Pre-Author QA.
+
+This is a default production gate, not an optional polish step. It applies to manuscripts produced inside BOOK OS and to manual/chat-assisted production that claims compliance with BOOK OS rules.
+
+The check must combine deterministic diagnostics with whole-book editorial review and, where applicable, evidence/freshness verification. It must cover the current Book Contract/Definition, approved Architecture, active Style Profile, series exclusion/canon rules, anti-junk rules, semantic and structural repetition, AI-prose pathologies, material claims/evidence, target-market applicability, practical value, internal-instruction leakage, coherence and adversarial readiness.
+
+Blocking findings must be repaired and the affected checks rerun before the manuscript is labeled author-ready.
+
+A working draft may be shown earlier only when the Author explicitly requests it or when it is clearly labeled as a draft/diagnostic artifact.
+
 ## 8. Human acceptance workflow
 
 ### Decision Inbox
