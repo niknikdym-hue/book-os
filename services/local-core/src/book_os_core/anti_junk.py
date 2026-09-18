@@ -251,9 +251,7 @@ class AntiJunkService:
                         }
                     )
                 start = index + max(1, len(needle))
-        for pattern_index, (pattern, value, kind) in enumerate(
-            _SYSTEM_WORDFORM_PATTERNS, start=1
-        ):
+        for pattern_index, (pattern, value, kind) in enumerate(_SYSTEM_WORDFORM_PATTERNS, start=1):
             for match in pattern.finditer(text):
                 findings.append(
                     {
