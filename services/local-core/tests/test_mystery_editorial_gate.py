@@ -40,17 +40,11 @@ def _approve_in_graph(
     graph: MysteryAuthorityGraph, revision: MysteryAuthorityRevision
 ) -> MysteryAuthorityRevision:
     graph.register_head(revision)
-    revision = transition_authority_status(
-        revision, target_status="PROPOSED", actor_kind="AI"
-    )
+    revision = transition_authority_status(revision, target_status="PROPOSED", actor_kind="AI")
     graph.register_head(revision)
-    revision = transition_authority_status(
-        revision, target_status="REVIEWED", actor_kind="AI"
-    )
+    revision = transition_authority_status(revision, target_status="REVIEWED", actor_kind="AI")
     graph.register_head(revision)
-    revision = transition_authority_status(
-        revision, target_status="APPROVED", actor_kind="HUMAN"
-    )
+    revision = transition_authority_status(revision, target_status="APPROVED", actor_kind="HUMAN")
     graph.register_head(revision)
     return revision
 
@@ -59,13 +53,9 @@ def _review_scene_in_graph(
     graph: MysteryAuthorityGraph, revision: MysteryAuthorityRevision
 ) -> MysteryAuthorityRevision:
     graph.register_head(revision)
-    revision = transition_scene_contract_status(
-        revision, target_status="PROPOSED", actor_kind="AI"
-    )
+    revision = transition_scene_contract_status(revision, target_status="PROPOSED", actor_kind="AI")
     graph.register_head(revision)
-    revision = transition_scene_contract_status(
-        revision, target_status="REVIEWED", actor_kind="AI"
-    )
+    revision = transition_scene_contract_status(revision, target_status="REVIEWED", actor_kind="AI")
     graph.register_head(revision)
     return revision
 
@@ -239,14 +229,12 @@ def _evaluate(
 
 
 def _blockers(result) -> set[str]:  # type: ignore[no-untyped-def]
-    return {
-        blocker
-        for gate in result.state.gates
-        for blocker in gate.blocking_findings
-    }
+    return {blocker for gate in result.state.gates for blocker in gate.blocking_findings}
 
 
-def test_reviewed_scene_can_receive_representative_sample_admission_without_human_scene_approval() -> None:
+def test_reviewed_scene_can_receive_representative_sample_admission_without_human_scene_approval() -> (
+    None
+):
     graph, policy, contract, scene_revision, _ = _setup()
 
     result = _evaluate(graph, policy, contract, scene_revision)
@@ -281,9 +269,7 @@ def test_scene_revision_must_be_reviewed_or_accepted() -> None:
     graph = MysteryAuthorityGraph()
     story = _approve_in_graph(
         graph,
-        create_authority_revision(
-            entity_id="story", kind="STORY_DEFINITION", payload={"v": 1}
-        ),
+        create_authority_revision(entity_id="story", kind="STORY_DEFINITION", payload={"v": 1}),
     )
     narrative = _approve_in_graph(
         graph,
@@ -293,9 +279,7 @@ def test_scene_revision_must_be_reviewed_or_accepted() -> None:
     )
     case = _approve_in_graph(
         graph,
-        create_authority_revision(
-            entity_id="case", kind="CASE_SOLUTION", payload={"v": 1}
-        ),
+        create_authority_revision(entity_id="case", kind="CASE_SOLUTION", payload={"v": 1}),
     )
     contract = _scene_contract()
     revision = create_scene_contract_revision(book_id="book-1", contract=contract)
@@ -331,7 +315,9 @@ def test_missing_exact_scene_dependency_blocks_before_writer_access() -> None:
     assert not result.state.writing_allowed
 
 
-def test_unaccepted_upstream_draft_does_not_invalidate_existing_token_but_accepted_change_does() -> None:
+def test_unaccepted_upstream_draft_does_not_invalidate_existing_token_but_accepted_change_does() -> (
+    None
+):
     graph, policy, contract, scene_revision, case_v1 = _setup()
     initial = _evaluate(graph, policy, contract, scene_revision)
     assert initial.token is not None
@@ -353,17 +339,11 @@ def test_unaccepted_upstream_draft_does_not_invalidate_existing_token_but_accept
     )
     assert while_draft.valid
 
-    case_v2 = transition_authority_status(
-        case_v2, target_status="PROPOSED", actor_kind="AI"
-    )
+    case_v2 = transition_authority_status(case_v2, target_status="PROPOSED", actor_kind="AI")
     graph.register_head(case_v2)
-    case_v2 = transition_authority_status(
-        case_v2, target_status="REVIEWED", actor_kind="AI"
-    )
+    case_v2 = transition_authority_status(case_v2, target_status="REVIEWED", actor_kind="AI")
     graph.register_head(case_v2)
-    case_v2 = transition_authority_status(
-        case_v2, target_status="APPROVED", actor_kind="HUMAN"
-    )
+    case_v2 = transition_authority_status(case_v2, target_status="APPROVED", actor_kind="HUMAN")
     graph.register_head(case_v2)
 
     after_acceptance = verify_writing_admission_token(
@@ -421,16 +401,11 @@ def test_case_or_narrative_blocker_prevents_admission() -> None:
     )
 
     assert "CASE:CASE.TRAVEL.IMPOSSIBLE" in _blockers(case_result)
-    assert (
-        "NARRATIVE:NARRATIVE.WITHHOLDING.CONSCIOUS_DECISIVE_FACT"
-        in _blockers(narrative_result)
-    )
+    assert "NARRATIVE:NARRATIVE.WITHHOLDING.CONSCIOUS_DECISIVE_FACT" in _blockers(narrative_result)
 
 
 def test_required_invalid_research_and_research_affected_case_block_scene() -> None:
-    graph, policy, contract, scene_revision, _ = _setup(
-        required_research_ids=("dispatch-rule",)
-    )
+    graph, policy, contract, scene_revision, _ = _setup(required_research_ids=("dispatch-rule",))
     research_entity = research_entity_id("dispatch-rule")
     invalid_required = ResearchLedgerResult(
         findings=(),
@@ -478,14 +453,9 @@ def test_anti_cliche_evaluation_is_mandatory_and_unresolved_blocked_device_block
         policy,
         contract,
         scene_revision,
-        readiness=_clean_readiness(
-            unresolved_blocked_cliche_codes=("CHEAP_TWIST.UNKNOWN_TWIN",)
-        ),
+        readiness=_clean_readiness(unresolved_blocked_cliche_codes=("CHEAP_TWIST.UNKNOWN_TWIN",)),
     )
-    assert (
-        "ANTI_CLICHE.UNRESOLVED:CHEAP_TWIST.UNKNOWN_TWIN"
-        in _blockers(unresolved)
-    )
+    assert "ANTI_CLICHE.UNRESOLVED:CHEAP_TWIST.UNKNOWN_TWIN" in _blockers(unresolved)
 
 
 def test_mass_draft_requires_representative_sample_and_writer_qualification() -> None:
@@ -543,7 +513,9 @@ def test_provider_execution_requires_route_execution_and_cost_authorization() ->
     assert admitted.state.writing_allowed
 
 
-def test_dependency_change_after_review_invalidates_old_token_even_if_new_dependency_is_valid() -> None:
+def test_dependency_change_after_review_invalidates_old_token_even_if_new_dependency_is_valid() -> (
+    None
+):
     graph, policy, contract, scene_revision, _ = _setup()
     initial = _evaluate(graph, policy, contract, scene_revision)
     assert initial.token is not None
@@ -637,7 +609,9 @@ def test_scene_entity_identity_is_bound_to_book_and_scene() -> None:
     assert "SCENE_REVISION.HASH_MISMATCH" in blockers
 
 
-def test_invalid_research_bound_as_extra_scene_dependency_blocks_even_if_not_declared_required() -> None:
+def test_invalid_research_bound_as_extra_scene_dependency_blocks_even_if_not_declared_required() -> (
+    None
+):
     graph, policy, contract, scene_revision, _ = _setup()
     research_entity = research_entity_id("late-realism")
     _approve_in_graph(
@@ -697,9 +671,7 @@ def test_narrative_evaluation_must_cover_the_exact_scene_scope() -> None:
 
 
 def test_relevant_research_snapshot_change_invalidates_existing_token() -> None:
-    graph, policy, contract, scene_revision, _ = _setup(
-        required_research_ids=("dispatch-rule",)
-    )
+    graph, policy, contract, scene_revision, _ = _setup(required_research_ids=("dispatch-rule",))
     entity_id = research_entity_id("dispatch-rule")
     research_v1 = ResearchLedgerResult(
         findings=(),
@@ -742,9 +714,7 @@ def test_relevant_research_snapshot_change_invalidates_existing_token() -> None:
 
 
 def test_research_recheck_deadline_bounds_admission_even_with_cached_green_ledger() -> None:
-    graph, policy, contract, scene_revision, _ = _setup(
-        required_research_ids=("dispatch-rule",)
-    )
+    graph, policy, contract, scene_revision, _ = _setup(required_research_ids=("dispatch-rule",))
     entity_id = research_entity_id("dispatch-rule")
     cached_green = ResearchLedgerResult(
         findings=(),
@@ -782,9 +752,7 @@ def test_research_recheck_deadline_bounds_admission_even_with_cached_green_ledge
 
     assert not verification.valid
     assert verification.reason == "CURRENT_GATE_BLOCKED"
-    assert f"RESEARCH.RECHECK_DUE:{entity_id}:{NOW + 10}" in _blockers(
-        verification.current_result
-    )
+    assert f"RESEARCH.RECHECK_DUE:{entity_id}:{NOW + 10}" in _blockers(verification.current_result)
     research_gate = next(
         gate
         for gate in verification.current_result.state.gates
