@@ -21,6 +21,7 @@ MysteryAuthorityKind: TypeAlias = Literal[
     "NARRATIVE_CONTRACT",
     "CASE_SOLUTION",
     "REALISM_PLAN",
+    "FICTION_RESEARCH_ITEM",
     "MYSTIC_RULE_SET",
     "CHARACTER_BIBLE",
     "CLUE_LEDGER",
@@ -297,6 +298,17 @@ class MysteryAuthorityGraph:
 
     def effective(self, entity_id: str) -> MysteryAuthorityRevision | None:
         return self._effective.get(entity_id)
+
+    def effective_heads(self) -> tuple[MysteryAuthorityRevision, ...]:
+        """Return governing accepted/locked authority revisions only."""
+        return tuple(self._effective.values())
+
+    def effective_dependencies_for(self, entity_id: str) -> tuple[AuthorityDependency, ...]:
+        """Return exact dependencies consumed by the governing accepted revision."""
+        effective = self._effective.get(entity_id)
+        if effective is None:
+            return ()
+        return self._dependencies_for_revision(effective)
 
     def head(self, entity_id: str) -> MysteryAuthorityRevision | None:
         """Return governing accepted authority when present, else the working revision."""
