@@ -62,7 +62,7 @@ Other fairness questions remain for MysteryBench / adversarial literary review.
 - narrative-device refs must be accepted by the contract;
 - bounded/explicit unreliable narration requires declared source, bounded domains and reader signals;
 - FIRST modes require FIRST grammatical person and THIRD_LIMITED modes require THIRD;
-- culprit POV requires an explicit policy; identity-concealment policies require explicit identity facts;
+- culprit POV requires an explicit policy; identity-focused policies require explicit identity facts, while PRE_ACT_CONSCIOUSNESS requires explicit relevant-act awareness facts;
 - reader knowledge checkpoints are derived in narrative order and never “forget” a fact deterministically.
 
 ## Planned finding families
@@ -76,6 +76,7 @@ Other fairness questions remain for MysteryBench / adversarial literary review.
 - `NARRATIVE.CONTRACT.MODE_PERSON_CONFLICT`
 - `NARRATIVE.CONTRACT.CULPRIT_POV_POLICY_MISSING`
 - `NARRATIVE.CONTRACT.CULPRIT_IDENTITY_FACT_MISSING`
+- `NARRATIVE.CONTRACT.CULPRIT_ACT_AWARENESS_FACT_MISSING`
 
 ### Scene/POV
 - `NARRATIVE.SCENE.DUPLICATE_ID`
@@ -99,7 +100,7 @@ Other fairness questions remain for MysteryBench / adversarial literary review.
 - `NARRATIVE.DEVICE.UNAPPROVED`
 - `NARRATIVE.CULPRIT_POV.IDENTITY_NOT_EXPOSED`
 - `NARRATIVE.CULPRIT_POV.IDENTITY_HIDDEN_WITHOUT_DECISION`
-- `NARRATIVE.CULPRIT_POV.PRE_ACT_IDENTITY_ACTIVE`
+- `NARRATIVE.CULPRIT_POV.PRE_ACT_AWARENESS_ACTIVE`
 - `NARRATIVE.CULPRIT_POV.FORMAL_FRAME_DEVICE_MISSING`
 
 ## Acceptance evidence
