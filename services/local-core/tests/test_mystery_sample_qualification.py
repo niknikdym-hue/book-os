@@ -147,10 +147,7 @@ def _pack(
 
 
 def _admissions(pack: RepresentativeSamplePack) -> dict[str, str]:
-    return {
-        sample.writing_admission_id: sample.scene_revision_ref
-        for sample in pack.samples
-    }
+    return {sample.writing_admission_id: sample.scene_revision_ref for sample in pack.samples}
 
 
 def _qualify(
@@ -295,9 +292,7 @@ def test_professional_benchmark_is_mandatory_and_independent() -> None:
     same_writer = _qualify(
         replace(
             pack,
-            professional_benchmark=_benchmark(
-                evaluator_identity=WRITER.executor_identity
-            ),
+            professional_benchmark=_benchmark(evaluator_identity=WRITER.executor_identity),
         )
     )
 
