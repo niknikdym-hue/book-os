@@ -101,9 +101,7 @@ class NarrativeValidationResult:
 
     @property
     def blocking_findings(self) -> tuple[NarrativeFinding, ...]:
-        return tuple(
-            finding for finding in self.findings if finding.severity == "BLOCKING"
-        )
+        return tuple(finding for finding in self.findings if finding.severity == "BLOCKING")
 
     @property
     def passed(self) -> bool:
@@ -226,8 +224,7 @@ def _validate_contract(
         )
 
     policy_overlap = (
-        contract.allowed_withholding_mechanisms
-        & contract.prohibited_withholding_mechanisms
+        contract.allowed_withholding_mechanisms & contract.prohibited_withholding_mechanisms
     )
     if policy_overlap:
         findings.append(
@@ -318,9 +315,7 @@ def _unique_scenes(
     )
 
 
-def _person_is_allowed(
-    contract_person: GrammaticalPerson, scene_person: ScenePerson
-) -> bool:
+def _person_is_allowed(contract_person: GrammaticalPerson, scene_person: ScenePerson) -> bool:
     return contract_person == "MIXED" or contract_person == scene_person
 
 
@@ -412,8 +407,7 @@ def _validate_withholding(
     if viewpoint_rule is not None:
         hidden_protected = (
             viewpoint_rule.protected_fact_ids
-            & scene.pov_conscious_fact_ids
-            - scene.reader_exposed_fact_ids
+            & scene.pov_conscious_fact_ids - scene.reader_exposed_fact_ids
         )
         for fact_id in sorted(hidden_protected):
             findings.append(
@@ -431,9 +425,7 @@ def _validate_withholding(
 
     silently_hidden_decisive = (
         decisive_fact_ids
-        & scene.pov_conscious_fact_ids
-        - scene.reader_exposed_fact_ids
-        - decisions_by_fact.keys()
+        & scene.pov_conscious_fact_ids - scene.reader_exposed_fact_ids - decisions_by_fact.keys()
     )
     for fact_id in sorted(silently_hidden_decisive):
         findings.append(
@@ -462,9 +454,7 @@ def _validate_culprit_pov_scene(
     if policy is None:
         return
 
-    active_identity_facts = (
-        viewpoint_rule.culprit_identity_fact_ids & scene.pov_conscious_fact_ids
-    )
+    active_identity_facts = viewpoint_rule.culprit_identity_fact_ids & scene.pov_conscious_fact_ids
     hidden_identity_facts = active_identity_facts - scene.reader_exposed_fact_ids
 
     if policy == "PRE_ACT_CONSCIOUSNESS" and active_identity_facts:
@@ -499,9 +489,7 @@ def _validate_culprit_pov_scene(
         return
 
     if policy == "IDENTITY_CONCEALED_SEMANTICALLY_HONEST":
-        decisions_by_fact = {
-            decision.fact_id: decision for decision in scene.withholding_decisions
-        }
+        decisions_by_fact = {decision.fact_id: decision for decision in scene.withholding_decisions}
         for fact_id in sorted(hidden_identity_facts):
             if fact_id not in decisions_by_fact:
                 findings.append(
@@ -519,9 +507,7 @@ def _validate_culprit_pov_scene(
         return
 
     if policy == "FORMALLY_LIMITED_FRAME":
-        approved_frame_refs = (
-            scene.narrative_device_refs & contract.accepted_narrative_device_refs
-        )
+        approved_frame_refs = scene.narrative_device_refs & contract.accepted_narrative_device_refs
         if not approved_frame_refs:
             findings.append(
                 _finding(
@@ -633,10 +619,7 @@ def _validate_scene(
             findings.append(
                 _finding(
                     "NARRATIVE.POV.KNOWLEDGE_STATE_MISSING",
-                    (
-                        f"scene {scene.scene_id} has no authoritative character "
-                        "knowledge snapshot"
-                    ),
+                    (f"scene {scene.scene_id} has no authoritative character knowledge snapshot"),
                     scene.scene_id,
                 )
             )
@@ -656,9 +639,7 @@ def _validate_scene(
                 )
 
     if contract.restrict_reader_to_pov_knowledge:
-        permitted_reader_facts = (
-            scene.pov_known_fact_ids | scene.externally_observable_fact_ids
-        )
+        permitted_reader_facts = scene.pov_known_fact_ids | scene.externally_observable_fact_ids
         leaked_reader_facts = scene.reader_exposed_fact_ids - permitted_reader_facts
         if leaked_reader_facts:
             findings.append(
@@ -666,17 +647,14 @@ def _validate_scene(
                     "NARRATIVE.READER.KNOWLEDGE_LEAK",
                     (
                         f"scene {scene.scene_id} exposes facts outside POV knowledge or "
-                        "declared external observation: "
-                        + ", ".join(sorted(leaked_reader_facts))
+                        "declared external observation: " + ", ".join(sorted(leaked_reader_facts))
                     ),
                     scene.scene_id,
                     *sorted(leaked_reader_facts),
                 )
             )
 
-    unapproved_devices = (
-        scene.narrative_device_refs - contract.accepted_narrative_device_refs
-    )
+    unapproved_devices = scene.narrative_device_refs - contract.accepted_narrative_device_refs
     if unapproved_devices:
         findings.append(
             _finding(
