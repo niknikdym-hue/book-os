@@ -1,7 +1,7 @@
 # BOOK OS — PROJECT AUTHORITY
 
 **Status:** ACTIVE AUTHORITY  
-**Version:** 0.7.4  
+**Version:** 0.7.5  
 **Date:** 2026-09-18  
 **Project:** BOOK OS  
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
@@ -154,11 +154,28 @@ The default whole-book check must cover, where applicable:
 - freshness of time-sensitive law, platform rules, interfaces, algorithms, market data and statistics;
 - target-market applicability where local law, platforms or commercial practice materially change the advice;
 - practical value and AI-substitution risk of chapters/sections;
+- for practical nonfiction, **worked-example teaching coverage**: major methods and decisions must be demonstrated through enough concrete worked material for the reader to distinguish weak execution from strong execution and understand why; acceptable forms include before/after fragments, strong/weak variants, diagnostic breakdowns, worked cases, counterexamples, decision walkthroughs and annotated samples; a manuscript made mostly of abstract advice plus brief “for example” mentions does not satisfy this requirement;
 - cross-book overlap, protected series territories and cumulative exclusion requirements;
 - **zero-tolerance service/editorial-note leakage check**: reader-facing prose must contain no internal editorial instructions, author/editor reminders, production notes, QA notes, revision instructions, TODO/FIXME markers, placeholders, status labels, future-edition reminders, source-verification reminders, BOOK OS process language or other text addressed to the production team rather than the reader;
 - whole-book coherence, progression, transitions, unresolved contradictions and forgotten promises;
 - literary/style quality and consistency with the active Author / Series / Book Style Profile;
 - an adversarial whole-book pass whose purpose is to find reasons the manuscript is not yet ready.
+
+### Worked-example teaching rule for practical nonfiction
+
+Practical nonfiction must teach through **demonstration and analysis**, not explanation alone.
+
+For each major method, decision or recurring reader error, the whole-book QA must ask whether the reader has enough concrete material to see:
+
+- what a weak / mistaken version looks like;
+- what a stronger version looks like or how the situation should be rebuilt;
+- which specific differences matter;
+- why those differences change the result;
+- how the reader can transfer the reasoning to a new situation.
+
+The form must follow the material. BOOK OS must **not** impose one repeated “bad example → good example → checklist” template across chapters. Different sections may use a worked case, annotated fragment, before/after rewrite, diagnostic comparison, counterexample, scenario, metric interpretation, dialogue analysis or another form justified by the subject.
+
+A passing manuscript may not rely on abstract instruction with occasional one-line examples where the reader still cannot observe the method in action.
 
 ### Service/editorial-note zero-tolerance rule
 
