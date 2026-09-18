@@ -8,11 +8,7 @@ from book_os_core.anti_junk import AntiJunkService
 
 
 def _banned_matches(service: AntiJunkService, text: str) -> list[str]:
-    return [
-        str(hit["match"])
-        for hit in service.scan(text)
-        if hit["kind"] == "BANNED_TEMPLATE"
-    ]
+    return [str(hit["match"]) for hit in service.scan(text) if hit["kind"] == "BANNED_TEMPLATE"]
 
 
 @pytest.mark.parametrize(
@@ -40,8 +36,6 @@ def test_owner_requested_junk_wordforms_are_blocked(tmp_path: Path, text: str) -
         "Редактор получил отклик читателя.",
     ],
 )
-def test_wordform_rules_do_not_expand_to_derivational_relatives(
-    tmp_path: Path, text: str
-) -> None:
+def test_wordform_rules_do_not_expand_to_derivational_relatives(tmp_path: Path, text: str) -> None:
     service = AntiJunkService(tmp_path)
     assert not _banned_matches(service, text)
