@@ -108,6 +108,7 @@ class WritingAdmissionToken:
     dependency_fingerprint: str
     authority_revision_refs: tuple[str, ...]
     evaluation_refs: tuple[str, ...]
+    not_after_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -371,15 +372,20 @@ def _case_gate(case_integrity: CaseIntegrityResult) -> GateRecord:
     )
 
 
-def _narrative_gate(narrative: NarrativeValidationResult) -> GateRecord:
-    blockers = tuple(
-        sorted(
-            {
-                f"NARRATIVE:{finding.code}"
-                for finding in narrative.blocking_findings
-            }
-        )
-    )
+def _narrative_gate(
+    narrative: NarrativeValidationResult,
+    *,
+    scene_id: str,
+) -> GateRecord:
+    blockers_set = {
+        f"NARRATIVE:{finding.code}" for finding in narrative.blocking_findings
+    }
+    if not any(
+        checkpoint.scene_id == scene_id
+        for checkpoint in narrative.reader_checkpoints
+    ):
+        blockers_set.add(f"NARRATIVE.SCENE_NOT_EVALUATED:{scene_id}")
+    blockers = tuple(sorted(blockers_set))
     rows = [
         *(
             f"{finding.code}|{finding.severity}|{'/'.join(sorted(finding.object_refs))}"
@@ -400,21 +406,68 @@ def _narrative_gate(narrative: NarrativeValidationResult) -> GateRecord:
     )
 
 
+@dataclass(frozen=True)
+class _ResearchGateEvidence:
+    record: GateRecord
+    not_after_epoch: int | None
+
+
+def _relevant_research_entities(
+    *,
+    graph: MysteryAuthorityGraph,
+    contract: SceneContract,
+    scene_revision: MysteryAuthorityRevision,
+    authority_evidence: _AuthorityGateEvidence,
+) -> frozenset[str]:
+    relevant: set[str] = {
+        research_entity_id(research_id)
+        for research_id in contract.required_research_ids
+    }
+    pending = list(authority_evidence.bound_upstream_entity_ids)
+    visited: set[str] = set()
+
+    for binding in graph.dependencies_for(scene_revision.entity_id):
+        if binding.upstream_entity_id.startswith("fiction-research:"):
+            relevant.add(binding.upstream_entity_id)
+
+    while pending:
+        entity_id = pending.pop()
+        if entity_id in visited:
+            continue
+        visited.add(entity_id)
+        if entity_id.startswith("fiction-research:"):
+            relevant.add(entity_id)
+            continue
+        for binding in graph.effective_dependencies_for(entity_id):
+            upstream_id = binding.upstream_entity_id
+            if upstream_id.startswith("fiction-research:"):
+                relevant.add(upstream_id)
+            else:
+                pending.append(upstream_id)
+    return frozenset(relevant)
+
+
 def _research_gate(
     *,
+    graph: MysteryAuthorityGraph,
     contract: SceneContract,
+    scene_revision: MysteryAuthorityRevision,
     authority_evidence: _AuthorityGateEvidence,
     research: ResearchLedgerResult,
-) -> GateRecord:
+    now_epoch: int,
+) -> _ResearchGateEvidence:
     required_research_ids = frozenset(contract.required_research_ids)
-    required_research_entities = frozenset(
-        research_entity_id(research_id) for research_id in required_research_ids
+    relevant_research_entities = _relevant_research_entities(
+        graph=graph,
+        contract=contract,
+        scene_revision=scene_revision,
+        authority_evidence=authority_evidence,
     )
     relevant_authorities = authority_evidence.bound_upstream_entity_ids
     blockers: set[str] = set()
 
     invalid_relevant = research.invalid_research_entity_ids & (
-        required_research_entities | relevant_authorities
+        relevant_research_entities | relevant_authorities
     )
     for entity_id in invalid_relevant:
         blockers.add(f"RESEARCH.INVALID:{entity_id}")
@@ -423,7 +476,28 @@ def _research_gate(
     for entity_id in affected:
         blockers.add(f"RESEARCH.AFFECTS_AUTHORITY:{entity_id}")
 
-    relevant_object_refs = required_research_ids | required_research_entities
+    snapshot_by_entity = dict(research.evaluation_snapshot_refs_by_entity)
+    evaluation_refs: set[str] = set()
+    for entity_id in sorted(relevant_research_entities):
+        snapshot_ref = snapshot_by_entity.get(entity_id)
+        if snapshot_ref is None:
+            blockers.add(f"RESEARCH.SNAPSHOT_MISSING:{entity_id}")
+        else:
+            evaluation_refs.add(snapshot_ref)
+
+    deadlines = dict(research.research_recheck_epochs)
+    relevant_deadlines = [
+        epoch
+        for entity_id, epoch in deadlines.items()
+        if entity_id in relevant_research_entities
+    ]
+    not_after_epoch = min(relevant_deadlines) if relevant_deadlines else None
+    if not_after_epoch is not None and now_epoch >= not_after_epoch:
+        for entity_id, epoch in sorted(deadlines.items()):
+            if entity_id in relevant_research_entities and now_epoch >= epoch:
+                blockers.add(f"RESEARCH.RECHECK_DUE:{entity_id}:{epoch}")
+
+    relevant_object_refs = required_research_ids | relevant_research_entities
     rows: list[str] = []
     for finding in research.findings:
         if not finding.object_refs or relevant_object_refs.intersection(finding.object_refs):
@@ -435,13 +509,26 @@ def _research_gate(
         rows.append(f"invalid:{entity_id}")
     for entity_id in sorted(affected):
         rows.append(f"affected:{entity_id}")
+    for entity_id in sorted(relevant_research_entities):
+        rows.append(f"relevant:{entity_id}")
+    if not_after_epoch is not None:
+        rows.append(f"not-after:{not_after_epoch}")
 
     payload: dict[str, JSONValue] = {"research": _json_strings(rows)}
-    return GateRecord(
-        gate_id="REALISM_RESEARCH",
-        status="BLOCKED" if blockers else "PASS",
-        blocking_findings=tuple(sorted(blockers)),
-        evaluation_refs=(f"research:{content_hash(payload)}",),
+    evaluation_refs.add(f"research:{content_hash(payload)}")
+    status: GateStatus
+    if blockers and any(code.startswith("RESEARCH.RECHECK_DUE:") for code in blockers):
+        status = "STALE"
+    else:
+        status = "BLOCKED" if blockers else "PASS"
+    return _ResearchGateEvidence(
+        record=GateRecord(
+            gate_id="REALISM_RESEARCH",
+            status=status,
+            blocking_findings=tuple(sorted(blockers)),
+            evaluation_refs=tuple(sorted(evaluation_refs)),
+        ),
+        not_after_epoch=not_after_epoch,
     )
 
 
@@ -566,6 +653,7 @@ def _admission_token(
     revision: MysteryAuthorityRevision,
     authority_evidence: _AuthorityGateEvidence,
     gates: tuple[GateRecord, ...],
+    not_after_epoch: int | None,
 ) -> WritingAdmissionToken:
     evaluation_refs = tuple(
         sorted(
@@ -592,6 +680,7 @@ def _admission_token(
         "dependency_fingerprint": authority_evidence.dependency_fingerprint,
         "authority_refs": _json_strings(authority_refs),
         "evaluation_refs": _json_strings(evaluation_refs),
+        "not_after_epoch": not_after_epoch,
     }
     return WritingAdmissionToken(
         admission_id=f"writing-admission:{content_hash(payload)}",
@@ -602,6 +691,7 @@ def _admission_token(
         dependency_fingerprint=authority_evidence.dependency_fingerprint,
         authority_revision_refs=authority_refs,
         evaluation_refs=evaluation_refs,
+        not_after_epoch=not_after_epoch,
     )
 
 
@@ -615,6 +705,7 @@ def evaluate_scene_writing_gate(
     narrative_validation: NarrativeValidationResult,
     research_ledger: ResearchLedgerResult,
     readiness: ExternalWritingReadiness,
+    now_epoch: int,
 ) -> WritingGateResult:
     """Compose MYS-01..04 plus external future-gate evidence into scene admission."""
     scene_gate = _scene_contract_gate(
@@ -631,12 +722,19 @@ def evaluate_scene_writing_gate(
     )
     authority_gate = _authority_gate(authority_evidence)
     case_gate = _case_gate(case_integrity)
-    narrative_gate = _narrative_gate(narrative_validation)
-    research_gate = _research_gate(
+    narrative_gate = _narrative_gate(
+        narrative_validation,
+        scene_id=contract.scene_id,
+    )
+    research_evidence = _research_gate(
+        graph=graph,
         contract=contract,
+        scene_revision=scene_revision,
         authority_evidence=authority_evidence,
         research=research_ledger,
+        now_epoch=now_epoch,
     )
+    research_gate = research_evidence.record
     anti_cliche_gate = _anti_cliche_gate(readiness)
     qualification_gate = _qualification_gate(policy, readiness)
     execution_gate = _execution_gate(readiness)
@@ -668,6 +766,7 @@ def evaluate_scene_writing_gate(
             revision=scene_revision,
             authority_evidence=authority_evidence,
             gates=gates,
+            not_after_epoch=research_evidence.not_after_epoch,
         )
         if writing_allowed
         else None
@@ -678,7 +777,15 @@ def evaluate_scene_writing_gate(
         gates=gates,
         writing_allowed=writing_allowed,
         writing_allowed_scope=(contract.scene_id,) if writing_allowed else (),
-        stale_reasons=blockers,
+        stale_reasons=tuple(
+            blocker
+            for blocker in blockers
+            if (
+                "STALE" in blocker
+                or "RECHECK_DUE" in blocker
+                or "EXPIRED" in blocker
+            )
+        ),
     )
     return WritingGateResult(state=state, token=token)
 
@@ -701,6 +808,7 @@ def verify_writing_admission_token(
     narrative_validation: NarrativeValidationResult,
     research_ledger: ResearchLedgerResult,
     readiness: ExternalWritingReadiness,
+    now_epoch: int,
 ) -> WritingTokenVerification:
     """Re-run the gate immediately before Writer/provider access."""
     current = evaluate_scene_writing_gate(
@@ -712,6 +820,7 @@ def verify_writing_admission_token(
         narrative_validation=narrative_validation,
         research_ledger=research_ledger,
         readiness=readiness,
+        now_epoch=now_epoch,
     )
     if not current.state.writing_allowed or current.token is None:
         return WritingTokenVerification(
