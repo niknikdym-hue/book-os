@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, TypeAlias
 
 from .authority_types import ActorKind, JSONValue, content_hash
@@ -16,6 +16,7 @@ from .mystery_authority import (
 from .mystery_case_validation import CaseIntegrityResult
 from .mystery_narrative_validation import NarrativeValidationResult
 from .mystery_research_validation import ResearchLedgerResult, research_entity_id
+from .mystery_sample_qualification import SampleQualificationResult
 
 GateStatus: TypeAlias = Literal[
     "NOT_STARTED",
@@ -76,6 +77,28 @@ class ExternalWritingReadiness:
     execution_route_ref: str | None = None
     execution_authorization_ref: str | None = None
     cost_authorization_ref: str | None = None
+
+
+def readiness_with_sample_qualification(
+    readiness: ExternalWritingReadiness,
+    qualification: SampleQualificationResult,
+) -> ExternalWritingReadiness:
+    """Bind MYS-06 exact qualification evidence into MYS-05 mass-draft readiness."""
+    return replace(
+        readiness,
+        representative_sample_qualified=qualification.representative_sample_qualified,
+        representative_sample_ref=(
+            qualification.representative_sample_ref
+            if qualification.representative_sample_qualified
+            else None
+        ),
+        writer_qualified=qualification.writer_qualified,
+        writer_qualification_ref=(
+            qualification.writer_qualification_ref
+            if qualification.writer_qualified
+            else None
+        ),
+    )
 
 
 @dataclass(frozen=True)
