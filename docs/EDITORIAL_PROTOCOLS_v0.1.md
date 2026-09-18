@@ -134,6 +134,8 @@ This is a default production gate, not an optional polish step. It applies to ma
 
 The check must combine deterministic diagnostics with whole-book editorial review and, where applicable, evidence/freshness verification. It must cover the current Book Contract/Definition, approved Architecture, active Style Profile, series exclusion/canon rules, anti-junk rules, semantic and structural repetition, AI-prose pathologies, material claims/evidence, target-market applicability, practical value, internal-instruction leakage, coherence and adversarial readiness.
 
+For practical nonfiction, the review must also verify **worked-example teaching coverage**. Major methods/decisions should be demonstrated with enough concrete material—such as annotated strong/weak variants, before/after examples, diagnostic breakdowns, worked cases or counterexamples—for the reader to see both the execution and the reasoning. Brief illustrative mentions are insufficient when the method remains abstract. Example formats must vary with the material and must not become a repeated chapter template.
+
 Service/editorial-note leakage is a blocking defect with zero tolerance in reader-facing text. The scan must explicitly look for author/editor/producer instructions, future-edition reminders, verification reminders, TODO/FIXME markers, placeholders, internal status labels, unresolved production comments and BOOK OS workflow language. The required result before author presentation is zero unresolved service/editorial notes.
 
 Blocking findings must be repaired and the affected checks rerun before the manuscript is labeled author-ready.
