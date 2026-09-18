@@ -369,6 +369,22 @@ def _validate_evidence(
     available_source_refs: frozenset[str] | None,
     findings: list[ResearchFinding],
 ) -> None:
+    if any(not source_ref.strip() for source_ref in item.source_refs):
+        findings.append(
+            _finding(
+                "RESEARCH.SOURCE.EMPTY_REF",
+                f"research {item.research_id} contains an empty source ref",
+                item.research_id,
+            )
+        )
+    if any(not evidence_ref.strip() for evidence_ref in item.evidence_refs):
+        findings.append(
+            _finding(
+                "RESEARCH.EVIDENCE.EMPTY_REF",
+                f"research {item.research_id} contains an empty evidence ref",
+                item.research_id,
+            )
+        )
     if len(set(item.source_refs)) != len(item.source_refs):
         findings.append(
             _finding(
@@ -418,6 +434,19 @@ def _validate_evidence(
             )
             continue
         evidence_rows.append(evidence)
+        if evidence.evidence_ref != evidence_ref:
+            findings.append(
+                _finding(
+                    "RESEARCH.EVIDENCE.CATALOG_ID_MISMATCH",
+                    (
+                        f"catalog key {evidence_ref} resolves to evidence payload "
+                        f"{evidence.evidence_ref}"
+                    ),
+                    item.research_id,
+                    evidence_ref,
+                    evidence.evidence_ref,
+                )
+            )
         if not evidence.active:
             findings.append(
                 _finding(
@@ -509,19 +538,32 @@ def _validate_evidence(
                 )
             )
 
-    if item.disposition == "VERIFIED" and item.risk_class in {"R3", "R4"}:
+    if item.risk_class in {"R3", "R4"} and item.disposition in {
+        "VERIFIED",
+        "FICTIONALIZED",
+    }:
+        if item.disposition == "VERIFIED":
+            strength_rows = [
+                row
+                for row in active_rows
+                if row.relationship in {"SUPPORTS", "PARTIALLY_SUPPORTS"}
+            ]
+        else:
+            # Fictionalization evidence establishes the real-world baseline, not the
+            # invented story rule, so relationship-to-conclusion is not authoritative.
+            strength_rows = [
+                row for row in active_rows if row.relationship != "CONTRADICTS"
+            ]
         strong_primary = any(
-            row.relationship == "SUPPORTS"
-            and row.strength == "STRONG"
+            row.strength == "STRONG"
             and row.source_access_status == "FULL_SOURCE_INSPECTED"
             and row.primary_secondary == "PRIMARY"
-            for row in active_rows
+            for row in strength_rows
         )
         independent_full_sources = {
             row.source_ref
-            for row in active_rows
-            if row.relationship in {"SUPPORTS", "PARTIALLY_SUPPORTS"}
-            and row.strength in {"MODERATE", "STRONG"}
+            for row in strength_rows
+            if row.strength in {"MODERATE", "STRONG"}
             and row.source_access_status == "FULL_SOURCE_INSPECTED"
         }
         if not strong_primary and len(independent_full_sources) < 2:
@@ -541,7 +583,7 @@ def _validate_evidence(
 def _validate_risk_review(
     item: FictionResearchItem, findings: list[ResearchFinding]
 ) -> None:
-    if item.expert_review == "REQUIRED":
+    if item.expert_review == "REQUIRED" and item.risk_class != "R4":
         findings.append(
             _finding(
                 "RESEARCH.EXPERT_REVIEW.REQUIRED_NOT_COMPLETED",
@@ -757,7 +799,7 @@ def research_affected_authorities(
 def evaluate_research_ledger(
     graph: MysteryAuthorityGraph,
     *,
-    items_by_entity_id: Mapping[str, FictionResearchItem],
+    items_by_revision_id: Mapping[str, FictionResearchItem],
     evidence_catalog: Mapping[str, SharedResearchEvidence] | None = None,
     available_source_refs: frozenset[str] | None = None,
     now_epoch: int,
@@ -771,17 +813,19 @@ def evaluate_research_ledger(
     for revision in graph.effective_heads():
         if revision.kind != "FICTION_RESEARCH_ITEM":
             continue
-        item = items_by_entity_id.get(revision.entity_id)
+        item = items_by_revision_id.get(revision.revision_id)
         if item is None:
             invalid.add(revision.entity_id)
             findings.append(
                 _finding(
                     "RESEARCH.LEDGER.ITEM_MISSING",
                     (
-                        f"effective research authority {revision.entity_id} has no "
-                        "runtime FictionResearchItem projection"
+                        f"effective research authority {revision.entity_id}@"
+                        f"{revision.revision_id} has no exact runtime FictionResearchItem "
+                        "projection"
                     ),
                     revision.entity_id,
+                    revision.revision_id,
                 )
             )
             continue
