@@ -22,8 +22,8 @@ It emits a deterministic `WritingAdmissionToken` only when the current snapshot 
 
 - MYS-01 exact authority/revision/dependency/staleness;
 - MYS-02 CaseIntegrityResult;
-- MYS-03 NarrativeValidationResult / reader-knowledge state;
-- MYS-04 ResearchLedgerResult;
+- MYS-03 NarrativeValidationResult / reader-knowledge state, including proof that the exact scene was evaluated;
+- MYS-04 ResearchLedgerResult, including per-research external evidence snapshot refs and recheck deadlines;
 - current SceneContract;
 - external anti-cliche evaluation evidence until MYS-10 owns it;
 - representative-sample / Writer qualification evidence where required by production mode;
@@ -71,9 +71,10 @@ This does **not** weaken authority because admission is bound to:
 - the exact SceneContract revision/hash;
 - the exact effective upstream revision IDs;
 - a deterministic dependency fingerprint;
-- exact evaluation refs.
+- exact evaluation refs;
+- the earliest relevant research recheck deadline.
 
-If any of these change, the previous admission token is no longer current.
+If any of these change — or the research deadline is reached — the previous admission token is no longer current.
 
 ## Required authority
 
@@ -151,15 +152,28 @@ If provider execution is not requested, deterministic/local planning may evaluat
 
 MYS-05 does not call a provider.
 
+## Narrative scope
+
+A clean NarrativeValidationResult is not sufficient unless it contains a ReaderKnowledge checkpoint for the exact SceneContract scene_id.
+
+This prevents a validation result for another scene, an empty evaluation, or a stale partial run from being reused as if the current scene had passed POV/reader-fairness checks.
+
 ## Research interaction
 
 Research blocks admission when:
 
 - an explicitly required research item is invalid;
 - any research authority actually bound to the SceneContract is invalid;
-- accepted authority consumed by the scene is marked affected by external research invalidation.
+- accepted authority consumed by the scene is marked affected by external research invalidation;
+- the scene authority itself is marked affected;
+- a relevant research evaluation snapshot is missing;
+- a relevant research recheck deadline has been reached.
 
-This catches expiry or superseded evidence even when story text itself did not change.
+Research snapshot refs are kept per research authority entity. An unrelated research update elsewhere in the book does not invalidate this scene token, while a non-blocking evidence/access-state change for research actually used by this scene does.
+
+The token records the earliest relevant `not_after_epoch`, so cached-green research cannot keep a writing authorization alive past its recheck deadline.
+
+This catches expiry or superseded/changed evidence even when story text itself did not change.
 
 ## Version-bound admission token
 
@@ -172,9 +186,10 @@ A successful result contains:
 - exact SceneContract revision ref;
 - dependency fingerprint;
 - authority revision refs;
-- evaluation refs.
+- evaluation refs;
+- earliest relevant `not_after_epoch`.
 
-`verify_writing_admission_token()` re-runs the full gate immediately before Writer/provider access.
+`verify_writing_admission_token()` re-runs the full gate immediately before Writer/provider access using the current deterministic clock.
 
 The old token is invalid if:
 
@@ -182,10 +197,20 @@ The old token is invalid if:
 - SceneContract changes;
 - an accepted upstream revision changes;
 - dependencies change after review;
-- a non-blocking evaluation snapshot changes;
+- a non-blocking narrative or relevant-research evaluation snapshot changes;
+- a research recheck deadline is reached;
 - qualification/execution evidence changes.
 
 This closes the gap where a scene could be approved once and executed later against different authority.
+
+## Machine-readable contracts
+
+MYS-05 adds:
+
+- `contracts/mystery-os/scene_contract.schema.json`;
+- `contracts/mystery-os/writing_admission_token.schema.json`.
+
+These are integration contracts for the future publishing system; they do not imply DB/API/UI implementation in this slice.
 
 ## Deliberately OUT
 
@@ -212,6 +237,9 @@ MYS-05 is technically GREEN only when:
 - unaccepted upstream DRAFT does not displace accepted authority;
 - acceptance of a new upstream invalidates old admission;
 - case/narrative/research blockers block;
+- narrative evaluation must cover the exact scene;
+- relevant research evidence snapshot changes invalidate old tokens;
+- cached-green research cannot outlive its recheck deadline;
 - anti-cliche evaluation evidence is mandatory;
 - MASS_DRAFT fails without MYS-06 sample/Writer qualification evidence;
 - provider access fails without route/execution/cost authorization;
