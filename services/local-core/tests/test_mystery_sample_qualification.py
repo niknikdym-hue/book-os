@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 
+from book_os_core.mystery_editorial_gate import (
+    ExternalWritingReadiness,
+    readiness_with_sample_qualification,
+)
 from book_os_core.mystery_sample_qualification import (
     ProfessionalBenchmarkEvidence,
     RepresentativeSamplePack,
@@ -448,3 +452,48 @@ def test_writer_qualification_ref_is_version_bound_to_exact_sample_snapshot() ->
 
     assert not changed.valid
     assert changed.reason == "QUALIFICATION_SNAPSHOT_CHANGED"
+
+
+def test_mys06_result_populates_mys05_mass_draft_readiness_without_manual_flags() -> None:
+    pack = _pack()
+    qualification = _qualify(pack)
+
+    readiness = readiness_with_sample_qualification(
+        ExternalWritingReadiness(
+            anti_cliche_evaluation_ref="anti-cliche:v1",
+        ),
+        qualification,
+    )
+
+    assert readiness.representative_sample_qualified
+    assert readiness.representative_sample_ref == qualification.representative_sample_ref
+    assert readiness.writer_qualified
+    assert readiness.writer_qualification_ref == qualification.writer_qualification_ref
+
+
+def test_material_rewrite_never_sets_mys05_writer_qualified() -> None:
+    pack = _pack()
+    rewritten = replace(
+        pack.samples[0],
+        final_text_hash=_hash("material-final"),
+        post_writer_revision_class="MATERIAL",
+    )
+    samples = (rewritten, *pack.samples[1:])
+    revised_pack = replace(
+        pack,
+        samples=samples,
+        evaluations=tuple(_evaluation(sample) for sample in samples),
+    )
+    qualification = _qualify(revised_pack)
+
+    readiness = readiness_with_sample_qualification(
+        ExternalWritingReadiness(
+            anti_cliche_evaluation_ref="anti-cliche:v1",
+        ),
+        qualification,
+    )
+
+    assert readiness.representative_sample_qualified
+    assert readiness.representative_sample_ref is not None
+    assert not readiness.writer_qualified
+    assert readiness.writer_qualification_ref is None
