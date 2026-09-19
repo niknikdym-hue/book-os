@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
@@ -52,6 +53,7 @@ ColdReaderCheckpointKind: TypeAlias = Literal[
 ]
 EngagementState: TypeAlias = Literal["ENGAGED", "ATTENTION", "BREAKDOWN"]
 AdversarialRevealOrder: TypeAlias = Literal["RECONSTRUCTION_THEN_CASE_SOLUTION"]
+VerifiedEvaluationStatus: TypeAlias = Literal["SUCCEEDED", "FAILED"]
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _VALID_DIMENSIONS: frozenset[str] = frozenset(
@@ -107,6 +109,20 @@ class MysteryDimensionEvidence:
     independence_state: IndependenceState
     supporting_evidence_refs: tuple[str, ...] = ()
     human_disposition_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class VerifiedEvaluationArtifact:
+    """Read-only projection of immutable shared BookBench/evaluation evidence."""
+
+    evaluation_ref: str
+    manuscript_snapshot_ref: str
+    evaluator_identity: str
+    evaluator_class: EvaluatorClass
+    rubric_ref: str
+    purpose: str
+    status: VerifiedEvaluationStatus
+    current: bool = True
 
 
 @dataclass(frozen=True)
@@ -390,6 +406,111 @@ def _pack_ref(
     return f"mystery-bench:{content_hash(payload)}"
 
 
+def _verified_artifact(
+    *,
+    evaluation_ref: str,
+    verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
+    expected_snapshot_ref: str,
+    expected_evaluator_identity: str,
+    expected_purpose: str,
+    findings: list[MysteryBenchFinding],
+    finding_prefix: str,
+    expected_evaluator_class: EvaluatorClass | None = None,
+    expected_rubric_ref: str | None = None,
+) -> VerifiedEvaluationArtifact | None:
+    artifact = verified_evaluations.get(evaluation_ref)
+    if artifact is None:
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_MISSING",
+                f"verified evaluation artifact {evaluation_ref} is missing",
+                evaluation_ref,
+            )
+        )
+        return None
+    if artifact.evaluation_ref != evaluation_ref:
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_ID_MISMATCH",
+                (
+                    f"evaluation catalog key {evaluation_ref} resolves to "
+                    f"{artifact.evaluation_ref}"
+                ),
+                evaluation_ref,
+                artifact.evaluation_ref,
+            )
+        )
+    if artifact.status != "SUCCEEDED" or not artifact.current:
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_NOT_CURRENT_SUCCESS",
+                (
+                    f"evaluation {evaluation_ref} must be SUCCEEDED and current; "
+                    f"status={artifact.status}, current={artifact.current}"
+                ),
+                evaluation_ref,
+            )
+        )
+    if artifact.manuscript_snapshot_ref != expected_snapshot_ref:
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_SNAPSHOT_MISMATCH",
+                (
+                    f"evaluation {evaluation_ref} is bound to a different "
+                    "manuscript snapshot"
+                ),
+                evaluation_ref,
+            )
+        )
+    if artifact.evaluator_identity != expected_evaluator_identity:
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_EVALUATOR_MISMATCH",
+                (
+                    f"evaluation {evaluation_ref} evaluator identity differs "
+                    "from declared evidence"
+                ),
+                evaluation_ref,
+            )
+        )
+    if expected_evaluator_class is not None and (
+        artifact.evaluator_class != expected_evaluator_class
+    ):
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_CLASS_MISMATCH",
+                (
+                    f"evaluation {evaluation_ref} evaluator class differs "
+                    "from declared evidence"
+                ),
+                evaluation_ref,
+            )
+        )
+    if artifact.purpose != expected_purpose:
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_PURPOSE_MISMATCH",
+                (
+                    f"evaluation {evaluation_ref} purpose {artifact.purpose} "
+                    f"does not match {expected_purpose}"
+                ),
+                evaluation_ref,
+            )
+        )
+    if expected_rubric_ref is not None and artifact.rubric_ref != expected_rubric_ref:
+        findings.append(
+            _finding(
+                f"{finding_prefix}.ARTIFACT_RUBRIC_MISMATCH",
+                (
+                    f"evaluation {evaluation_ref} rubric differs from "
+                    "declared mystery rubric"
+                ),
+                evaluation_ref,
+            )
+        )
+    return artifact
+
+
 def _validate_cold_reader(
     *,
     pack: MysteryBenchPack,
@@ -517,6 +638,7 @@ def _validate_adversarial(
     *,
     pack: MysteryBenchPack,
     policy: MysteryBenchPolicy,
+    current_case_solution_revision_ref: str,
     findings: list[MysteryBenchFinding],
 ) -> str | None:
     evidence = pack.adversarial_reconstruction
@@ -572,6 +694,18 @@ def _validate_adversarial(
             _finding(
                 "MYSTERYBENCH.ADVERSARIAL.CASE_SOLUTION_REF_MISSING",
                 "accepted CaseSolution revision ref is missing",
+            )
+        )
+    elif evidence.accepted_case_solution_revision_ref != current_case_solution_revision_ref:
+        findings.append(
+            _finding(
+                "MYSTERYBENCH.ADVERSARIAL.CASE_SOLUTION_NOT_CURRENT",
+                (
+                    "adversarial comparison is not bound to the current designated "
+                    "CaseSolution revision"
+                ),
+                evidence.accepted_case_solution_revision_ref,
+                current_case_solution_revision_ref,
             )
         )
     elif evidence.accepted_case_solution_revision_ref not in pack.authority_revision_refs:
@@ -641,7 +775,8 @@ def evaluate_mystery_bench(
     current_manuscript_snapshot_ref: str,
     current_manuscript_snapshot_hash: str,
     current_authority_revision_refs: tuple[str, ...],
-    verified_evaluation_refs: frozenset[str],
+    current_case_solution_revision_ref: str,
+    verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
     verified_human_disposition_refs: frozenset[str] = frozenset(),
 ) -> MysteryBenchResult:
     """Validate version-bound MysteryBench evidence without running any evaluator."""
@@ -730,44 +865,45 @@ def evaluate_mystery_bench(
 
     cold_ref = _validate_cold_reader(pack=pack, policy=policy, findings=findings)
     for checkpoint in pack.cold_reader_checkpoints:
-        if (
-            checkpoint.evaluation_ref.strip()
-            and checkpoint.evaluation_ref not in verified_evaluation_refs
-        ):
-            findings.append(
-                _finding(
-                    "MYSTERYBENCH.COLD_READER.EVALUATION_REF_UNVERIFIED",
-                    (
-                        f"checkpoint {checkpoint.checkpoint} evaluation ref is not "
-                        "present in the verified evaluation catalog"
-                    ),
-                    checkpoint.checkpoint,
-                    checkpoint.evaluation_ref,
-                )
+        if checkpoint.evaluation_ref.strip():
+            _verified_artifact(
+                evaluation_ref=checkpoint.evaluation_ref,
+                verified_evaluations=verified_evaluations,
+                expected_snapshot_ref=pack.manuscript_snapshot_ref,
+                expected_evaluator_identity=checkpoint.evaluator_identity,
+                expected_purpose=f"COLD_READER:{checkpoint.checkpoint}",
+                findings=findings,
+                finding_prefix="MYSTERYBENCH.COLD_READER",
             )
 
     adversarial_ref = _validate_adversarial(
         pack=pack,
         policy=policy,
+        current_case_solution_revision_ref=current_case_solution_revision_ref,
         findings=findings,
     )
     adversarial = pack.adversarial_reconstruction
     if adversarial is not None:
-        for evidence_ref in (
-            adversarial.reconstruction_ref,
-            adversarial.comparison_ref,
-        ):
-            if evidence_ref.strip() and evidence_ref not in verified_evaluation_refs:
-                findings.append(
-                    _finding(
-                        "MYSTERYBENCH.ADVERSARIAL.EVALUATION_REF_UNVERIFIED",
-                        (
-                            "adversarial evidence ref is not present in the verified "
-                            "evaluation catalog"
-                        ),
-                        evidence_ref,
-                    )
-                )
+        if adversarial.reconstruction_ref.strip():
+            _verified_artifact(
+                evaluation_ref=adversarial.reconstruction_ref,
+                verified_evaluations=verified_evaluations,
+                expected_snapshot_ref=pack.manuscript_snapshot_ref,
+                expected_evaluator_identity=adversarial.evaluator_identity,
+                expected_purpose="ADVERSARIAL_RECONSTRUCTION_BLIND",
+                findings=findings,
+                finding_prefix="MYSTERYBENCH.ADVERSARIAL",
+            )
+        if adversarial.comparison_ref.strip():
+            _verified_artifact(
+                evaluation_ref=adversarial.comparison_ref,
+                verified_evaluations=verified_evaluations,
+                expected_snapshot_ref=pack.manuscript_snapshot_ref,
+                expected_evaluator_identity=adversarial.evaluator_identity,
+                expected_purpose="ADVERSARIAL_CASE_COMPARISON",
+                findings=findings,
+                finding_prefix="MYSTERYBENCH.ADVERSARIAL",
+            )
 
     by_dimension: dict[str, MysteryDimensionEvidence] = {}
     evaluation_refs_seen: set[str] = set()
@@ -813,18 +949,17 @@ def evaluate_mystery_bench(
             )
         else:
             evaluation_refs_seen.add(evidence.evaluation_ref)
-            if evidence.evaluation_ref not in verified_evaluation_refs:
-                findings.append(
-                    _finding(
-                        "MYSTERYBENCH.EVIDENCE.REF_UNVERIFIED",
-                        (
-                            f"dimension {evidence.dimension} evaluation ref is not "
-                            "present in the verified evaluation catalog"
-                        ),
-                        evidence.dimension,
-                        evidence.evaluation_ref,
-                    )
-                )
+            _verified_artifact(
+                evaluation_ref=evidence.evaluation_ref,
+                verified_evaluations=verified_evaluations,
+                expected_snapshot_ref=evidence.bookbench_snapshot_ref,
+                expected_evaluator_identity=evidence.evaluator_identity,
+                expected_evaluator_class=evidence.evaluator_class,
+                expected_rubric_ref=evidence.rubric_ref,
+                expected_purpose=f"MYSTERY_DIMENSION:{evidence.dimension}",
+                findings=findings,
+                finding_prefix="MYSTERYBENCH.EVIDENCE",
+            )
 
         if evidence.bookbench_snapshot_ref != pack.manuscript_snapshot_ref:
             findings.append(
@@ -1032,7 +1167,8 @@ def verify_mystery_bench(
     current_manuscript_snapshot_ref: str,
     current_manuscript_snapshot_hash: str,
     current_authority_revision_refs: tuple[str, ...],
-    verified_evaluation_refs: frozenset[str],
+    current_case_solution_revision_ref: str,
+    verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
     verified_human_disposition_refs: frozenset[str] = frozenset(),
 ) -> MysteryBenchVerification:
     current = evaluate_mystery_bench(
@@ -1041,7 +1177,8 @@ def verify_mystery_bench(
         current_manuscript_snapshot_ref=current_manuscript_snapshot_ref,
         current_manuscript_snapshot_hash=current_manuscript_snapshot_hash,
         current_authority_revision_refs=current_authority_revision_refs,
-        verified_evaluation_refs=verified_evaluation_refs,
+        current_case_solution_revision_ref=current_case_solution_revision_ref,
+        verified_evaluations=verified_evaluations,
         verified_human_disposition_refs=verified_human_disposition_refs,
     )
     if not current.qualified:
