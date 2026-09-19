@@ -1091,8 +1091,7 @@ def evaluate_mystery_bench(
             adversarial_dimension_evidence = by_dimension.get(dimension)
             if (
                 adversarial_dimension_evidence is not None
-                and adversarial_ref
-                not in adversarial_dimension_evidence.supporting_evidence_refs
+                and adversarial_ref not in adversarial_dimension_evidence.supporting_evidence_refs
             ):
                 findings.append(
                     _finding(
