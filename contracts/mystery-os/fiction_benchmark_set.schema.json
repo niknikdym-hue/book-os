@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/fiction_benchmark_set.schema.json",
+  "title": "MYSTERY OS Fiction Benchmark Set",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "benchmark_set_id",
+    "version",
+    "subgenre",
+    "target_market",
+    "language",
+    "audience_ref",
+    "publication_window",
+    "last_review_epoch",
+    "references"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "benchmark_set_id": {"type": "string", "minLength": 1},
+    "version": {"type": "integer", "minimum": 1},
+    "subgenre": {"type": "string", "minLength": 1},
+    "target_market": {"type": "string", "minLength": 1},
+    "language": {"type": "string", "minLength": 1},
+    "audience_ref": {"type": "string", "minLength": 1},
+    "publication_window": {"type": "string", "minLength": 1},
+    "last_review_epoch": {"type": "integer", "minimum": 0},
+    "references": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "reference_id",
+          "work_ref",
+          "author_ref",
+          "publication_year",
+          "publisher_class",
+          "format_codes",
+          "selection_categories",
+          "selection_reason",
+          "prohibited_inference",
+          "access_level",
+          "rights_basis",
+          "rights_ref",
+          "source_metadata_ref",
+          "craft_observation_refs",
+          "raw_protected_text_embedded"
+        ],
+        "properties": {
+          "reference_id": {"type": "string", "minLength": 1},
+          "work_ref": {"type": "string", "minLength": 1},
+          "author_ref": {"type": "string", "minLength": 1},
+          "publication_year": {"type": "integer", "minimum": 1400, "maximum": 3000},
+          "publisher_class": {
+            "enum": [
+              "ESTABLISHED_PUBLISHER",
+              "SMALL_PRESS",
+              "INDEPENDENT",
+              "OTHER"
+            ]
+          },
+          "publisher_ref": {"type": ["string", "null"]},
+          "format_codes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "selection_categories": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "COMMERCIAL_SUCCESS",
+                "CRITICAL_RESPECT",
+                "DURABLE_BACKLIST",
+                "RECENT_EXPECTATION",
+                "AUDIO_REFERENCE"
+              ]
+            }
+          },
+          "selection_reason": {"type": "string", "minLength": 1},
+          "prohibited_inference": {"type": "string", "minLength": 1},
+          "access_level": {
+            "enum": [
+              "METADATA_ONLY",
+              "DERIVED_NON_RECONSTRUCTIVE",
+              "LAWFUL_BOUNDED_TEXT",
+              "LICENSED_FULL_ACCESS",
+              "PUBLIC_DOMAIN_FULL_ACCESS"
+            ]
+          },
+          "rights_basis": {
+            "enum": [
+              "PUBLIC_METADATA",
+              "PUBLIC_DOMAIN",
+              "USER_OWNED",
+              "LICENSED",
+              "OTHER_DOCUMENTED"
+            ]
+          },
+          "rights_ref": {"type": "string", "minLength": 1},
+          "source_metadata_ref": {"type": "string", "minLength": 1},
+          "craft_observation_refs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "raw_protected_text_embedded": {"const": false}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
