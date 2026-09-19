@@ -450,6 +450,7 @@ def _validate_unique_values(
 def _validate_passport_shape(
     *,
     passport: MysteryBookPassport,
+    expected_series_profile_id: str,
     expected_series_profile_ref: str,
     findings: list[SeriesCollisionFinding],
 ) -> None:
@@ -499,6 +500,18 @@ def _validate_passport_shape(
                 passport.book_id,
                 None,
                 "Book Passport requires series_profile_id",
+            )
+        )
+    elif passport.series_profile_id != expected_series_profile_id:
+        findings.append(
+            _finding(
+                "SERIES.PASSPORT.SERIES_PROFILE_ID_MISMATCH",
+                "BLOCKING",
+                "EXACT",
+                "PASSPORT",
+                passport.book_id,
+                None,
+                "Book Passport belongs to another series identity",
             )
         )
     if passport.series_profile_ref != expected_series_profile_ref:
@@ -800,6 +813,7 @@ def _validate_prior_passports(
         else:
             _validate_passport_shape(
                 passport=prior,
+                expected_series_profile_id=expected_series_profile_id,
                 expected_series_profile_ref=prior.series_profile_ref,
                 findings=findings,
             )
@@ -947,7 +961,6 @@ def _check_exact_collisions(
 
 def _prior_asset_ledger(
     *,
-    profile: SeriesProfileSnapshot,
     current_book_id: str,
     prior_passports: tuple[AcceptedBookPassport, ...],
     findings: list[SeriesCollisionFinding],
@@ -1108,7 +1121,6 @@ def _check_assets(
 ) -> None:
     recurring = set(profile.allowed_recurring_asset_codes)
     all_consumed_by, reserved_by = _prior_asset_ledger(
-        profile=profile,
         current_book_id=current.book_id,
         prior_passports=prior_passports,
         findings=findings,
@@ -1231,7 +1243,6 @@ def _check_assets(
 
 def _validate_semantic_evidence(
     *,
-    profile: SeriesProfileSnapshot,
     current: MysteryBookPassport,
     prior_passports: tuple[AcceptedBookPassport, ...],
     policy: SeriesCollisionPolicy,
@@ -1534,6 +1545,7 @@ def evaluate_series_uniqueness(
     )
     _validate_passport_shape(
         passport=current_passport,
+        expected_series_profile_id=profile.profile_id,
         expected_series_profile_ref=expected_profile_ref,
         findings=findings,
     )
@@ -1605,7 +1617,6 @@ def evaluate_series_uniqueness(
         )
 
     _validate_semantic_evidence(
-        profile=profile,
         current=current_passport,
         prior_passports=prior_passports,
         policy=policy,
