@@ -780,10 +780,7 @@ def _validate_policy(
                 semantic_dimension,
                 current_book_id,
                 None,
-                (
-                    f"semantic collision policy must cover core dimension "
-                    f"{semantic_dimension}"
-                ),
+                (f"semantic collision policy must cover core dimension {semantic_dimension}"),
             )
         )
 
