@@ -882,3 +882,26 @@ def test_later_profile_cannot_reclassify_old_one_use_asset_as_recurring() -> Non
 
     assert "SERIES.ASSET.REUSED_ONE_USE" in _codes(result)
     assert not result.qualified
+
+
+def test_deterministic_evaluator_cannot_satisfy_semantic_collision_core() -> None:
+    semantic, artifacts = _semantic_evidence()
+    target = semantic[0]
+    changed = replace(
+        target,
+        evaluator_class="DETERMINISTIC",
+    )
+    revised = (changed, *semantic[1:])
+    revised_artifacts = dict(artifacts)
+    revised_artifacts[target.evaluation_ref] = replace(
+        revised_artifacts[target.evaluation_ref],
+        evaluator_class="DETERMINISTIC",
+    )
+
+    result = _evaluate(
+        semantic=revised,
+        artifacts=revised_artifacts,
+    )
+
+    assert "SERIES.SEMANTIC.DETERMINISTIC_EVALUATOR_INVALID" in _codes(result)
+    assert not result.qualified
