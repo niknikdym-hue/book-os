@@ -486,3 +486,85 @@ def test_route_ref_is_version_bound_to_authorized_execution_request() -> None:
     )
     assert not stale.valid
     assert stale.reason == "PRODUCTION_ROUTE_SNAPSHOT_CHANGED"
+
+
+def test_route_ref_changes_when_exact_authorization_artifact_changes() -> None:
+    request = _standard_request()
+    owner, cost = _auth_maps(request)
+    initial = _evaluate(request, owner=owner, cost=cost)
+    assert initial.qualified
+
+    changed_cost = {
+        COST_REF: replace(cost[COST_REF], max_cost_usd=0.25),
+    }
+    current = _evaluate(request, owner=owner, cost=changed_cost)
+
+    assert current.qualified
+    assert current.execution_route_ref != initial.execution_route_ref
+
+
+def test_agent_cannot_be_enabled_for_standard_scene_operation_by_policy_mistake() -> None:
+    request = replace(
+        _standard_request(),
+        use_editorial_prep_agent=True,
+        prep_bundle=_bundle(),
+        agent_lane_available=True,
+        agent_capability_enabled=True,
+    )
+    permissive = replace(
+        POLICY,
+        allowed_agent_operations=(
+            *POLICY.allowed_agent_operations,
+            "SCENE_DRAFT",
+        ),
+    )
+    owner, cost = _auth_maps(
+        request,
+        agent_allowed=True,
+        private_allowed=False,
+    )
+
+    result = evaluate_production_route(
+        request=request,
+        policy=permissive,
+        current_authority_refs=AUTHORITY_REFS,
+        verified_owner_authorizations=owner,
+        verified_cost_authorizations=cost,
+    )
+
+    assert "ROUTING.AGENT.OPERATION_CLASS_INVALID" in _codes(result)
+    assert not result.qualified
+
+
+def test_unknown_bundle_runtime_codes_fail_closed() -> None:
+    bundle = replace(
+        _bundle(),
+        private_content_scope="ALIEN_SCOPE",  # type: ignore[arg-type]
+        reasoning_mode="alien",  # type: ignore[arg-type]
+        network_mode="ALIEN_NETWORK",  # type: ignore[arg-type]
+    )
+    request = _agent_request(bundle=bundle)
+    owner, cost = _auth_maps(
+        request,
+        agent_allowed=True,
+        private_allowed=True,
+    )
+
+    result = _evaluate(request, owner=owner, cost=cost)
+    codes = _codes(result)
+
+    assert "ROUTING.AGENT.BUNDLE.PRIVATE_SCOPE_UNKNOWN" in codes
+    assert "ROUTING.AGENT.BUNDLE.REASONING_MODE_UNKNOWN" in codes
+    assert "ROUTING.AGENT.BUNDLE.NETWORK_MODE_UNKNOWN" in codes
+
+
+def test_unknown_blast_radius_fails_closed() -> None:
+    request = replace(
+        _standard_request(),
+        downstream_blast_radius="ALIEN",  # type: ignore[arg-type]
+    )
+    owner, cost = _auth_maps(request)
+
+    result = _evaluate(request, owner=owner, cost=cost)
+
+    assert "ROUTING.BLAST_RADIUS_UNKNOWN" in _codes(result)
