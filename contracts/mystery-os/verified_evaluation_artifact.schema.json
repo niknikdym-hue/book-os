@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/verified_evaluation_artifact.schema.json",
+  "title": "MYSTERY OS Verified Evaluation Artifact Projection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evaluation_ref",
+    "manuscript_snapshot_ref",
+    "evaluator_identity",
+    "evaluator_class",
+    "rubric_ref",
+    "purpose",
+    "status",
+    "current"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "evaluation_ref": {"type": "string", "minLength": 1},
+    "manuscript_snapshot_ref": {"type": "string", "minLength": 1},
+    "evaluator_identity": {"type": "string", "minLength": 1},
+    "evaluator_class": {
+      "enum": ["DETERMINISTIC", "SEMANTIC", "LLM_JUDGE", "PAIRWISE", "HUMAN_LABEL"]
+    },
+    "rubric_ref": {"type": "string", "minLength": 1},
+    "purpose": {"type": "string", "minLength": 1},
+    "status": {"enum": ["SUCCEEDED", "FAILED"]},
+    "current": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

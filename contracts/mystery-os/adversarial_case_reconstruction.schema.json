@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/adversarial_case_reconstruction.schema.json",
+  "title": "MYSTERY OS Adversarial Case Reconstruction",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "manuscript_snapshot_ref",
+    "evaluator_identity",
+    "reconstruction_ref",
+    "blind_input_refs",
+    "accepted_case_solution_revision_ref",
+    "comparison_ref",
+    "reveal_order",
+    "missing_required_fact",
+    "impossible_timeline",
+    "stronger_alternative_solution",
+    "accepted_solution_contradicts_manuscript",
+    "unstated_decisive_supernatural_rule",
+    "unfair_decisive_withholding"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "manuscript_snapshot_ref": {"type": "string", "minLength": 1},
+    "evaluator_identity": {"type": "string", "minLength": 1},
+    "reconstruction_ref": {"type": "string", "minLength": 1},
+    "blind_input_refs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "accepted_case_solution_revision_ref": {"type": "string", "minLength": 1},
+    "comparison_ref": {"type": "string", "minLength": 1},
+    "reveal_order": {"const": "RECONSTRUCTION_THEN_CASE_SOLUTION"},
+    "missing_required_fact": {"type": "boolean"},
+    "impossible_timeline": {"type": "boolean"},
+    "stronger_alternative_solution": {"type": "boolean"},
+    "accepted_solution_contradicts_manuscript": {"type": "boolean"},
+    "unstated_decisive_supernatural_rule": {"type": "boolean"},
+    "unfair_decisive_withholding": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

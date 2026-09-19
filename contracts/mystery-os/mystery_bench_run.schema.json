@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/mystery_bench_run.schema.json",
+  "title": "MYSTERY OS MysteryBench Pack",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "book_id",
+    "stage",
+    "manuscript_snapshot_ref",
+    "manuscript_snapshot_hash",
+    "authority_revision_refs",
+    "private_spoiler_authority_refs",
+    "writer_executor_identity",
+    "dimension_evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "book_id": {"type": "string", "minLength": 1},
+    "stage": {"enum": ["MIDBOOK", "FINAL"]},
+    "manuscript_snapshot_ref": {"type": "string", "minLength": 1},
+    "manuscript_snapshot_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "authority_revision_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "private_spoiler_authority_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "writer_executor_identity": {"type": "string", "minLength": 1},
+    "dimension_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "dimension",
+          "status",
+          "evaluation_ref",
+          "bookbench_snapshot_ref",
+          "rubric_ref",
+          "evaluator_identity",
+          "evaluator_class",
+          "independence_state",
+          "supporting_evidence_refs"
+        ],
+        "properties": {
+          "dimension": {
+            "enum": [
+              "CASE_COHERENCE",
+              "FAIR_PLAY",
+              "REVEAL_QUALITY",
+              "SUSPECT_QUALITY",
+              "CHARACTER_CAUSALITY",
+              "NARRATIVE_INTEGRITY",
+              "SUPERNATURAL_INTEGRITY",
+              "TENSION_PACING",
+              "ORIGINALITY_ANTI_CLICHE",
+              "PROSE_VOICE",
+              "SETTING_FUNCTION",
+              "RESEARCH_REALISM",
+              "EMOTIONAL_ARCHITECTURE",
+              "AUDIO_READINESS"
+            ]
+          },
+          "status": {
+            "enum": ["PASS", "MAJOR_GAP", "BLOCKING_GAP", "NOT_EVALUATED"]
+          },
+          "evaluation_ref": {"type": "string", "minLength": 1},
+          "bookbench_snapshot_ref": {"type": "string", "minLength": 1},
+          "rubric_ref": {"type": "string", "minLength": 1},
+          "evaluator_identity": {"type": "string", "minLength": 1},
+          "evaluator_class": {
+            "enum": [
+              "DETERMINISTIC",
+              "SEMANTIC",
+              "LLM_JUDGE",
+              "PAIRWISE",
+              "HUMAN_LABEL"
+            ]
+          },
+          "independence_state": {
+            "enum": ["INDEPENDENT", "SAME_CONFIG", "UNKNOWN", "NOT_APPLICABLE"]
+          },
+          "supporting_evidence_refs": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "human_disposition_ref": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}
