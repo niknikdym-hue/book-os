@@ -148,6 +148,10 @@ class ProductionRoutingFinding:
 @dataclass(frozen=True)
 class ProductionRouteResult:
     qualified: bool
+    operation_id: str
+    operation_kind: OperationKind
+    provider: str | None
+    model: str | None
     execution_route_ref: str
     provider_execution_requested: bool
     execution_authorization_ref: str | None
@@ -866,8 +870,13 @@ def evaluate_production_route(
     qualified = not findings
     if request.use_editorial_prep_agent and qualified:
         agent_dispatch_ready = True
+    choice = request.routing_choice
     return ProductionRouteResult(
         qualified=qualified,
+        operation_id=request.operation_id,
+        operation_kind=request.operation_kind,
+        provider=choice.provider if choice is not None else None,
+        model=choice.model if choice is not None else None,
         execution_route_ref=route_ref,
         provider_execution_requested=request.provider_execution_requested,
         execution_authorization_ref=(
