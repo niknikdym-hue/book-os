@@ -471,6 +471,10 @@ export function App() {
     () => Array.from(new Set(series.map((item) => item.name.trim()).filter(Boolean))),
     [series],
   );
+  const recentSeries = useMemo(
+    () => series.filter((item) => item.books.length > 0),
+    [series],
+  );
 
   function openCreate(kind: "book" | "series" | null = null) {
     createReturnFocus.current = document.activeElement instanceof HTMLElement
@@ -567,12 +571,12 @@ export function App() {
             </div>
             <section className="continue-section">
               <div className="section-heading"><div><p className="eyebrow">ПРОДОЛЖИТЬ РАБОТУ</p><h2>Последние проекты</h2></div><button className="text-button" type="button" onClick={() => setTopSection("books")}>Все книги</button></div>
-              {projects.length === 0 && series.length === 0 ? (
+              {projects.length === 0 && recentSeries.length === 0 ? (
                 <div className="empty-editorial-state"><span aria-hidden="true">✦</span><h3>Здесь появятся ваши книги и серии</h3><p>Создайте первый проект — BOOK OS покажет один понятный следующий шаг.</p></div>
               ) : (
                 <div className="recent-projects">
                   {projects.slice(0, 4).map((item) => <article className="recent-card" key={item.book_id}><p className="eyebrow">КНИГА</p><h3>{item.working_title}</h3><p>{INTERNAL_STAGE_LABELS[item.workflow_stage] ?? item.workflow_stage}</p><button type="button" onClick={() => void openProject(item.book_id)}>Продолжить <span aria-hidden="true">→</span></button></article>)}
-                  {series.slice(0, Math.max(0, 4 - projects.length)).map((item) => <article className="recent-card series-card" key={item.series_profile_id}><p className="eyebrow">СЕРИЯ · {item.books.length} КНИГ</p><h3>{item.name}</h3><p>{item.profile_status === "APPROVED" ? "Концепция утверждена" : "Концепция готовится"}</p><button type="button" onClick={() => setTopSection("series")}>Открыть серию <span aria-hidden="true">→</span></button></article>)}
+                  {recentSeries.slice(0, Math.max(0, 4 - projects.length)).map((item) => <article className="recent-card series-card" key={item.series_profile_id}><p className="eyebrow">СЕРИЯ · {item.books.length} КНИГ</p><h3>{item.name}</h3><p>{item.profile_status === "APPROVED" ? "Концепция утверждена" : "Концепция готовится"}</p><button type="button" onClick={() => setTopSection("series")}>Открыть серию <span aria-hidden="true">→</span></button></article>)}
                 </div>
               )}
             </section>
