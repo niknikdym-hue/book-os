@@ -117,7 +117,20 @@ Each dimension records:
 
 Runtime does not trust a random string as evidence.
 
-Every evaluation ref must exist in the caller-supplied **verified evaluation catalog**.
+Every evaluation ref must resolve to a caller-supplied **VerifiedEvaluationArtifact** projected from immutable shared BookBench/evaluation persistence.
+
+The projection proves the exact combination of:
+
+- evaluation ref;
+- manuscript/BookBench snapshot ref;
+- evaluator identity;
+- evaluator class;
+- rubric/version;
+- evaluation purpose/dimension;
+- SUCCEEDED state;
+- current state.
+
+Mystery dimension evidence must match all declared fields. ColdReader and adversarial evidence must match the exact protocol purpose. An existing evaluation for another rubric, snapshot, evaluator or purpose cannot be relabeled as mystery evidence.
 
 This is the integration point to shared BookBench persistence.
 
@@ -216,6 +229,8 @@ The contract therefore records:
 
 `RECONSTRUCTION_THEN_CASE_SOLUTION`
 
+The compared `accepted_case_solution_revision_ref` must equal the **current designated CaseSolution revision**, not merely any historical CaseSolution present in the authority snapshot.
+
 Blind input may not include:
 
 - CaseSolution;
@@ -248,7 +263,8 @@ MYS-07 adds:
 
 - `contracts/mystery-os/mystery_bench_run.schema.json`;
 - `contracts/mystery-os/cold_reader_run.schema.json`;
-- `contracts/mystery-os/adversarial_case_reconstruction.schema.json`.
+- `contracts/mystery-os/adversarial_case_reconstruction.schema.json`;
+- `contracts/mystery-os/verified_evaluation_artifact.schema.json`.
 
 ## Model/cost boundary
 
@@ -276,6 +292,8 @@ MYS-07 is technically GREEN only when tests prove at least:
 - BLOCKING cannot be waived;
 - MAJOR requires verified human disposition;
 - unverified evaluation refs block;
+- verified evaluation artifact snapshot/evaluator/class/rubric/purpose/status/current mismatches block;
+- stale historical CaseSolution cannot be used for adversarial comparison;
 - semantic evaluator must be independent from Writer;
 - deterministic independence rule works;
 - stale manuscript/authority snapshot blocks;
