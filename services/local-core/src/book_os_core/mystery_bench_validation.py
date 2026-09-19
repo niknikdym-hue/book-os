@@ -1069,8 +1069,11 @@ def evaluate_mystery_bench(
 
     if policy.stage == "FINAL" and policy.require_cold_reader and cold_ref is not None:
         for dimension in ("FAIR_PLAY", "REVEAL_QUALITY"):
-            evidence = by_dimension.get(dimension)
-            if evidence is not None and cold_ref not in evidence.supporting_evidence_refs:
+            cold_dimension_evidence = by_dimension.get(dimension)
+            if (
+                cold_dimension_evidence is not None
+                and cold_ref not in cold_dimension_evidence.supporting_evidence_refs
+            ):
                 findings.append(
                     _finding(
                         "MYSTERYBENCH.EVIDENCE.COLD_READER_NOT_CONSUMED",
@@ -1085,8 +1088,12 @@ def evaluate_mystery_bench(
 
     if policy.stage == "FINAL" and _adversarial_required(policy) and adversarial_ref is not None:
         for dimension in ("CASE_COHERENCE", "FAIR_PLAY", "NARRATIVE_INTEGRITY"):
-            evidence = by_dimension.get(dimension)
-            if evidence is not None and adversarial_ref not in evidence.supporting_evidence_refs:
+            adversarial_dimension_evidence = by_dimension.get(dimension)
+            if (
+                adversarial_dimension_evidence is not None
+                and adversarial_ref
+                not in adversarial_dimension_evidence.supporting_evidence_refs
+            ):
                 findings.append(
                     _finding(
                         "MYSTERYBENCH.EVIDENCE.ADVERSARIAL_NOT_CONSUMED",
