@@ -98,6 +98,7 @@ class MysteryBookPassport:
     book_id: str
     book_number: int
     working_title: str
+    series_profile_id: str
     series_profile_ref: str
     premise_signature: str
     primary_case_type: str
@@ -242,6 +243,7 @@ def _passport_payload(passport: MysteryBookPassport) -> dict[str, JSONValue]:
         "book_id": passport.book_id,
         "book_number": passport.book_number,
         "working_title": passport.working_title,
+        "series_profile_id": passport.series_profile_id,
         "series_profile_ref": passport.series_profile_ref,
         "premise_signature": passport.premise_signature,
         "primary_case_type": passport.primary_case_type,
@@ -483,6 +485,18 @@ def _validate_passport_shape(
                 "working_title must not be blank",
             )
         )
+    if not passport.series_profile_id.strip():
+        findings.append(
+            _finding(
+                "SERIES.PASSPORT.SERIES_PROFILE_ID_MISSING",
+                "BLOCKING",
+                "EXACT",
+                "PASSPORT",
+                passport.book_id,
+                None,
+                "Book Passport requires series_profile_id",
+            )
+        )
     if passport.series_profile_ref != expected_series_profile_ref:
         findings.append(
             _finding(
@@ -716,7 +730,7 @@ def _prior_passport_refs(
 def _validate_prior_passports(
     *,
     prior_passports: tuple[AcceptedBookPassport, ...],
-    expected_series_profile_ref: str,
+    expected_series_profile_id: str,
     current_book_id: str,
     current_book_number: int,
     findings: list[SeriesCollisionFinding],
@@ -753,16 +767,29 @@ def _validate_prior_passports(
                     ref,
                 )
             )
-        if prior.series_profile_ref != expected_series_profile_ref:
+        if prior.series_profile_id != expected_series_profile_id:
             findings.append(
                 _finding(
-                    "SERIES.PRIOR.SERIES_PROFILE_MISMATCH",
+                    "SERIES.PRIOR.SERIES_PROFILE_ID_MISMATCH",
                     "BLOCKING",
                     "EXACT",
                     "PASSPORT",
                     current_book_id,
                     prior.book_id,
-                    "prior passport belongs to another Series Profile snapshot",
+                    "prior passport belongs to another series identity",
+                    ref,
+                )
+            )
+        if not prior.series_profile_ref.strip():
+            findings.append(
+                _finding(
+                    "SERIES.PRIOR.SERIES_PROFILE_REF_MISSING",
+                    "BLOCKING",
+                    "EXACT",
+                    "PASSPORT",
+                    current_book_id,
+                    prior.book_id,
+                    "prior passport is missing its historical Series Profile ref",
                     ref,
                 )
             )
@@ -1351,7 +1378,7 @@ def evaluate_series_uniqueness(
     )
     _validate_prior_passports(
         prior_passports=prior_passports,
-        expected_series_profile_ref=expected_profile_ref,
+        expected_series_profile_id=profile.profile_id,
         current_book_id=current_passport.book_id,
         current_book_number=current_passport.book_number,
         findings=findings,
