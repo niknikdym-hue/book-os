@@ -117,6 +117,21 @@ def _validate_admission(
         )
     if route_request.routing_choice is None:
         raise FictionWritingAdmissionError("qualified route has no RoutingChoice")
+    if route_result.operation_id != route_request.operation_id:
+        raise FictionWritingAdmissionError(
+            "ProductionRouteResult belongs to another operation id"
+        )
+    if route_result.operation_kind != route_request.operation_kind:
+        raise FictionWritingAdmissionError(
+            "ProductionRouteResult operation kind differs from route request"
+        )
+    if (
+        route_result.provider != route_request.routing_choice.provider
+        or route_result.model != route_request.routing_choice.model
+    ):
+        raise FictionWritingAdmissionError(
+            "provider/model differs from qualified ProductionRouteResult"
+        )
     if route_request.operation_kind != execution.task_type:
         raise FictionWritingAdmissionError(
             "route operation kind does not match fiction gateway task type"
