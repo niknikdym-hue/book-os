@@ -771,16 +771,19 @@ def _validate_policy(
     semantic_missing = sorted(
         _MINIMUM_SEMANTIC_DIMENSIONS - set(policy.semantic_required_dimensions)
     )
-    for dimension in semantic_missing:
+    for semantic_dimension in semantic_missing:
         findings.append(
             _finding(
                 "SERIES.POLICY.SEMANTIC_CORE_MISSING",
                 "BLOCKING",
                 "SEMANTIC",
-                dimension,
+                semantic_dimension,
                 current_book_id,
                 None,
-                (f"semantic collision policy must cover core dimension {dimension}"),
+                (
+                    f"semantic collision policy must cover core dimension "
+                    f"{semantic_dimension}"
+                ),
             )
         )
 
