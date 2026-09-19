@@ -94,9 +94,7 @@ def readiness_with_anti_cliche(
         readiness,
         unresolved_blocked_cliche_codes=result.unresolved_blocking_codes,
         anti_cliche_qualified=result.qualified,
-        anti_cliche_evaluation_ref=(
-            result.anti_cliche_ref if result.qualified else None
-        ),
+        anti_cliche_evaluation_ref=(result.anti_cliche_ref if result.qualified else None),
     )
 
 
