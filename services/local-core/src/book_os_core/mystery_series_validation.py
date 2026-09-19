@@ -721,12 +721,6 @@ def _validate_policy(
                 seen_across[dimension] = label
 
 
-def _prior_passport_refs(
-    prior_passports: tuple[AcceptedBookPassport, ...],
-) -> set[str]:
-    return {passport_ref(item.passport) for item in prior_passports}
-
-
 def _validate_prior_passports(
     *,
     prior_passports: tuple[AcceptedBookPassport, ...],
@@ -935,6 +929,158 @@ def _check_exact_collisions(
             )
 
 
+def _prior_asset_ledger(
+    *,
+    profile: SeriesProfileSnapshot,
+    current_book_id: str,
+    prior_passports: tuple[AcceptedBookPassport, ...],
+    findings: list[SeriesCollisionFinding],
+) -> tuple[dict[str, str], dict[str, str]]:
+    recurring = set(profile.allowed_recurring_asset_codes)
+    consumed_by: dict[str, str] = {}
+    reserved_by: dict[str, str] = {}
+
+    for accepted in sorted(
+        prior_passports,
+        key=lambda item: (item.passport.book_number, item.passport.book_id),
+    ):
+        prior = accepted.passport
+        prior_consumed = set(prior.assets_consumed)
+        prior_claims = set(prior.reservation_claim_codes)
+
+        for claim_code in sorted(prior_claims):
+            reserving_book = reserved_by.get(claim_code)
+            if reserving_book is None:
+                findings.append(
+                    _finding(
+                        "SERIES.PRIOR_ASSET.CLAIM_UNKNOWN_RESERVATION",
+                        "BLOCKING",
+                        "ASSET",
+                        "ASSET",
+                        current_book_id,
+                        prior.book_id,
+                        (
+                            f"historical claim {claim_code} has no earlier "
+                            "reservation"
+                        ),
+                        claim_code,
+                    )
+                )
+            if claim_code not in prior_consumed:
+                findings.append(
+                    _finding(
+                        "SERIES.PRIOR_ASSET.CLAIM_NOT_CONSUMED",
+                        "BLOCKING",
+                        "ASSET",
+                        "ASSET",
+                        current_book_id,
+                        prior.book_id,
+                        (
+                            f"historical claim {claim_code} does not appear in "
+                            "that book's consumed assets"
+                        ),
+                        claim_code,
+                    )
+                )
+
+        for asset_code in prior.assets_consumed:
+            if asset_code in recurring:
+                continue
+            prior_consumer = consumed_by.get(asset_code)
+            if prior_consumer is not None:
+                findings.append(
+                    _finding(
+                        "SERIES.PRIOR_ASSET.REUSED_CONSUMED",
+                        "BLOCKING",
+                        "ASSET",
+                        "ASSET",
+                        current_book_id,
+                        prior.book_id,
+                        (
+                            f"historical asset {asset_code} was already consumed "
+                            f"by {prior_consumer}"
+                        ),
+                        asset_code,
+                    )
+                )
+                continue
+            reserving_book = reserved_by.get(asset_code)
+            if reserving_book is not None and asset_code not in prior_claims:
+                findings.append(
+                    _finding(
+                        "SERIES.PRIOR_ASSET.RESERVATION_NOT_CLAIMED",
+                        "BLOCKING",
+                        "ASSET",
+                        "ASSET",
+                        current_book_id,
+                        prior.book_id,
+                        (
+                            f"historical asset {asset_code} was reserved by "
+                            f"{reserving_book} but consumed without claim"
+                        ),
+                        asset_code,
+                    )
+                )
+            consumed_by[asset_code] = prior.book_id
+            reserved_by.pop(asset_code, None)
+
+        for asset_code in prior.assets_reserved:
+            if asset_code in recurring:
+                findings.append(
+                    _finding(
+                        "SERIES.PRIOR_ASSET.RESERVE_RECURRING_SIGNATURE",
+                        "BLOCKING",
+                        "ASSET",
+                        "ASSET",
+                        current_book_id,
+                        prior.book_id,
+                        (
+                            f"historical recurring signature {asset_code} was "
+                            "incorrectly reserved as one-use asset"
+                        ),
+                        asset_code,
+                    )
+                )
+                continue
+            if asset_code in consumed_by:
+                findings.append(
+                    _finding(
+                        "SERIES.PRIOR_ASSET.RESERVE_ALREADY_CONSUMED",
+                        "BLOCKING",
+                        "ASSET",
+                        "ASSET",
+                        current_book_id,
+                        prior.book_id,
+                        (
+                            f"historical reservation {asset_code} occurs after "
+                            "the asset was already consumed"
+                        ),
+                        asset_code,
+                    )
+                )
+            prior_reserver = reserved_by.get(asset_code)
+            if prior_reserver is not None:
+                findings.append(
+                    _finding(
+                        "SERIES.PRIOR_ASSET.RESERVE_DUPLICATE",
+                        "BLOCKING",
+                        "ASSET",
+                        "ASSET",
+                        current_book_id,
+                        prior.book_id,
+                        (
+                            f"historical asset {asset_code} was already reserved "
+                            f"by {prior_reserver}"
+                        ),
+                        asset_code,
+                    )
+                )
+            else:
+                reserved_by[asset_code] = prior.book_id
+
+    return consumed_by, reserved_by
+
+
 def _check_assets(
     *,
     profile: SeriesProfileSnapshot,
@@ -943,15 +1089,12 @@ def _check_assets(
     findings: list[SeriesCollisionFinding],
 ) -> None:
     recurring = set(profile.allowed_recurring_asset_codes)
-    consumed_by: dict[str, str] = {}
-    reserved_by: dict[str, str] = {}
-    for accepted in prior_passports:
-        prior = accepted.passport
-        for asset_code in prior.assets_consumed:
-            if asset_code not in recurring:
-                consumed_by.setdefault(asset_code, prior.book_id)
-        for asset_code in prior.assets_reserved:
-            reserved_by.setdefault(asset_code, prior.book_id)
+    consumed_by, reserved_by = _prior_asset_ledger(
+        profile=profile,
+        current_book_id=current.book_id,
+        prior_passports=prior_passports,
+        findings=findings,
+    )
 
     claimed = set(current.reservation_claim_codes)
     consumed = set(current.assets_consumed)
