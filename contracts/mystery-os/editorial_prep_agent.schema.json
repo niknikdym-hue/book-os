@@ -1,32 +1,66 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://book-os.local/contracts/mystery-os/editorial_prep_agent.schema.json",
-  "title": "MYSTERY OS Editorial Prep Agent Request",
+  "title": "MYSTERY OS Editorial Prep Bundle",
   "type": "object",
-  "required": ["schema_version", "task_id", "mode", "task", "allowed_outputs", "forbidden_actions", "owner_authorized"],
+  "required": [
+    "schema_version",
+    "task_id",
+    "project_id",
+    "authority_refs",
+    "task",
+    "allowed_outputs",
+    "forbidden_actions",
+    "source_packet_refs",
+    "private_content_scope",
+    "reasoning_mode",
+    "output_schema_ref",
+    "proposal_only",
+    "repository_write_allowed",
+    "manuscript_prose_allowed",
+    "network_mode",
+    "contains_secrets"
+  ],
   "properties": {
-    "schema_version": {"const": "0.1.0"},
+    "schema_version": {"const": "0.2.0"},
     "task_id": {"type": "string", "minLength": 1},
-    "mode": {"const": "EDITORIAL_PREP"},
-    "project_id": {"type": ["string", "null"]},
+    "project_id": {"type": "string", "minLength": 1},
     "series_id": {"type": ["string", "null"]},
     "book_id": {"type": ["string", "null"]},
-    "authority_refs": {"type": "array", "items": {"type": "string"}},
-    "task": {"type": "string", "minLength": 1},
-    "allowed_outputs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-    "forbidden_actions": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-    "source_packet_refs": {"type": "array", "items": {"type": "string"}},
-    "private_content_scope": {"enum": ["NONE", "MINIMUM_NECESSARY", "OWNER_SELECTED"]},
-    "reasoning_mode": {"enum": ["auto", "medium", "high", "xhigh"]},
-    "cost_cap": {
-      "type": "object",
-      "properties": {
-        "currency": {"type": "string"},
-        "max_total": {"type": "number", "minimum": 0}
-      },
-      "additionalProperties": true
+    "authority_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
     },
-    "owner_authorized": {"const": true}
+    "task": {"type": "string", "minLength": 1},
+    "allowed_outputs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "forbidden_actions": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "source_packet_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "private_content_scope": {
+      "enum": ["NONE", "MINIMUM_NECESSARY", "OWNER_SELECTED"]
+    },
+    "reasoning_mode": {"enum": ["auto", "medium", "high", "xhigh"]},
+    "output_schema_ref": {"type": "string", "minLength": 1},
+    "proposal_only": {"const": true},
+    "repository_write_allowed": {"const": false},
+    "manuscript_prose_allowed": {"const": false},
+    "network_mode": {"enum": ["DISABLED", "SOURCE_PACKET_ONLY"]},
+    "contains_secrets": {"const": false}
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
