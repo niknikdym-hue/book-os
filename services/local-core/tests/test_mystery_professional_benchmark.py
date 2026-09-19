@@ -259,12 +259,12 @@ def _evaluate(
     snapshot_hash: str = SNAPSHOT_HASH,
     revision_refs: tuple[str, ...] = REVISION_REFS,
 ):
-    set_result = _set_validation(benchmark_set, policy=set_policy)
     return evaluate_professional_benchmark(
         run=run,
         policy=policy,
         benchmark_set=benchmark_set,
-        benchmark_set_validation=set_result,
+        benchmark_set_policy=set_policy,
+        now_epoch=NOW,
         current_manuscript_snapshot_ref=snapshot_ref,
         current_manuscript_snapshot_hash=snapshot_hash,
         current_evaluated_revision_refs=revision_refs,
@@ -654,7 +654,6 @@ def test_exact_benchmark_set_and_manuscript_snapshots_are_version_bound() -> Non
 def test_professional_benchmark_ref_is_version_bound_to_policy_and_evidence() -> None:
     benchmark_set = _benchmark_set()
     run = _run(benchmark_set)
-    set_result = _set_validation(benchmark_set)
     result = _evaluate(run, benchmark_set)
     assert result.qualified
 
@@ -663,7 +662,8 @@ def test_professional_benchmark_ref_is_version_bound_to_policy_and_evidence() ->
         run=run,
         policy=SAMPLE_POLICY,
         benchmark_set=benchmark_set,
-        benchmark_set_validation=set_result,
+        benchmark_set_policy=SET_POLICY,
+        now_epoch=NOW,
         current_manuscript_snapshot_ref=SNAPSHOT_REF,
         current_manuscript_snapshot_hash=SNAPSHOT_HASH,
         current_evaluated_revision_refs=REVISION_REFS,
@@ -681,7 +681,8 @@ def test_professional_benchmark_ref_is_version_bound_to_policy_and_evidence() ->
         run=run,
         policy=stricter,
         benchmark_set=benchmark_set,
-        benchmark_set_validation=set_result,
+        benchmark_set_policy=SET_POLICY,
+        now_epoch=NOW,
         current_manuscript_snapshot_ref=SNAPSHOT_REF,
         current_manuscript_snapshot_hash=SNAPSHOT_HASH,
         current_evaluated_revision_refs=REVISION_REFS,
@@ -696,14 +697,95 @@ def test_mys08_result_bridges_into_mys06_sample_benchmark_evidence() -> None:
     run = _run(benchmark_set)
     result = _evaluate(run, benchmark_set)
 
-    evidence = sample_benchmark_evidence_from_result(
-        result=result,
-        evaluator_identity="professional-benchmark-gate",
-    )
+    evidence = sample_benchmark_evidence_from_result(result=result)
 
     assert evidence.status == "PASS"
     assert evidence.benchmark_ref == result.professional_benchmark_ref
     assert evidence.benchmark_set_ref == result.benchmark_set_ref
+
+
+def test_benchmark_ref_changes_when_corpus_quality_policy_changes() -> None:
+    benchmark_set = _benchmark_set()
+    run = _run(benchmark_set)
+    initial = _evaluate(run, benchmark_set)
+    assert initial.qualified
+
+    stricter_set_policy = replace(
+        SET_POLICY,
+        min_references=5,
+    )
+    current = _evaluate(
+        run,
+        benchmark_set,
+        set_policy=stricter_set_policy,
+    )
+    assert current.qualified
+    assert current.professional_benchmark_ref != initial.professional_benchmark_ref
+
+
+def test_cached_green_corpus_cannot_outlive_review_freshness() -> None:
+    benchmark_set = _benchmark_set()
+    run = _run(benchmark_set)
+    assert _evaluate(run, benchmark_set).qualified
+
+    expired_now = NOW + SET_POLICY.max_review_age_seconds + 1  # type: ignore[operator]
+    result = evaluate_professional_benchmark(
+        run=run,
+        policy=SAMPLE_POLICY,
+        benchmark_set=benchmark_set,
+        benchmark_set_policy=SET_POLICY,
+        now_epoch=expired_now,
+        current_manuscript_snapshot_ref=SNAPSHOT_REF,
+        current_manuscript_snapshot_hash=SNAPSHOT_HASH,
+        current_evaluated_revision_refs=REVISION_REFS,
+        verified_evaluations=_verified_evaluations(run),
+        verified_manuscript_evidence_refs=frozenset(),
+    )
+
+    assert "PRO_BENCH.RUN.BENCHMARK_SET_NOT_QUALIFIED" in _codes(result)
+    assert not result.qualified
+
+
+def test_mys06_bridge_requires_professional_range_even_if_lower_policy_allows_gaps() -> None:
+    benchmark_set = _benchmark_set()
+    evaluation = _dimension("PROSE_VOICE", status="MAJOR_GAP")
+    finding = FictionBenchmarkFinding(
+        dimension="PROSE_VOICE",
+        severity="MAJOR",
+        observation="material voice gap remains",
+        recommended_action="revise before representative sample acceptance",
+        manuscript_evidence_refs=("manuscript-evidence:voice-bridge",),
+        benchmark_observation_refs=(
+            benchmark_set.references[0].craft_observation_refs[0],
+        ),
+        evaluation_ref=evaluation.evaluation_ref,
+        non_infringing_comparison="voice specificity remains below professional references",
+        human_disposition_ref="human:intermediate-gap",
+    )
+    run = _run(
+        benchmark_set,
+        dimensions=tuple(
+            evaluation if value == "PROSE_VOICE" else _dimension(value)
+            for value in SAMPLE_DIMS
+        ),
+        findings=(finding,),
+        readiness_band="PROFESSIONAL_GAPS_REMAIN",
+    )
+    gaps_policy = replace(
+        SAMPLE_POLICY,
+        minimum_readiness_band="PROFESSIONAL_GAPS_REMAIN",
+    )
+    result = _evaluate(
+        run,
+        benchmark_set,
+        policy=gaps_policy,
+        manuscript_evidence_refs=frozenset({"manuscript-evidence:voice-bridge"}),
+        human_refs=frozenset({"human:intermediate-gap"}),
+    )
+    assert result.qualified
+
+    evidence = sample_benchmark_evidence_from_result(result=result)
+    assert evidence.status == "BLOCKING_GAP"
 
 
 def test_runtime_unknown_codes_fail_closed_without_key_errors() -> None:
