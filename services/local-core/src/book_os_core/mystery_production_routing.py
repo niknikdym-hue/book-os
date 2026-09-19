@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
@@ -93,6 +94,26 @@ class EditorialPrepBundle:
     manuscript_prose_allowed: bool
     network_mode: NetworkMode
     contains_secrets: bool
+
+
+@dataclass(frozen=True)
+class VerifiedOwnerExecutionAuthorization:
+    authorization_ref: str
+    operation_id: str
+    operation_kind: OperationKind
+    provider_execution_allowed: bool
+    editorial_prep_agent_allowed: bool
+    private_content_allowed: bool
+    current: bool = True
+
+
+@dataclass(frozen=True)
+class VerifiedCostAuthorization:
+    authorization_ref: str
+    operation_id: str
+    currency: str
+    max_cost_usd: float
+    current: bool = True
 
 
 @dataclass(frozen=True)
@@ -268,7 +289,9 @@ def _validate_prep_bundle(
     current_authority_refs: tuple[str, ...],
     request: ProductionRouteRequest,
     policy: ProductionRoutingPolicy,
-    verified_owner_authorization_refs: frozenset[str],
+    verified_owner_authorizations: Mapping[
+        str, VerifiedOwnerExecutionAuthorization
+    ],
     findings: list[ProductionRoutingFinding],
 ) -> None:
     for field_name, value in (
@@ -383,14 +406,20 @@ def _validate_prep_bundle(
         and bundle.private_content_scope != "NONE"
     ):
         owner_ref = request.owner_authorization_ref
+        owner_authorization = (
+            verified_owner_authorizations.get(owner_ref)
+            if owner_ref is not None
+            else None
+        )
         if (
-            owner_ref is None
-            or owner_ref not in verified_owner_authorization_refs
+            owner_authorization is None
+            or not owner_authorization.current
+            or not owner_authorization.private_content_allowed
         ):
             findings.append(
                 _finding(
                     "ROUTING.AGENT.PRIVATE_CONTENT_OWNER_AUTH_MISSING",
-                    "private editorial content requires verified Owner authorization",
+                    "private editorial content requires current Owner authorization",
                 )
             )
 
@@ -400,8 +429,10 @@ def evaluate_production_route(
     request: ProductionRouteRequest,
     policy: ProductionRoutingPolicy,
     current_authority_refs: tuple[str, ...],
-    verified_owner_authorization_refs: frozenset[str],
-    verified_cost_authorization_refs: frozenset[str],
+    verified_owner_authorizations: Mapping[
+        str, VerifiedOwnerExecutionAuthorization
+    ],
+    verified_cost_authorizations: Mapping[str, VerifiedCostAuthorization],
 ) -> ProductionRouteResult:
     findings: list[ProductionRoutingFinding] = []
 
@@ -516,30 +547,96 @@ def evaluate_production_route(
                         "RoutingChoice provider/model must be non-empty",
                     )
                 )
+        owner_authorization: VerifiedOwnerExecutionAuthorization | None = None
+        if request.owner_authorization_ref is not None:
+            owner_authorization = verified_owner_authorizations.get(
+                request.owner_authorization_ref
+            )
         if policy.require_owner_authorization_for_provider:
-            owner_ref = request.owner_authorization_ref
-            if (
-                owner_ref is None
-                or owner_ref not in verified_owner_authorization_refs
-            ):
+            if owner_authorization is None:
                 findings.append(
                     _finding(
                         "ROUTING.PROVIDER.OWNER_AUTH_UNVERIFIED",
                         "provider execution requires verified Owner authorization",
                     )
                 )
+            else:
+                if not owner_authorization.current:
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.OWNER_AUTH_STALE",
+                            "Owner execution authorization is not current",
+                            owner_authorization.authorization_ref,
+                        )
+                    )
+                if (
+                    owner_authorization.operation_id != request.operation_id
+                    or owner_authorization.operation_kind != request.operation_kind
+                ):
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.OWNER_AUTH_OPERATION_MISMATCH",
+                            "Owner authorization belongs to another operation",
+                            owner_authorization.authorization_ref,
+                        )
+                    )
+                if not owner_authorization.provider_execution_allowed:
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.OWNER_AUTH_PROVIDER_DENIED",
+                            "Owner authorization does not permit provider execution",
+                            owner_authorization.authorization_ref,
+                        )
+                    )
+                if (
+                    request.use_editorial_prep_agent
+                    and not owner_authorization.editorial_prep_agent_allowed
+                ):
+                    findings.append(
+                        _finding(
+                            "ROUTING.AGENT.OWNER_AUTH_AGENT_DENIED",
+                            "Owner authorization does not permit EDITORIAL_PREP agent",
+                            owner_authorization.authorization_ref,
+                        )
+                    )
+        cost_authorization: VerifiedCostAuthorization | None = None
+        if request.cost_authorization_ref is not None:
+            cost_authorization = verified_cost_authorizations.get(
+                request.cost_authorization_ref
+            )
         if policy.require_cost_authorization_for_provider:
-            cost_ref = request.cost_authorization_ref
-            if (
-                cost_ref is None
-                or cost_ref not in verified_cost_authorization_refs
-            ):
+            if cost_authorization is None:
                 findings.append(
                     _finding(
                         "ROUTING.PROVIDER.COST_AUTH_UNVERIFIED",
                         "provider execution requires verified bounded cost authorization",
                     )
                 )
+            else:
+                if not cost_authorization.current:
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.COST_AUTH_STALE",
+                            "cost authorization is not current",
+                            cost_authorization.authorization_ref,
+                        )
+                    )
+                if cost_authorization.operation_id != request.operation_id:
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.COST_AUTH_OPERATION_MISMATCH",
+                            "cost authorization belongs to another operation",
+                            cost_authorization.authorization_ref,
+                        )
+                    )
+                if cost_authorization.currency != "USD":
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.COST_AUTH_CURRENCY_INVALID",
+                            "cost authorization currency must be USD",
+                            cost_authorization.authorization_ref,
+                        )
+                    )
         if request.max_cost_usd is None:
             findings.append(
                 _finding(
@@ -562,6 +659,21 @@ def evaluate_production_route(
                         f"requested cap {request.max_cost_usd} exceeds policy "
                         f"{policy.max_operation_cost_usd}"
                     ),
+                )
+            )
+        if (
+            request.max_cost_usd is not None
+            and cost_authorization is not None
+            and request.max_cost_usd > cost_authorization.max_cost_usd
+        ):
+            findings.append(
+                _finding(
+                    "ROUTING.PROVIDER.COST_CAP_EXCEEDS_AUTHORIZATION",
+                    (
+                        f"requested cap {request.max_cost_usd} exceeds authorized "
+                        f"{cost_authorization.max_cost_usd}"
+                    ),
+                    cost_authorization.authorization_ref,
                 )
             )
     else:
@@ -633,7 +745,7 @@ def evaluate_production_route(
                 current_authority_refs=current_authority_refs,
                 request=request,
                 policy=policy,
-                verified_owner_authorization_refs=verified_owner_authorization_refs,
+                verified_owner_authorizations=verified_owner_authorizations,
                 findings=findings,
             )
     elif request.prep_bundle is not None:
@@ -674,15 +786,17 @@ def verify_production_route(
     request: ProductionRouteRequest,
     policy: ProductionRoutingPolicy,
     current_authority_refs: tuple[str, ...],
-    verified_owner_authorization_refs: frozenset[str],
-    verified_cost_authorization_refs: frozenset[str],
+    verified_owner_authorizations: Mapping[
+        str, VerifiedOwnerExecutionAuthorization
+    ],
+    verified_cost_authorizations: Mapping[str, VerifiedCostAuthorization],
 ) -> ProductionRouteVerification:
     current = evaluate_production_route(
         request=request,
         policy=policy,
         current_authority_refs=current_authority_refs,
-        verified_owner_authorization_refs=verified_owner_authorization_refs,
-        verified_cost_authorization_refs=verified_cost_authorization_refs,
+        verified_owner_authorizations=verified_owner_authorizations,
+        verified_cost_authorizations=verified_cost_authorizations,
     )
     if not current.qualified:
         return ProductionRouteVerification(
