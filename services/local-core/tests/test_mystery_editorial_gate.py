@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from book_os_core.mystery_anti_cliche_validation import AntiClicheResult
 from book_os_core.mystery_authority import (
     MysteryAuthorityGraph,
     MysteryAuthorityRevision,
@@ -16,6 +17,7 @@ from book_os_core.mystery_case_validation import (
 from book_os_core.mystery_editorial_gate import (
     ExternalWritingReadiness,
     SceneContract,
+    readiness_with_anti_cliche,
     WritingGatePolicy,
     create_scene_contract_revision,
     evaluate_scene_writing_gate,
@@ -89,6 +91,7 @@ def _clean_research() -> ResearchLedgerResult:
 
 def _clean_readiness(**kwargs: object) -> ExternalWritingReadiness:
     values: dict[str, object] = {
+        "anti_cliche_qualified": True,
         "anti_cliche_evaluation_ref": "anti-cliche-eval:v1",
     }
     values.update(kwargs)
@@ -823,3 +826,69 @@ def test_failed_series_uniqueness_never_sets_manual_series_ready_flag() -> None:
 
     assert not readiness.series_uniqueness_qualified
     assert readiness.series_brain_ref is None
+
+
+def test_manual_anti_cliche_ref_without_qualified_result_does_not_unlock_writing() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    readiness = _clean_readiness(
+        anti_cliche_qualified=False,
+        anti_cliche_evaluation_ref="anti-cliche:invented-ref",
+    )
+
+    result = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        readiness=readiness,
+    )
+
+    assert "ANTI_CLICHE.NOT_QUALIFIED" in _blockers(result)
+    assert not result.state.writing_allowed
+
+
+def test_anti_cliche_bridge_binds_exact_qualified_result_into_token() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    result = AntiClicheResult(
+        qualified=True,
+        anti_cliche_ref="anti-cliche:qualified-v1",
+        rule_pack_ref="anti-cliche-rule-pack:default:v1",
+        unresolved_blocking_codes=(),
+        findings=(),
+    )
+    readiness = readiness_with_anti_cliche(
+        ExternalWritingReadiness(),
+        result,
+    )
+
+    admitted = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        readiness=readiness,
+    )
+
+    assert admitted.state.writing_allowed
+    assert admitted.token is not None
+    assert "anti-cliche:qualified-v1" in admitted.token.evaluation_refs
+
+
+def test_failed_anti_cliche_result_clears_stale_manual_readiness() -> None:
+    readiness = readiness_with_anti_cliche(
+        _clean_readiness(
+            anti_cliche_qualified=True,
+            anti_cliche_evaluation_ref="anti-cliche:stale-green",
+        ),
+        AntiClicheResult(
+            qualified=False,
+            anti_cliche_ref="anti-cliche:blocked",
+            rule_pack_ref="anti-cliche-rule-pack:default:v1",
+            unresolved_blocking_codes=("ANTI_CLICHE.BLOCKED_RULE.EXCEPTION_MISSING",),
+            findings=(),
+        ),
+    )
+
+    assert not readiness.anti_cliche_qualified
+    assert readiness.anti_cliche_evaluation_ref is None
+    assert readiness.unresolved_blocked_cliche_codes

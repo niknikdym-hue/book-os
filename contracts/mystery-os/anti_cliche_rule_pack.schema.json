@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/anti_cliche_rule_pack.schema.json",
+  "title": "MYSTERY OS Anti-Cliche Rule Pack",
+  "type": "object",
+  "required": ["schema_version","pack_id","version","rules"],
+  "properties": {
+    "schema_version":{"const":"0.1.0"},
+    "pack_id":{"type":"string","minLength":1},
+    "version":{"type":"integer","minimum":1},
+    "rules":{
+      "type":"array","minItems":1,
+      "items":{
+        "type":"object",
+        "required":["code","level","category","title","description","exception_allowed","semantic_review_required"],
+        "properties":{
+          "code":{"type":"string","minLength":1},
+          "level":{"enum":["BLOCKED_BY_DEFAULT","HIGH_RISK_TROPE","STYLE_PATHOLOGY","SERIES_COLLISION"]},
+          "category":{"type":"string","minLength":1},
+          "title":{"type":"string","minLength":1},
+          "description":{"type":"string","minLength":1},
+          "exception_allowed":{"type":"boolean"},
+          "semantic_review_required":{"type":"boolean"}
+        },
+        "additionalProperties":false
+      }
+    }
+  },
+  "additionalProperties":false
+}

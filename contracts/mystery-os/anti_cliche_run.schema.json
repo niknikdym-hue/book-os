@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/anti_cliche_run.schema.json",
+  "title": "MYSTERY OS Anti-Cliche Run",
+  "type": "object",
+  "required": [
+    "schema_version","book_id","stage","target_snapshot_ref","target_snapshot_hash",
+    "writer_executor_identity","rule_pack_ref","rule_pack_hash","scan_evaluation_ref",
+    "scan_rubric_ref","evaluator_identity","evaluator_class","findings","exceptions",
+    "series_book"
+  ],
+  "properties": {
+    "schema_version":{"const":"0.1.0"},
+    "book_id":{"type":"string","minLength":1},
+    "stage":{"enum":["PRE_DRAFT","REPRESENTATIVE_SAMPLE","MIDBOOK","WHOLE_BOOK","FINAL"]},
+    "target_snapshot_ref":{"type":"string","minLength":1},
+    "target_snapshot_hash":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "writer_executor_identity":{"type":"string","minLength":1},
+    "rule_pack_ref":{"type":"string","minLength":1},
+    "rule_pack_hash":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "scan_evaluation_ref":{"type":"string","minLength":1},
+    "scan_rubric_ref":{"type":"string","minLength":1},
+    "evaluator_identity":{"type":"string","minLength":1},
+    "evaluator_class":{"enum":["SEMANTIC","LLM_JUDGE","PAIRWISE","HUMAN_LABEL"]},
+    "series_book":{"type":"boolean"},
+    "current_series_brain_ref":{"type":["string","null"]},
+    "findings":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "required":[
+          "rule_code","severity","observation","exact_proposed_use",
+          "target_object_refs","evidence_refs","evaluation_ref"
+        ],
+        "properties":{
+          "rule_code":{"type":"string","minLength":1},
+          "severity":{"enum":["BLOCKING","MAJOR","MINOR","NOTE"]},
+          "observation":{"type":"string","minLength":1},
+          "exact_proposed_use":{"type":"string","minLength":1},
+          "target_object_refs":{"type":"array","minItems":1,"items":{"type":"string","minLength":1}},
+          "evidence_refs":{"type":"array","minItems":1,"items":{"type":"string","minLength":1}},
+          "evaluation_ref":{"type":"string","minLength":1},
+          "human_disposition_ref":{"type":["string","null"]}
+        },
+        "additionalProperties":false
+      }
+    },
+    "exceptions":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "required":[
+          "exception_id","finding_ref","rule_code","rule_pack_ref",
+          "target_snapshot_ref","exact_proposed_use","reinvention_rationale",
+          "expected_reader_familiarity","material_transformation",
+          "alternatives_considered","decision","human_decision_ref"
+        ],
+        "properties":{
+          "exception_id":{"type":"string","minLength":1},
+          "finding_ref":{"type":"string","minLength":1},
+          "rule_code":{"type":"string","minLength":1},
+          "rule_pack_ref":{"type":"string","minLength":1},
+          "target_snapshot_ref":{"type":"string","minLength":1},
+          "exact_proposed_use":{"type":"string","minLength":1},
+          "reinvention_rationale":{"type":"string","minLength":1},
+          "expected_reader_familiarity":{"type":"string","minLength":1},
+          "material_transformation":{"type":"string","minLength":1},
+          "alternatives_considered":{"type":"array","minItems":1,"items":{"type":"string","minLength":1}},
+          "series_collision_ref":{"type":["string","null"]},
+          "decision":{"enum":["ACCEPT","REWORK","REJECT"]},
+          "human_decision_ref":{"type":"string","minLength":1}
+        },
+        "additionalProperties":false
+      }
+    }
+  },
+  "additionalProperties":false
+}

@@ -14,6 +14,7 @@ from .mystery_authority import (
     transition_authority_status,
 )
 from .mystery_case_validation import CaseIntegrityResult
+from .mystery_anti_cliche_validation import AntiClicheResult
 from .mystery_narrative_validation import NarrativeValidationResult
 from .mystery_research_validation import ResearchLedgerResult, research_entity_id
 from .mystery_sample_qualification import SampleQualificationResult
@@ -70,6 +71,7 @@ class WritingGatePolicy:
 @dataclass(frozen=True)
 class ExternalWritingReadiness:
     unresolved_blocked_cliche_codes: tuple[str, ...] = ()
+    anti_cliche_qualified: bool = False
     anti_cliche_evaluation_ref: str | None = None
     representative_sample_qualified: bool = False
     representative_sample_ref: str | None = None
@@ -81,6 +83,19 @@ class ExternalWritingReadiness:
     execution_route_ref: str | None = None
     execution_authorization_ref: str | None = None
     cost_authorization_ref: str | None = None
+
+
+def readiness_with_anti_cliche(
+    readiness: ExternalWritingReadiness,
+    result: AntiClicheResult,
+) -> ExternalWritingReadiness:
+    """Bind MYS-10 exact anti-cliche evidence into MYS-05 writing readiness."""
+    return replace(
+        readiness,
+        unresolved_blocked_cliche_codes=result.unresolved_blocking_codes,
+        anti_cliche_qualified=result.qualified,
+        anti_cliche_evaluation_ref=(result.anti_cliche_ref if result.qualified else None),
+    )
 
 
 def readiness_with_sample_qualification(
@@ -559,6 +574,8 @@ def _anti_cliche_gate(readiness: ExternalWritingReadiness) -> GateRecord:
     unresolved = _unique_nonempty(readiness.unresolved_blocked_cliche_codes)
     blockers = [f"ANTI_CLICHE.UNRESOLVED:{code}" for code in unresolved]
     evaluation_refs: tuple[str, ...] = ()
+    if not readiness.anti_cliche_qualified:
+        blockers.append("ANTI_CLICHE.NOT_QUALIFIED")
     if readiness.anti_cliche_evaluation_ref:
         evaluation_refs = (readiness.anti_cliche_evaluation_ref,)
     else:
