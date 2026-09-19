@@ -18,6 +18,7 @@ from book_os_core.mystery_editorial_gate import (
     ExternalWritingReadiness,
     SceneContract,
     readiness_with_anti_cliche,
+    readiness_with_production_route,
     WritingGatePolicy,
     create_scene_contract_revision,
     evaluate_scene_writing_gate,
