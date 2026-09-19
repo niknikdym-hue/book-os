@@ -343,6 +343,7 @@ def series_context_ref(
     current_passport: MysteryBookPassport,
     prior_passports: tuple[AcceptedBookPassport, ...],
     policy: SeriesCollisionPolicy,
+    writer_executor_identity: str,
 ) -> str:
     prior_values: list[JSONValue] = []
     for accepted in sorted(
@@ -353,6 +354,7 @@ def series_context_ref(
     payload: dict[str, JSONValue] = {
         "series_profile": _series_profile_payload(profile),
         "current_passport_ref": passport_ref(current_passport),
+        "writer_executor_identity": writer_executor_identity,
         "prior_passports": prior_values,
         "policy": _policy_payload(policy),
     }
@@ -447,6 +449,16 @@ def _validate_unique_values(
         )
 
 
+def _valid_series_profile_ref_for_id(
+    value: str,
+    profile_id: str,
+) -> bool:
+    prefix = f"series-profile:{profile_id}:"
+    if not value.startswith(prefix):
+        return False
+    return bool(_SHA256.fullmatch(value[len(prefix):]))
+
+
 def _validate_passport_shape(
     *,
     passport: MysteryBookPassport,
@@ -512,6 +524,21 @@ def _validate_passport_shape(
                 passport.book_id,
                 None,
                 "Book Passport belongs to another series identity",
+            )
+        )
+    if not _valid_series_profile_ref_for_id(
+        passport.series_profile_ref,
+        passport.series_profile_id,
+    ):
+        findings.append(
+            _finding(
+                "SERIES.PASSPORT.SERIES_PROFILE_REF_INVALID",
+                "BLOCKING",
+                "EXACT",
+                "PASSPORT",
+                passport.book_id,
+                None,
+                "Book Passport Series Profile ref is malformed or belongs to another id",
             )
         )
     if passport.series_profile_ref != expected_series_profile_ref:
@@ -840,6 +867,22 @@ def _validate_prior_passports(
                     current_book_id,
                     prior.book_id,
                     f"book number {current_book_number} is already used",
+                    ref,
+                )
+            )
+        elif prior.book_number > current_book_number:
+            findings.append(
+                _finding(
+                    "SERIES.PRIOR.NOT_ACTUALLY_PRIOR",
+                    "BLOCKING",
+                    "EXACT",
+                    "PASSPORT",
+                    current_book_id,
+                    prior.book_id,
+                    (
+                        f"passport book number {prior.book_number} is not prior "
+                        f"to current book {current_book_number}"
+                    ),
                     ref,
                 )
             )
@@ -1247,6 +1290,7 @@ def _validate_semantic_evidence(
     prior_passports: tuple[AcceptedBookPassport, ...],
     policy: SeriesCollisionPolicy,
     context_ref: str,
+    writer_executor_identity: str,
     semantic_evidence: tuple[SeriesSemanticCollisionEvidence, ...],
     verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
     verified_human_disposition_refs: frozenset[str],
@@ -1370,6 +1414,23 @@ def _validate_semantic_evidence(
             )
         else:
             evidence_by_key[key] = evidence
+
+        if (
+            policy.require_semantic_independence
+            and evidence.evaluator_identity == writer_executor_identity
+        ):
+            findings.append(
+                _finding(
+                    "SERIES.SEMANTIC.SAME_WRITER_EXECUTOR",
+                    "BLOCKING",
+                    "SEMANTIC",
+                    evidence.dimension,
+                    current.book_id,
+                    evidence.prior_book_id,
+                    "semantic Series Editor cannot use the Writer executor identity",
+                    evidence.evaluation_ref,
+                )
+            )
 
         artifact = verified_evaluations.get(evidence.evaluation_ref)
         if artifact is None:
@@ -1525,6 +1586,7 @@ def evaluate_series_uniqueness(
     current_passport: MysteryBookPassport,
     prior_passports: tuple[AcceptedBookPassport, ...],
     policy: SeriesCollisionPolicy,
+    writer_executor_identity: str,
     semantic_evidence: tuple[SeriesSemanticCollisionEvidence, ...],
     verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
     verified_human_disposition_refs: frozenset[str] = frozenset(),
@@ -1557,11 +1619,25 @@ def evaluate_series_uniqueness(
         findings=findings,
     )
 
+    if not writer_executor_identity.strip():
+        findings.append(
+            _finding(
+                "SERIES.WRITER_IDENTITY_MISSING",
+                "BLOCKING",
+                "SEMANTIC",
+                "WRITER",
+                current_passport.book_id,
+                None,
+                "Writer executor identity is required for semantic independence",
+            )
+        )
+
     context_ref = series_context_ref(
         profile=profile,
         current_passport=current_passport,
         prior_passports=prior_passports,
         policy=policy,
+        writer_executor_identity=writer_executor_identity,
     )
 
     _check_exact_collisions(
@@ -1621,6 +1697,7 @@ def evaluate_series_uniqueness(
         prior_passports=prior_passports,
         policy=policy,
         context_ref=context_ref,
+        writer_executor_identity=writer_executor_identity,
         semantic_evidence=semantic_evidence,
         verified_evaluations=verified_evaluations,
         verified_human_disposition_refs=verified_human_disposition_refs,
@@ -1652,6 +1729,7 @@ def verify_series_uniqueness(
     current_passport: MysteryBookPassport,
     prior_passports: tuple[AcceptedBookPassport, ...],
     policy: SeriesCollisionPolicy,
+    writer_executor_identity: str,
     semantic_evidence: tuple[SeriesSemanticCollisionEvidence, ...],
     verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
     verified_human_disposition_refs: frozenset[str] = frozenset(),
@@ -1662,6 +1740,7 @@ def verify_series_uniqueness(
         current_passport=current_passport,
         prior_passports=prior_passports,
         policy=policy,
+        writer_executor_identity=writer_executor_identity,
         semantic_evidence=semantic_evidence,
         verified_evaluations=verified_evaluations,
         verified_human_disposition_refs=verified_human_disposition_refs,
