@@ -770,7 +770,7 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW", onOpenBook
                 <label className="field">
                   <span>Автор / псевдоним</span>
                   <select value={authorId} onChange={(event) => setAuthorId(event.target.value)}>
-                    <option value="">Выберите утверждённого автора</option>
+                    <option value="">Выберите автора / псевдоним</option>
                     {authors.map((item) => (
                       <option key={item.profile_id} value={item.profile_id}>{item.name}</option>
                     ))}
@@ -915,7 +915,7 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW", onOpenBook
                 <label className="field">
                   <span>Автор / псевдоним</span>
                   <select value={authorId} onChange={(event) => setAuthorId(event.target.value)}>
-                    <option value="">Выберите утверждённого автора</option>
+                    <option value="">Выберите автора / псевдоним</option>
                     {authors.map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name}</option>)}
                   </select>
                 </label>
@@ -1043,7 +1043,7 @@ export function SeriesStudio({ embedded = false, initialMode = "NEW", onOpenBook
                   <label className="field">
                     <span>Автор / псевдоним</span>
                     <select value={authorId} onChange={(event) => setAuthorId(event.target.value)}>
-                      <option value="">Выберите утверждённого автора</option>
+                      <option value="">Выберите автора / псевдоним</option>
                       {authors.map((item) => <option key={item.profile_id} value={item.profile_id}>{item.name}</option>)}
                     </select>
                   </label>
