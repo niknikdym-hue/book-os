@@ -1046,8 +1046,9 @@ def _prior_asset_ledger(
     current_book_id: str,
     prior_passports: tuple[AcceptedBookPassport, ...],
     findings: list[SeriesCollisionFinding],
-) -> tuple[dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     all_consumed_by: dict[str, str] = {}
+    one_use_consumed_by: dict[str, str] = {}
     reserved_by: dict[str, str] = {}
 
     for accepted in sorted(
@@ -1135,6 +1136,8 @@ def _prior_asset_ledger(
                     )
                 )
             all_consumed_by.setdefault(asset_code, prior.book_id)
+            if asset_code not in recurring_at_acceptance:
+                one_use_consumed_by.setdefault(asset_code, prior.book_id)
             reserved_by.pop(asset_code, None)
 
         for asset_code in prior.assets_reserved:
@@ -1191,7 +1194,7 @@ def _prior_asset_ledger(
             else:
                 reserved_by[asset_code] = prior.book_id
 
-    return all_consumed_by, reserved_by
+    return all_consumed_by, one_use_consumed_by, reserved_by
 
 
 def _check_assets(
@@ -1202,7 +1205,7 @@ def _check_assets(
     findings: list[SeriesCollisionFinding],
 ) -> None:
     recurring = set(profile.allowed_recurring_asset_codes)
-    all_consumed_by, reserved_by = _prior_asset_ledger(
+    all_consumed_by, one_use_consumed_by, reserved_by = _prior_asset_ledger(
         current_book_id=current.book_id,
         prior_passports=prior_passports,
         findings=findings,
@@ -1244,19 +1247,20 @@ def _check_assets(
             )
 
     for asset_code in sorted(consumed):
-        if asset_code in recurring:
-            continue
-        prior_consumer = all_consumed_by.get(asset_code)
-        if prior_consumer is not None:
+        prior_one_use_consumer = one_use_consumed_by.get(asset_code)
+        if prior_one_use_consumer is not None:
             findings.append(
                 _finding(
-                    "SERIES.ASSET.REUSED_CONSUMED",
+                    "SERIES.ASSET.REUSED_ONE_USE",
                     "BLOCKING",
                     "ASSET",
                     "ASSET",
                     current.book_id,
-                    prior_consumer,
-                    f"consumable asset {asset_code} was already used",
+                    prior_one_use_consumer,
+                    (
+                        f"asset {asset_code} was accepted historically as one-use "
+                        "and cannot be reclassified into a recurring signature"
+                    ),
                     asset_code,
                 )
             )
@@ -1273,6 +1277,28 @@ def _check_assets(
                     (
                         f"reserved asset {asset_code} is consumed without an "
                         "explicit reservation claim"
+                    ),
+                    asset_code,
+                )
+            )
+        if asset_code in recurring:
+            continue
+        prior_consumer = all_consumed_by.get(asset_code)
+        if (
+            prior_consumer is not None
+            and prior_one_use_consumer is None
+        ):
+            findings.append(
+                _finding(
+                    "SERIES.ASSET.REUSED_AFTER_SIGNATURE_REMOVAL",
+                    "BLOCKING",
+                    "ASSET",
+                    "ASSET",
+                    current.book_id,
+                    prior_consumer,
+                    (
+                        f"asset {asset_code} recurred historically but is no longer "
+                        "allowed as a recurring signature in the current profile"
                     ),
                     asset_code,
                 )
