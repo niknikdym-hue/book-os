@@ -148,6 +148,8 @@ it("offers three persisted series scenarios and keeps Auto as the default", asyn
   expect(screen.getByRole("button", { name: "Продолжить в BOOK OS" })).toBeInTheDocument();
   expect(screen.getByLabelText("Модель")).toHaveValue("AUTO");
   expect(screen.getAllByRole("option", { name: /Елена Дым/ })).toHaveLength(1);
+  expect(screen.getByRole("option", { name: "Выберите автора / псевдоним" })).toBeInTheDocument();
+  expect(screen.queryByText("Выберите утверждённого автора")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Добавить внешнюю серию" }));
   expect(screen.getByLabelText("Права на файл")).toBeInTheDocument();
