@@ -51,9 +51,22 @@ POLICY = SeriesCollisionPolicy(
     exact_attention_dimensions=("OPENING_PATTERN", "INTERVIEW_CADENCE"),
     semantic_required_dimensions=(
         "PREMISE",
+        "CASE_TYPE",
+        "CULPRIT_RELATIONSHIP",
+        "MOTIVE_FAMILY",
+        "MECHANISM",
+        "CONCEALMENT",
+        "SUSPECT_ARCHITECTURE",
         "CLUE_ARCHITECTURE",
+        "SUPERNATURAL_DEVICE",
+        "MIDPOINT_REVERSAL",
+        "PROTAGONIST_JEOPARDY",
         "EMOTIONAL_CONFLICT",
+        "RELATIONSHIP_MOVEMENT",
+        "FINAL_REVEAL",
+        "CLIMAX_STAGING",
         "SETTING_TYPE",
+        "CASE_SOLUTION_ARCHITECTURE",
         "PROSE_SCENE_PATTERN_RISK",
     ),
 )
@@ -733,7 +746,7 @@ def test_policy_dimension_overlap_is_rejected() -> None:
         artifacts=artifacts,
     )
 
-    assert "SERIES.POLICY.DIMENSION_OVERLAP" in _codes(result)
+    assert "SERIES.POLICY.EXACT_DIMENSION_OVERLAP" in _codes(result)
     assert not result.qualified
 
 
@@ -796,3 +809,30 @@ def test_prior_passport_number_must_really_precede_current_book() -> None:
 
     assert "SERIES.PRIOR.NOT_ACTUALLY_PRIOR" in _codes(result)
     assert not result.qualified
+
+
+def test_semantic_core_cannot_be_disabled_by_policy() -> None:
+    weakened = replace(
+        POLICY,
+        semantic_required_dimensions=("PREMISE",),
+    )
+    semantic, artifacts = _semantic_evidence(policy=weakened)
+
+    result = _evaluate(
+        policy=weakened,
+        semantic=semantic,
+        artifacts=artifacts,
+    )
+
+    assert "SERIES.POLICY.SEMANTIC_CORE_MISSING" in _codes(result)
+    assert not result.qualified
+
+
+def test_exact_and_semantic_overlap_is_required_not_rejected() -> None:
+    assert "MECHANISM" in POLICY.exact_blocking_dimensions
+    assert "MECHANISM" in POLICY.semantic_required_dimensions
+
+    result = _evaluate()
+
+    assert "SERIES.POLICY.EXACT_DIMENSION_OVERLAP" not in _codes(result)
+    assert result.qualified
