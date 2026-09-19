@@ -511,6 +511,7 @@ def test_provider_execution_requires_route_execution_and_cost_authorization() ->
         scene_revision,
         readiness=_clean_readiness(
             provider_execution_requested=True,
+            execution_route_qualified=True,
             execution_route_ref="route:writer-standard",
             execution_authorization_ref="execution-auth:1",
             cost_authorization_ref="cost-auth:1",
