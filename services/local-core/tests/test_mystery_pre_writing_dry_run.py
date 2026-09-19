@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+from book_os_core.model_gateway import (
+    AuthorityInputRef,
+    DeterministicFakeAdapter,
+    ModelGateway,
+)
 from book_os_core.model_routing import RoutingChoice
 from book_os_core.mystery_anti_cliche_validation import AntiClicheResult
 from book_os_core.mystery_authority import (
@@ -24,6 +31,10 @@ from book_os_core.mystery_editorial_gate import (
 from book_os_core.mystery_narrative_validation import (
     NarrativeValidationResult,
     ReaderKnowledgeCheckpoint,
+)
+from book_os_core.mystery_fiction_gateway import (
+    FictionGatewayExecutionRequest,
+    execute_fiction_gateway_task,
 )
 from book_os_core.mystery_production_routing import (
     ProductionRouteRequest,
@@ -72,6 +83,7 @@ def _build_authority() -> tuple[
     SceneContract,
     MysteryAuthorityRevision,
     tuple[str, ...],
+    tuple[AuthorityInputRef, ...],
 ]:
     graph = MysteryAuthorityGraph()
     story = _approve(
@@ -135,11 +147,20 @@ def _build_authority() -> tuple[
         actor_kind="AI",
     )
     graph.register_head(scene)
+    authority_revisions = (story, narrative, case)
     return (
         graph,
         contract,
         scene,
-        (story.revision_ref, narrative.revision_ref, case.revision_ref),
+        tuple(item.revision_ref for item in authority_revisions),
+        tuple(
+            AuthorityInputRef(
+                revision_id=item.revision_id,
+                revision_hash=item.revision_hash,
+                entity_type=item.kind,
+            )
+            for item in authority_revisions
+        ),
     )
 
 
@@ -229,7 +250,56 @@ def _route(
         verified_cost_authorizations={COST_REF: cost},
     )
     assert result.qualified
-    return result
+    return request, result
+
+
+def _execute_fake_fiction_task(
+    *,
+    task_type: str,
+    token,
+    route_request,
+    route_result,
+    authority_refs: tuple[str, ...],
+    authority_inputs: tuple[AuthorityInputRef, ...],
+):
+    adapter = DeterministicFakeAdapter()
+    gateway = ModelGateway({"fake": adapter})
+    fake_request = replace(
+        route_request,
+        routing_choice=RoutingChoice(
+            provider="fake",
+            provider_label="Fake",
+            model="fake-model",
+            selection_mode="AUTO",
+            selection_scope=None,
+            operation=task_type,
+            rationale="synthetic no-cost fiction gateway dry run",
+        ),
+    )
+    execution = FictionGatewayExecutionRequest(
+        task_id=f"synthetic:{task_type.lower()}:1",
+        task_type=task_type,  # type: ignore[arg-type]
+        book_id="book-1",
+        scene_id="scene-01",
+        scene_revision_ref=token.scene_revision_ref,
+        section_objective="Write only the admitted synthetic fiction scene.",
+        authority_revision_refs=authority_refs,
+        authority_inputs=authority_inputs,
+        authoritative_context={
+            "scene_contract": {"scene_id": "scene-01"},
+            "series_brain_ref": "series-brain:synthetic-green",
+            "anti_cliche_ref": "anti-cliche:synthetic-green",
+        },
+        task_payload={"scene_id": "scene-01"},
+    )
+    return execute_fiction_gateway_task(
+        gateway=gateway,
+        execution=execution,
+        admission=token,
+        route_request=fake_request,
+        route_result=route_result,
+        now_epoch=NOW,
+    )
 
 
 def _base_readiness(
@@ -288,8 +358,8 @@ def _blockers(result) -> set[str]:  # type: ignore[no-untyped-def]
 
 
 def test_full_series_pre_writing_dry_run_reaches_representative_sample_writing_allowed() -> None:
-    graph, contract, scene, authority_refs = _build_authority()
-    route = _route(
+    graph, contract, scene, authority_refs, authority_inputs = _build_authority()
+    route_request, route = _route(
         "op:representative-sample:1",
         "REPRESENTATIVE_SAMPLE_DRAFT",
         authority_refs=authority_refs,
@@ -314,6 +384,16 @@ def test_full_series_pre_writing_dry_run_reaches_representative_sample_writing_a
 
     assert result.state.writing_allowed
     assert result.token is not None
+    gateway_result = _execute_fake_fiction_task(
+        task_type="REPRESENTATIVE_SAMPLE_DRAFT",
+        token=result.token,
+        route_request=route_request,
+        route_result=route,
+        authority_refs=authority_refs,
+        authority_inputs=authority_inputs,
+    )
+    assert gateway_result.output.outcome == "DRAFT"
+    assert result.token is not None
     for exact_ref in (
         "anti-cliche:synthetic-green",
         "series-brain:synthetic-green",
@@ -323,10 +403,21 @@ def test_full_series_pre_writing_dry_run_reaches_representative_sample_writing_a
     ):
         assert exact_ref in result.token.evaluation_refs
 
+    gateway_result = _execute_fake_fiction_task(
+        task_type="REPRESENTATIVE_SAMPLE_DRAFT",
+        token=result.token,
+        route_request=route_request,
+        route_result=route,
+        authority_refs=authority_refs,
+        authority_inputs=authority_inputs,
+    )
+    assert gateway_result.output.outcome == "DRAFT"
+    assert gateway_result.output.text is not None
+
 
 def test_mass_draft_remains_closed_until_sample_and_writer_qualification() -> None:
-    graph, contract, scene, authority_refs = _build_authority()
-    route = _route(
+    graph, contract, scene, authority_refs, authority_inputs = _build_authority()
+    route_request, route = _route(
         "op:scene-draft:1",
         "SCENE_DRAFT",
         authority_refs=authority_refs,
@@ -377,10 +468,21 @@ def test_mass_draft_remains_closed_until_sample_and_writer_qualification() -> No
     assert "representative-sample:synthetic-green" in admitted.token.evaluation_refs
     assert "writer-qualification:synthetic-green" in admitted.token.evaluation_refs
 
+    gateway_result = _execute_fake_fiction_task(
+        task_type="SCENE_DRAFT",
+        token=admitted.token,
+        route_request=route_request,
+        route_result=route,
+        authority_refs=authority_refs,
+        authority_inputs=authority_inputs,
+    )
+    assert gateway_result.output.outcome == "DRAFT"
+    assert gateway_result.output.text is not None
+
 
 def test_agent_capability_is_not_a_runtime_dependency_for_normal_writing() -> None:
-    graph, contract, scene, authority_refs = _build_authority()
-    route = _route(
+    graph, contract, scene, authority_refs, authority_inputs = _build_authority()
+    route_request, route = _route(
         "op:representative-sample:no-agent",
         "REPRESENTATIVE_SAMPLE_DRAFT",
         authority_refs=authority_refs,
