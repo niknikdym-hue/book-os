@@ -351,7 +351,7 @@ def test_consumed_one_use_asset_cannot_be_reused_but_recurring_signature_can() -
             "asset-reserved-for-future",
             "signature-city",
         ),
-        claims=("asset-reserved-for-future",),
+        reservation_claim_codes=("asset-reserved-for-future",),
     )
     semantic, artifacts = _semantic_evidence(current=current)
 
