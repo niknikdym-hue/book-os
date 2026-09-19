@@ -16,6 +16,7 @@ from .mystery_authority import (
 from .mystery_case_validation import CaseIntegrityResult
 from .mystery_anti_cliche_validation import AntiClicheResult
 from .mystery_narrative_validation import NarrativeValidationResult
+from .mystery_production_routing import ProductionRouteResult
 from .mystery_research_validation import ResearchLedgerResult, research_entity_id
 from .mystery_sample_qualification import SampleQualificationResult
 from .mystery_series_validation import SeriesUniquenessResult
@@ -80,6 +81,7 @@ class ExternalWritingReadiness:
     series_uniqueness_qualified: bool = False
     series_brain_ref: str | None = None
     provider_execution_requested: bool = False
+    execution_route_qualified: bool = False
     execution_route_ref: str | None = None
     execution_authorization_ref: str | None = None
     cost_authorization_ref: str | None = None
@@ -127,6 +129,21 @@ def readiness_with_series_uniqueness(
         readiness,
         series_uniqueness_qualified=uniqueness.qualified,
         series_brain_ref=uniqueness.series_brain_ref if uniqueness.qualified else None,
+    )
+
+
+def readiness_with_production_route(
+    readiness: ExternalWritingReadiness,
+    route: ProductionRouteResult,
+) -> ExternalWritingReadiness:
+    """Bind MYS-11 exact execution authorization into MYS-05 readiness."""
+    return replace(
+        readiness,
+        provider_execution_requested=route.provider_execution_requested,
+        execution_route_qualified=route.qualified,
+        execution_route_ref=route.execution_route_ref if route.qualified else None,
+        execution_authorization_ref=route.execution_authorization_ref,
+        cost_authorization_ref=route.cost_authorization_ref,
     )
 
 
@@ -657,6 +674,8 @@ def _execution_gate(readiness: ExternalWritingReadiness) -> GateRecord:
 
     blockers: list[str] = []
     refs: list[str] = []
+    if not readiness.execution_route_qualified:
+        blockers.append("EXECUTION.ROUTE_NOT_QUALIFIED")
     for code, ref in (
         ("EXECUTION.ROUTE_REF_MISSING", readiness.execution_route_ref),
         ("EXECUTION.AUTHORIZATION_REF_MISSING", readiness.execution_authorization_ref),
