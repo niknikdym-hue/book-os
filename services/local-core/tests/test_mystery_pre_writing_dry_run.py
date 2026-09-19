@@ -336,11 +336,7 @@ def _evaluate(
 
 
 def _blockers(result) -> set[str]:  # type: ignore[no-untyped-def]
-    return {
-        blocker
-        for gate in result.state.gates
-        for blocker in gate.blocking_findings
-    }
+    return {blocker for gate in result.state.gates for blocker in gate.blocking_findings}
 
 
 def test_full_series_pre_writing_dry_run_reaches_representative_sample_writing_allowed() -> None:
