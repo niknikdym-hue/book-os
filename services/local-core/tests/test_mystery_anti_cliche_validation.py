@@ -488,9 +488,7 @@ def test_unknown_rule_and_duplicate_exception_fail_closed() -> None:
         duplicate_run,
         human_refs=frozenset({exception.human_decision_ref}),
     )
-    assert "ANTI_CLICHE.EXCEPTION.MULTIPLE_FOR_FINDING" in _codes(
-        duplicate_result
-    )
+    assert "ANTI_CLICHE.EXCEPTION.MULTIPLE_FOR_FINDING" in _codes(duplicate_result)
 
 
 def test_invalid_series_collision_rule_pack_cannot_make_collision_waivable() -> None:
@@ -503,8 +501,5 @@ def test_invalid_series_collision_rule_pack_cannot_make_collision_waivable() -> 
 
     result = _evaluate(run, rule_pack=pack)
 
-    assert (
-        "ANTI_CLICHE.RULE.SERIES_COLLISION_EXCEPTION_FORBIDDEN"
-        in _codes(result)
-    )
+    assert "ANTI_CLICHE.RULE.SERIES_COLLISION_EXCEPTION_FORBIDDEN" in _codes(result)
     assert not result.qualified
