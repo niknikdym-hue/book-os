@@ -54,9 +54,7 @@ def _reference(
         publication_year=year,
         publisher_class=publisher_class,  # type: ignore[arg-type]
         publisher_ref=(
-            f"publisher:{index}"
-            if publisher_class == "ESTABLISHED_PUBLISHER"
-            else None
+            f"publisher:{index}" if publisher_class == "ESTABLISHED_PUBLISHER" else None
         ),
         format_codes=("TEXT", "AUDIO") if index == 6 else ("TEXT",),
         selection_categories=categories,  # type: ignore[arg-type]
@@ -223,10 +221,7 @@ def _verified_evaluations(
             evaluator_identity=evaluation.evaluator_identity,
             evaluator_class=evaluation.evaluator_class,
             rubric_ref=evaluation.rubric_ref,
-            purpose=(
-                f"PROFESSIONAL_BENCHMARK:{run.checkpoint}:"
-                f"{evaluation.dimension}"
-            ),
+            purpose=(f"PROFESSIONAL_BENCHMARK:{run.checkpoint}:{evaluation.dimension}"),
             status="SUCCEEDED",
             current=True,
         )
@@ -269,9 +264,7 @@ def _evaluate(
         current_manuscript_snapshot_hash=snapshot_hash,
         current_evaluated_revision_refs=revision_refs,
         verified_evaluations=(
-            verified_evaluations
-            if verified_evaluations is not None
-            else _verified_evaluations(run)
+            verified_evaluations if verified_evaluations is not None else _verified_evaluations(run)
         ),
         verified_manuscript_evidence_refs=manuscript_evidence_refs,
         verified_human_disposition_refs=human_refs,
@@ -313,8 +306,7 @@ def test_benchmark_set_target_market_language_and_subgenre_are_exact() -> None:
 def test_benchmark_set_rejects_monoculture_and_missing_market_coverage() -> None:
     base = _benchmark_set()
     repeated_author = tuple(
-        replace(reference, author_ref="same-author")
-        for reference in base.references
+        replace(reference, author_ref="same-author") for reference in base.references
     )
     sparse_policy = replace(
         SET_POLICY,
@@ -379,20 +371,14 @@ def test_clean_representative_sample_benchmark_passes_without_global_score() -> 
     assert result.qualified
     assert result.findings == ()
     assert result.readiness_band == "PROFESSIONAL_RANGE_CANDIDATE"
-    assert result.professional_benchmark_ref.startswith(
-        "professional-fiction-benchmark:"
-    )
+    assert result.professional_benchmark_ref.startswith("professional-fiction-benchmark:")
 
 
 def test_missing_required_dimension_or_audio_dimension_blocks() -> None:
     benchmark_set = _benchmark_set()
     run = _run(
         benchmark_set,
-        dimensions=tuple(
-            _dimension(value)
-            for value in SAMPLE_DIMS
-            if value != "DIALOGUE"
-        ),
+        dimensions=tuple(_dimension(value) for value in SAMPLE_DIMS if value != "DIALOGUE"),
     )
     missing = _evaluate(run, benchmark_set)
     assert "PRO_BENCH.DIMENSION.MISSING" in _codes(missing)
@@ -477,9 +463,7 @@ def test_mimicry_or_protected_expression_reproduction_blocks() -> None:
     )
 
     assert "PRO_BENCH.RIGHTS.MIMICRY_REQUEST_DETECTED" in _codes(mimicry)
-    assert "PRO_BENCH.RIGHTS.PROTECTED_EXPRESSION_REPRODUCTION" in _codes(
-        protected
-    )
+    assert "PRO_BENCH.RIGHTS.PROTECTED_EXPRESSION_REPRODUCTION" in _codes(protected)
 
 
 def test_benchmark_findings_require_verified_manuscript_and_set_observation_refs() -> None:
@@ -499,8 +483,7 @@ def test_benchmark_findings_require_verified_manuscript_and_set_observation_refs
     run = _run(
         benchmark_set,
         dimensions=tuple(
-            evaluation if value == "PROSE_VOICE" else _dimension(value)
-            for value in SAMPLE_DIMS
+            evaluation if value == "PROSE_VOICE" else _dimension(value) for value in SAMPLE_DIMS
         ),
         findings=(finding,),
         readiness_band="PROFESSIONAL_GAPS_REMAIN",
@@ -538,8 +521,7 @@ def test_major_gap_can_be_human_disposed_but_cannot_hide_in_professional_range_b
         human_disposition_ref="human:accept-for-mid-stage",
     )
     dimensions = tuple(
-        evaluation if value == "PROSE_VOICE" else _dimension(value)
-        for value in SAMPLE_DIMS
+        evaluation if value == "PROSE_VOICE" else _dimension(value) for value in SAMPLE_DIMS
     )
 
     gaps_policy = replace(
@@ -594,8 +576,7 @@ def test_blocking_gap_can_never_be_waived_or_hidden() -> None:
     run = _run(
         benchmark_set,
         dimensions=tuple(
-            evaluation if value == "SCENES" else _dimension(value)
-            for value in SAMPLE_DIMS
+            evaluation if value == "SCENES" else _dimension(value) for value in SAMPLE_DIMS
         ),
         findings=(finding,),
         readiness_band="PROFESSIONAL_RANGE_CANDIDATE",
@@ -623,9 +604,7 @@ def test_strong_professional_candidate_requires_verified_human_confirmation() ->
     )
 
     unverified = _evaluate(run, benchmark_set)
-    assert "PRO_BENCH.BAND.STRONG_HUMAN_CONFIRMATION_UNVERIFIED" in _codes(
-        unverified
-    )
+    assert "PRO_BENCH.BAND.STRONG_HUMAN_CONFIRMATION_UNVERIFIED" in _codes(unverified)
 
     verified = _evaluate(
         run,
@@ -755,9 +734,7 @@ def test_mys06_bridge_requires_professional_range_even_if_lower_policy_allows_ga
         observation="material voice gap remains",
         recommended_action="revise before representative sample acceptance",
         manuscript_evidence_refs=("manuscript-evidence:voice-bridge",),
-        benchmark_observation_refs=(
-            benchmark_set.references[0].craft_observation_refs[0],
-        ),
+        benchmark_observation_refs=(benchmark_set.references[0].craft_observation_refs[0],),
         evaluation_ref=evaluation.evaluation_ref,
         non_infringing_comparison="voice specificity remains below professional references",
         human_disposition_ref="human:intermediate-gap",
@@ -765,8 +742,7 @@ def test_mys06_bridge_requires_professional_range_even_if_lower_policy_allows_ga
     run = _run(
         benchmark_set,
         dimensions=tuple(
-            evaluation if value == "PROSE_VOICE" else _dimension(value)
-            for value in SAMPLE_DIMS
+            evaluation if value == "PROSE_VOICE" else _dimension(value) for value in SAMPLE_DIMS
         ),
         findings=(finding,),
         readiness_band="PROFESSIONAL_GAPS_REMAIN",
@@ -798,8 +774,7 @@ def test_runtime_unknown_codes_fail_closed_without_key_errors() -> None:
     run = _run(
         benchmark_set,
         dimensions=tuple(
-            evaluation if value == "SCENES" else _dimension(value)
-            for value in SAMPLE_DIMS
+            evaluation if value == "SCENES" else _dimension(value) for value in SAMPLE_DIMS
         ),
         readiness_band="ALIEN_BAND",
     )
