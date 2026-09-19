@@ -13,7 +13,6 @@ from book_os_core.mystery_series_validation import (
     evaluate_series_uniqueness,
     passport_hash,
     passport_ref,
-    series_brain_ref,
     series_context_ref,
     series_profile_ref,
     verify_series_uniqueness,
