@@ -104,6 +104,40 @@ def ready_project(data_dir: Path) -> tuple[ProjectService, str, str]:
     return service, project.book_id, chapter_id
 
 
+def test_writer_requires_task017_admission_before_adapter_or_task_creation(tmp_path: Path) -> None:
+    projects = ProjectService(tmp_path)
+    project = projects.create_project(
+        NewBookRequest(working_title="Admission Gate Test", primary_subtype="Strategy")
+    )
+    projects.save_book_contract(project.book_id, book_contract())
+    projects.approve_book_contract(project.book_id)
+    projects.save_architecture(project.book_id, architecture())
+    project = projects.approve_architecture(project.book_id)
+    chapter_id = project.chapters[0].chapter_id
+    projects.save_chapter_contract(project.book_id, chapter_id, chapter_contract())
+    projects.approve_chapter_contract(project.book_id, chapter_id)
+
+    fake = DeterministicFakeAdapter()
+    drafting = DraftingService(tmp_path, ModelGateway({"fake": fake}))
+    with pytest.raises(DraftingGateError, match="WRITING_NOT_ALLOWED"):
+        drafting.generate_section_draft(
+            project.book_id,
+            chapter_id,
+            DraftSectionRequest(
+                section_objective="Must be blocked before adapter",
+                provider="fake",
+                model="fake-writer",
+            ),
+        )
+
+    assert fake.last_request is None
+    engine = create_database(tmp_path / "projects" / project.book_id / "project.sqlite")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM bounded_tasks")).scalar_one() == 0
+        assert connection.execute(text("SELECT COUNT(*) FROM model_runs")).scalar_one() == 0
+    engine.dispose()
+
+
 def test_fake_success_creates_draft_with_exact_provenance(tmp_path: Path) -> None:
     projects, book_id, chapter_id = ready_project(tmp_path)
     fake = DeterministicFakeAdapter()
