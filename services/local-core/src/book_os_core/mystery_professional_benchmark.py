@@ -107,9 +107,7 @@ _VALID_ACCESS_LEVELS = frozenset(
 _VALID_RIGHTS_BASES = frozenset(
     {"PUBLIC_METADATA", "PUBLIC_DOMAIN", "USER_OWNED", "LICENSED", "OTHER_DOCUMENTED"}
 )
-_VALID_COMPARISON_MODES = frozenset(
-    {"CRITERION", "BLIND_PAIRWISE", "CORPUS_DIAGNOSTIC"}
-)
+_VALID_COMPARISON_MODES = frozenset({"CRITERION", "BLIND_PAIRWISE", "CORPUS_DIAGNOSTIC"})
 _VALID_DIMENSIONS = frozenset(
     {
         "PREMISE_IDENTITY",
@@ -294,9 +292,7 @@ def _reference_payload(reference: BenchmarkReference) -> dict[str, JSONValue]:
         "publisher_class": reference.publisher_class,
         "publisher_ref": reference.publisher_ref,
         "format_codes": _json_strings(reference.format_codes),
-        "selection_categories": _json_strings(
-            tuple(reference.selection_categories)
-        ),
+        "selection_categories": _json_strings(tuple(reference.selection_categories)),
         "selection_reason": reference.selection_reason,
         "prohibited_inference": reference.prohibited_inference,
         "access_level": reference.access_level,
@@ -363,12 +359,8 @@ def _finding_payload(finding: FictionBenchmarkFinding) -> dict[str, JSONValue]:
         "severity": finding.severity,
         "observation": finding.observation,
         "recommended_action": finding.recommended_action,
-        "manuscript_evidence_refs": _json_strings(
-            finding.manuscript_evidence_refs
-        ),
-        "benchmark_observation_refs": _json_strings(
-            finding.benchmark_observation_refs
-        ),
+        "manuscript_evidence_refs": _json_strings(finding.manuscript_evidence_refs),
+        "benchmark_observation_refs": _json_strings(finding.benchmark_observation_refs),
         "evaluation_ref": finding.evaluation_ref,
         "scope": finding.scope,
         "non_infringing_comparison": finding.non_infringing_comparison,
@@ -381,9 +373,7 @@ def _policy_payload(policy: ProfessionalBenchmarkPolicy) -> dict[str, JSONValue]
         "checkpoint": policy.checkpoint,
         "audio_selected": policy.audio_selected,
         "minimum_readiness_band": policy.minimum_readiness_band,
-        "require_independent_semantic_evaluation": (
-            policy.require_independent_semantic_evaluation
-        ),
+        "require_independent_semantic_evaluation": (policy.require_independent_semantic_evaluation),
     }
 
 
@@ -398,9 +388,7 @@ def _set_policy_payload(policy: BenchmarkSetPolicy) -> dict[str, JSONValue]:
         "max_single_author_fraction": policy.max_single_author_fraction,
         "min_text_access_references": policy.min_text_access_references,
         "required_categories": _json_strings(tuple(policy.required_categories)),
-        "min_established_publisher_references": (
-            policy.min_established_publisher_references
-        ),
+        "min_established_publisher_references": (policy.min_established_publisher_references),
         "max_review_age_seconds": policy.max_review_age_seconds,
     }
 
@@ -706,9 +694,8 @@ def validate_benchmark_set(
                     reference.reference_id,
                 )
             )
-        if (
-            reference.publisher_class == "ESTABLISHED_PUBLISHER"
-            and (reference.publisher_ref is None or not reference.publisher_ref.strip())
+        if reference.publisher_class == "ESTABLISHED_PUBLISHER" and (
+            reference.publisher_ref is None or not reference.publisher_ref.strip()
         ):
             findings.append(
                 _finding(
@@ -758,16 +745,11 @@ def validate_benchmark_set(
                     reference.reference_id,
                 )
             )
-        if len(set(reference.craft_observation_refs)) != len(
-            reference.craft_observation_refs
-        ):
+        if len(set(reference.craft_observation_refs)) != len(reference.craft_observation_refs):
             findings.append(
                 _finding(
                     "PRO_BENCH.REFERENCE.DUPLICATE_OBSERVATION_REF",
-                    (
-                        f"reference {reference.reference_id} repeats craft "
-                        "observation refs"
-                    ),
+                    (f"reference {reference.reference_id} repeats craft observation refs"),
                     reference.reference_id,
                 )
             )
@@ -775,10 +757,7 @@ def validate_benchmark_set(
             findings.append(
                 _finding(
                     "PRO_BENCH.REFERENCE.EMPTY_OBSERVATION_REF",
-                    (
-                        f"reference {reference.reference_id} contains an empty "
-                        "craft observation ref"
-                    ),
+                    (f"reference {reference.reference_id} contains an empty craft observation ref"),
                     reference.reference_id,
                 )
             )
@@ -791,9 +770,7 @@ def validate_benchmark_set(
                     reference.reference_id,
                 )
             )
-        if len(set(reference.selection_categories)) != len(
-            reference.selection_categories
-        ):
+        if len(set(reference.selection_categories)) != len(reference.selection_categories):
             findings.append(
                 _finding(
                     "PRO_BENCH.REFERENCE.DUPLICATE_CATEGORY",
@@ -806,10 +783,7 @@ def validate_benchmark_set(
                 findings.append(
                     _finding(
                         "PRO_BENCH.REFERENCE.CATEGORY_UNKNOWN",
-                        (
-                            f"reference {reference.reference_id} has unknown "
-                            f"category {category}"
-                        ),
+                        (f"reference {reference.reference_id} has unknown category {category}"),
                         reference.reference_id,
                         category,
                     )
@@ -847,9 +821,7 @@ def validate_benchmark_set(
                 )
             )
 
-        if reference.access_level == "METADATA_ONLY" and (
-            reference.craft_observation_refs
-        ):
+        if reference.access_level == "METADATA_ONLY" and (reference.craft_observation_refs):
             findings.append(
                 _finding(
                     "PRO_BENCH.RIGHTS.CRAFT_OBSERVATION_WITH_METADATA_ONLY",
@@ -860,11 +832,15 @@ def validate_benchmark_set(
                     reference.reference_id,
                 )
             )
-        if reference.access_level in {
-            "LAWFUL_BOUNDED_TEXT",
-            "LICENSED_FULL_ACCESS",
-            "PUBLIC_DOMAIN_FULL_ACCESS",
-        } and reference.rights_basis == "PUBLIC_METADATA":
+        if (
+            reference.access_level
+            in {
+                "LAWFUL_BOUNDED_TEXT",
+                "LICENSED_FULL_ACCESS",
+                "PUBLIC_DOMAIN_FULL_ACCESS",
+            }
+            and reference.rights_basis == "PUBLIC_METADATA"
+        ):
             findings.append(
                 _finding(
                     "PRO_BENCH.RIGHTS.TEXT_ACCESS_BASIS_INVALID",
@@ -960,8 +936,7 @@ def validate_benchmark_set(
     if (
         policy.max_review_age_seconds is not None
         and policy.max_review_age_seconds >= 0
-        and now_epoch - benchmark_set.last_review_epoch
-        > policy.max_review_age_seconds
+        and now_epoch - benchmark_set.last_review_epoch > policy.max_review_age_seconds
     ):
         findings.append(
             _finding(
@@ -969,9 +944,7 @@ def validate_benchmark_set(
                 "benchmark set requires a current review before use",
             )
         )
-    if policy.max_review_age_seconds is not None and (
-        policy.max_review_age_seconds < 0
-    ):
+    if policy.max_review_age_seconds is not None and (policy.max_review_age_seconds < 0):
         findings.append(
             _finding(
                 "PRO_BENCH.POLICY.REVIEW_AGE_INVALID",
@@ -1001,10 +974,7 @@ def _verified_artifact_matches(
         findings.append(
             _finding(
                 "PRO_BENCH.EVALUATION.ARTIFACT_MISSING",
-                (
-                    f"benchmark dimension {evaluation.dimension} evaluation artifact "
-                    "is missing"
-                ),
+                (f"benchmark dimension {evaluation.dimension} evaluation artifact is missing"),
                 evaluation.dimension,
                 evaluation.evaluation_ref,
             )
@@ -1014,10 +984,7 @@ def _verified_artifact_matches(
         findings.append(
             _finding(
                 "PRO_BENCH.EVALUATION.ARTIFACT_ID_MISMATCH",
-                (
-                    f"catalog key {evaluation.evaluation_ref} resolves to "
-                    f"{artifact.evaluation_ref}"
-                ),
+                (f"catalog key {evaluation.evaluation_ref} resolves to {artifact.evaluation_ref}"),
                 evaluation.dimension,
             )
         )
@@ -1053,9 +1020,7 @@ def _verified_artifact_matches(
                 evaluation.dimension,
             )
         )
-    expected_purpose = (
-        f"PROFESSIONAL_BENCHMARK:{run.checkpoint}:{evaluation.dimension}"
-    )
+    expected_purpose = f"PROFESSIONAL_BENCHMARK:{run.checkpoint}:{evaluation.dimension}"
     if artifact.purpose != expected_purpose:
         findings.append(
             _finding(
@@ -1071,10 +1036,7 @@ def _verified_artifact_matches(
         findings.append(
             _finding(
                 "PRO_BENCH.EVALUATION.NOT_CURRENT_SUCCESS",
-                (
-                    f"dimension {evaluation.dimension} evaluation must be "
-                    "SUCCEEDED and current"
-                ),
+                (f"dimension {evaluation.dimension} evaluation must be SUCCEEDED and current"),
                 evaluation.dimension,
             )
         )
@@ -1134,16 +1096,11 @@ def evaluate_professional_benchmark(
         findings.append(
             _finding(
                 "PRO_BENCH.RUN.CHECKPOINT_POLICY_MISMATCH",
-                (
-                    f"run checkpoint {run.checkpoint} differs from policy "
-                    f"{policy.checkpoint}"
-                ),
+                (f"run checkpoint {run.checkpoint} differs from policy {policy.checkpoint}"),
             )
         )
     if not run.book_id.strip():
-        findings.append(
-            _finding("PRO_BENCH.RUN.BOOK_ID_MISSING", "book_id must not be blank")
-        )
+        findings.append(_finding("PRO_BENCH.RUN.BOOK_ID_MISSING", "book_id must not be blank"))
     if (
         run.manuscript_snapshot_ref != current_manuscript_snapshot_ref
         or run.manuscript_snapshot_hash != current_manuscript_snapshot_hash
@@ -1180,10 +1137,7 @@ def evaluate_professional_benchmark(
 
     current_set_ref = benchmark_set_ref(benchmark_set)
     current_set_hash = benchmark_set_hash(benchmark_set)
-    if (
-        run.benchmark_set_ref != current_set_ref
-        or run.benchmark_set_hash != current_set_hash
-    ):
+    if run.benchmark_set_ref != current_set_ref or run.benchmark_set_hash != current_set_hash:
         findings.append(
             _finding(
                 "PRO_BENCH.RUN.BENCHMARK_SET_STALE",
@@ -1253,10 +1207,7 @@ def evaluate_professional_benchmark(
             findings.append(
                 _finding(
                     "PRO_BENCH.EVALUATION.STATUS_UNKNOWN",
-                    (
-                        f"dimension {evaluation.dimension} has unknown status "
-                        f"{evaluation.status}"
-                    ),
+                    (f"dimension {evaluation.dimension} has unknown status {evaluation.status}"),
                     evaluation.dimension,
                 )
             )
@@ -1353,10 +1304,7 @@ def evaluate_professional_benchmark(
             findings.append(
                 _finding(
                     "PRO_BENCH.FINDING.DIMENSION_UNKNOWN",
-                    (
-                        f"benchmark finding uses unknown dimension "
-                        f"{benchmark_finding.dimension}"
-                    ),
+                    (f"benchmark finding uses unknown dimension {benchmark_finding.dimension}"),
                     benchmark_finding.dimension,
                 )
             )
@@ -1379,28 +1327,19 @@ def evaluate_professional_benchmark(
             findings.append(
                 _finding(
                     "PRO_BENCH.FINDING.NO_DIMENSION_EVALUATION",
-                    (
-                        f"finding {benchmark_finding.dimension} has no matching "
-                        "dimension evaluation"
-                    ),
+                    (f"finding {benchmark_finding.dimension} has no matching dimension evaluation"),
                     benchmark_finding.dimension,
                 )
             )
-        matching_evaluation = evaluations_by_dimension.get(
-            benchmark_finding.dimension
-        )
+        matching_evaluation = evaluations_by_dimension.get(benchmark_finding.dimension)
         if (
             matching_evaluation is not None
-            and benchmark_finding.evaluation_ref
-            != matching_evaluation.evaluation_ref
+            and benchmark_finding.evaluation_ref != matching_evaluation.evaluation_ref
         ):
             findings.append(
                 _finding(
                     "PRO_BENCH.FINDING.EVALUATION_REF_MISMATCH",
-                    (
-                        f"finding {benchmark_finding.dimension} is bound to another "
-                        "evaluation"
-                    ),
+                    (f"finding {benchmark_finding.dimension} is bound to another evaluation"),
                     benchmark_finding.dimension,
                 )
             )
@@ -1424,10 +1363,7 @@ def evaluate_professional_benchmark(
             findings.append(
                 _finding(
                     "PRO_BENCH.FINDING.MANUSCRIPT_EVIDENCE_MISSING",
-                    (
-                        f"finding {benchmark_finding.dimension} has no manuscript "
-                        "evidence refs"
-                    ),
+                    (f"finding {benchmark_finding.dimension} has no manuscript evidence refs"),
                     benchmark_finding.dimension,
                 )
             )
@@ -1448,10 +1384,7 @@ def evaluate_professional_benchmark(
             findings.append(
                 _finding(
                     "PRO_BENCH.FINDING.BENCHMARK_EVIDENCE_MISSING",
-                    (
-                        f"finding {benchmark_finding.dimension} has no benchmark "
-                        "observation refs"
-                    ),
+                    (f"finding {benchmark_finding.dimension} has no benchmark observation refs"),
                     benchmark_finding.dimension,
                 )
             )
@@ -1508,10 +1441,7 @@ def evaluate_professional_benchmark(
                         benchmark_finding.dimension,
                     )
                 )
-            elif (
-                benchmark_finding.human_disposition_ref
-                not in verified_human_disposition_refs
-            ):
+            elif benchmark_finding.human_disposition_ref not in verified_human_disposition_refs:
                 findings.append(
                     _finding(
                         "PRO_BENCH.FINDING.HUMAN_DISPOSITION_UNVERIFIED",
@@ -1527,15 +1457,11 @@ def evaluate_professional_benchmark(
     for dimension, evaluation in evaluations_by_dimension.items():
         dimension_findings = findings_by_dimension.get(dimension, [])
         severities = {item.severity for item in dimension_findings}
-        if evaluation.status == "PASS" and severities.intersection(
-            {"BLOCKING", "MAJOR"}
-        ):
+        if evaluation.status == "PASS" and severities.intersection({"BLOCKING", "MAJOR"}):
             findings.append(
                 _finding(
                     "PRO_BENCH.DIMENSION.PASS_CONTRADICTS_FINDINGS",
-                    (
-                        f"dimension {dimension} is PASS but has material findings"
-                    ),
+                    (f"dimension {dimension} is PASS but has material findings"),
                     dimension,
                 )
             )
@@ -1543,9 +1469,7 @@ def evaluate_professional_benchmark(
             findings.append(
                 _finding(
                     "PRO_BENCH.DIMENSION.BLOCKING_WITHOUT_FINDING",
-                    (
-                        f"dimension {dimension} is BLOCKING_GAP without BLOCKING finding"
-                    ),
+                    (f"dimension {dimension} is BLOCKING_GAP without BLOCKING finding"),
                     dimension,
                 )
             )
@@ -1558,9 +1482,7 @@ def evaluate_professional_benchmark(
                 )
             )
 
-    has_blocking = any(
-        item.severity == "BLOCKING" for item in run.findings
-    ) or any(
+    has_blocking = any(item.severity == "BLOCKING" for item in run.findings) or any(
         item.status == "BLOCKING_GAP" for item in run.dimension_evaluations
     )
     has_major = any(item.severity == "MAJOR" for item in run.findings) or any(
@@ -1581,8 +1503,7 @@ def evaluate_professional_benchmark(
         not has_blocking
         and has_major
         and run_band_valid
-        and _BAND_ORDER[run.readiness_band]
-        > _BAND_ORDER["PROFESSIONAL_GAPS_REMAIN"]
+        and _BAND_ORDER[run.readiness_band] > _BAND_ORDER["PROFESSIONAL_GAPS_REMAIN"]
     ):
         findings.append(
             _finding(
@@ -1594,31 +1515,21 @@ def evaluate_professional_benchmark(
         not has_blocking
         and not has_major
         and run_band_valid
-        and _BAND_ORDER[run.readiness_band]
-        < _BAND_ORDER["PROFESSIONAL_RANGE_CANDIDATE"]
+        and _BAND_ORDER[run.readiness_band] < _BAND_ORDER["PROFESSIONAL_RANGE_CANDIDATE"]
     ):
         findings.append(
             _finding(
                 "PRO_BENCH.BAND.UNDERSTATED_WITHOUT_MATERIAL_GAPS",
-                (
-                    "run with no material gaps must use at least "
-                    "PROFESSIONAL_RANGE_CANDIDATE"
-                ),
+                ("run with no material gaps must use at least PROFESSIONAL_RANGE_CANDIDATE"),
             )
         )
 
     if run.readiness_band == "STRONG_PROFESSIONAL_CANDIDATE":
-        if (
-            run.strong_candidate_human_ref is None
-            or not run.strong_candidate_human_ref.strip()
-        ):
+        if run.strong_candidate_human_ref is None or not run.strong_candidate_human_ref.strip():
             findings.append(
                 _finding(
                     "PRO_BENCH.BAND.STRONG_HUMAN_CONFIRMATION_MISSING",
-                    (
-                        "STRONG_PROFESSIONAL_CANDIDATE requires explicit human "
-                        "confirmation"
-                    ),
+                    ("STRONG_PROFESSIONAL_CANDIDATE requires explicit human confirmation"),
                 )
             )
         elif run.strong_candidate_human_ref not in verified_human_disposition_refs:
@@ -1633,8 +1544,7 @@ def evaluate_professional_benchmark(
     if (
         run_band_valid
         and policy_band_valid
-        and _BAND_ORDER[run.readiness_band]
-        < _BAND_ORDER[policy.minimum_readiness_band]
+        and _BAND_ORDER[run.readiness_band] < _BAND_ORDER[policy.minimum_readiness_band]
     ):
         findings.append(
             _finding(
@@ -1714,15 +1624,10 @@ def sample_benchmark_evidence_from_result(
     """Bridge MYS-08 evidence into MYS-06 representative-sample readiness."""
     professional_range = (
         result.readiness_band in _VALID_BANDS
-        and _BAND_ORDER[result.readiness_band]
-        >= _BAND_ORDER["PROFESSIONAL_RANGE_CANDIDATE"]
+        and _BAND_ORDER[result.readiness_band] >= _BAND_ORDER["PROFESSIONAL_RANGE_CANDIDATE"]
     )
     return ProfessionalBenchmarkEvidence(
-        status=(
-            "PASS"
-            if result.qualified and professional_range
-            else "BLOCKING_GAP"
-        ),
+        status=("PASS" if result.qualified and professional_range else "BLOCKING_GAP"),
         benchmark_ref=result.professional_benchmark_ref,
         benchmark_set_ref=result.benchmark_set_ref,
         evaluator_identity="mystery-os/professional-benchmark-gate",
