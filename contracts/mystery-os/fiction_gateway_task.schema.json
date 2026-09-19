@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/fiction_gateway_task.schema.json",
+  "title": "MYSTERY OS Fiction Gateway Task",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "task_type",
+    "book_id",
+    "scene_id",
+    "scene_revision_ref",
+    "section_objective",
+    "authority_revision_refs",
+    "authority_inputs"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "task_id": {"type": "string", "minLength": 1},
+    "task_type": {
+      "enum": [
+        "REPRESENTATIVE_SAMPLE_DRAFT",
+        "SCENE_DRAFT",
+        "ROUTINE_SCENE_REVISION",
+        "CONTINUITY_EXTRACTION"
+      ]
+    },
+    "book_id": {"type": "string", "minLength": 1},
+    "scene_id": {"type": "string", "minLength": 1},
+    "scene_revision_ref": {"type": "string", "minLength": 1},
+    "section_objective": {"type": "string", "minLength": 1},
+    "authority_revision_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "authority_inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["revision_id", "revision_hash", "entity_type"],
+        "properties": {
+          "revision_id": {"type": "string", "minLength": 1},
+          "revision_hash": {"type": "string", "minLength": 1},
+          "entity_type": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "max_output_tokens": {"type": "integer", "minimum": 100, "maximum": 12000}
+  },
+  "additionalProperties": false
+}
