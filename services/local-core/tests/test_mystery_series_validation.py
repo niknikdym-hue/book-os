@@ -372,9 +372,9 @@ def test_consumed_one_use_asset_cannot_be_reused_but_recurring_signature_can() -
         artifacts=artifacts,
     )
 
-    assert "SERIES.ASSET.REUSED_CONSUMED" in _codes(result)
+    assert "SERIES.ASSET.REUSED_ONE_USE" in _codes(result)
     assert not any(
-        finding.code == "SERIES.ASSET.REUSED_CONSUMED"
+        finding.code == "SERIES.ASSET.REUSED_ONE_USE"
         and "signature-city" in finding.evidence_refs
         for finding in result.findings
     )
@@ -836,3 +836,49 @@ def test_exact_and_semantic_overlap_is_required_not_rejected() -> None:
 
     assert "SERIES.POLICY.EXACT_DIMENSION_OVERLAP" not in _codes(result)
     assert result.qualified
+
+
+def test_later_profile_cannot_reclassify_old_one_use_asset_as_recurring() -> None:
+    expanded_profile = replace(
+        PROFILE,
+        content_hash=_hash("series-profile-v3-add-old-asset"),
+        allowed_recurring_asset_codes=(
+            *PROFILE.allowed_recurring_asset_codes,
+            "asset-used-1",
+        ),
+    )
+    current = replace(
+        CURRENT,
+        series_profile_ref=series_profile_ref(expanded_profile),
+        assets_consumed=(
+            "asset-reserved-for-future",
+            "signature-city",
+            "asset-used-1",
+        ),
+    )
+    semantic, artifacts = _semantic_evidence(current=current)
+    context_ref = series_context_ref(
+        profile=expanded_profile,
+        current_passport=current,
+        prior_passports=(ACCEPTED_ONE,),
+        policy=POLICY,
+        writer_executor_identity=WRITER_ID,
+    )
+    artifacts = {
+        ref: replace(artifact, manuscript_snapshot_ref=context_ref)
+        for ref, artifact in artifacts.items()
+    }
+
+    result = evaluate_series_uniqueness(
+        profile=expanded_profile,
+        current_profile=expanded_profile,
+        current_passport=current,
+        prior_passports=(ACCEPTED_ONE,),
+        policy=POLICY,
+        writer_executor_identity=WRITER_ID,
+        semantic_evidence=semantic,
+        verified_evaluations=artifacts,
+    )
+
+    assert "SERIES.ASSET.REUSED_ONE_USE" in _codes(result)
+    assert not result.qualified
