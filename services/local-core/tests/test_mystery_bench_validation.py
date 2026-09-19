@@ -9,6 +9,7 @@ from book_os_core.mystery_bench_validation import (
     MysteryBenchPack,
     MysteryBenchPolicy,
     MysteryDimensionEvidence,
+    VerifiedEvaluationArtifact,
     adversarial_protocol_ref,
     cold_reader_protocol_ref,
     evaluate_mystery_bench,
@@ -195,21 +196,61 @@ def _final_pack(
     return pack, selected_policy
 
 
-def _verified_evaluation_refs(pack: MysteryBenchPack) -> frozenset[str]:
-    values = {
-        evidence.evaluation_ref
-        for evidence in pack.dimension_evidence
-        if evidence.evaluation_ref
-    }
-    values.update(
-        checkpoint.evaluation_ref
-        for checkpoint in pack.cold_reader_checkpoints
-        if checkpoint.evaluation_ref
-    )
-    if pack.adversarial_reconstruction is not None:
-        values.add(pack.adversarial_reconstruction.reconstruction_ref)
-        values.add(pack.adversarial_reconstruction.comparison_ref)
-    return frozenset(values)
+def _verified_evaluations(
+    pack: MysteryBenchPack,
+) -> dict[str, VerifiedEvaluationArtifact]:
+    values: dict[str, VerifiedEvaluationArtifact] = {}
+    for evidence in pack.dimension_evidence:
+        if not evidence.evaluation_ref:
+            continue
+        values[evidence.evaluation_ref] = VerifiedEvaluationArtifact(
+            evaluation_ref=evidence.evaluation_ref,
+            manuscript_snapshot_ref=evidence.bookbench_snapshot_ref,
+            evaluator_identity=evidence.evaluator_identity,
+            evaluator_class=evidence.evaluator_class,
+            rubric_ref=evidence.rubric_ref,
+            purpose=f"MYSTERY_DIMENSION:{evidence.dimension}",
+            status="SUCCEEDED",
+            current=True,
+        )
+    for checkpoint in pack.cold_reader_checkpoints:
+        if not checkpoint.evaluation_ref:
+            continue
+        values[checkpoint.evaluation_ref] = VerifiedEvaluationArtifact(
+            evaluation_ref=checkpoint.evaluation_ref,
+            manuscript_snapshot_ref=checkpoint.manuscript_snapshot_ref,
+            evaluator_identity=checkpoint.evaluator_identity,
+            evaluator_class="LLM_JUDGE",
+            rubric_ref="cold-reader-rubric:v1",
+            purpose=f"COLD_READER:{checkpoint.checkpoint}",
+            status="SUCCEEDED",
+            current=True,
+        )
+    adversarial = pack.adversarial_reconstruction
+    if adversarial is not None:
+        if adversarial.reconstruction_ref:
+            values[adversarial.reconstruction_ref] = VerifiedEvaluationArtifact(
+                evaluation_ref=adversarial.reconstruction_ref,
+                manuscript_snapshot_ref=adversarial.manuscript_snapshot_ref,
+                evaluator_identity=adversarial.evaluator_identity,
+                evaluator_class="LLM_JUDGE",
+                rubric_ref="adversarial-reconstruction-rubric:v1",
+                purpose="ADVERSARIAL_RECONSTRUCTION_BLIND",
+                status="SUCCEEDED",
+                current=True,
+            )
+        if adversarial.comparison_ref:
+            values[adversarial.comparison_ref] = VerifiedEvaluationArtifact(
+                evaluation_ref=adversarial.comparison_ref,
+                manuscript_snapshot_ref=adversarial.manuscript_snapshot_ref,
+                evaluator_identity=adversarial.evaluator_identity,
+                evaluator_class="LLM_JUDGE",
+                rubric_ref="adversarial-case-comparison-rubric:v1",
+                purpose="ADVERSARIAL_CASE_COMPARISON",
+                status="SUCCEEDED",
+                current=True,
+            )
+    return values
 
 
 def _evaluate(
@@ -219,7 +260,8 @@ def _evaluate(
     current_snapshot_ref: str = SNAPSHOT_REF,
     current_snapshot_hash: str = SNAPSHOT_HASH,
     authority_refs: tuple[str, ...] = AUTHORITY_REFS,
-    verified_evaluation_refs: frozenset[str] | None = None,
+    current_case_solution_ref: str = CASE_REF,
+    verified_evaluations: dict[str, VerifiedEvaluationArtifact] | None = None,
     verified_human_disposition_refs: frozenset[str] = frozenset(),
 ):
     return evaluate_mystery_bench(
@@ -228,10 +270,11 @@ def _evaluate(
         current_manuscript_snapshot_ref=current_snapshot_ref,
         current_manuscript_snapshot_hash=current_snapshot_hash,
         current_authority_revision_refs=authority_refs,
-        verified_evaluation_refs=(
-            verified_evaluation_refs
-            if verified_evaluation_refs is not None
-            else _verified_evaluation_refs(pack)
+        current_case_solution_revision_ref=current_case_solution_ref,
+        verified_evaluations=(
+            verified_evaluations
+            if verified_evaluations is not None
+            else _verified_evaluations(pack)
         ),
         verified_human_disposition_refs=verified_human_disposition_refs,
     )
@@ -517,7 +560,8 @@ def test_mysterybench_ref_is_version_bound_to_policy_and_evidence() -> None:
         current_manuscript_snapshot_ref=SNAPSHOT_REF,
         current_manuscript_snapshot_hash=SNAPSHOT_HASH,
         current_authority_revision_refs=AUTHORITY_REFS,
-        verified_evaluation_refs=_verified_evaluation_refs(pack),
+        verified_evaluations=_verified_evaluations(pack),
+        current_case_solution_revision_ref=CASE_REF,
     )
     assert verified.valid
 
@@ -529,7 +573,8 @@ def test_mysterybench_ref_is_version_bound_to_policy_and_evidence() -> None:
         current_manuscript_snapshot_ref=SNAPSHOT_REF,
         current_manuscript_snapshot_hash=SNAPSHOT_HASH,
         current_authority_revision_refs=AUTHORITY_REFS,
-        verified_evaluation_refs=_verified_evaluation_refs(pack),
+        verified_evaluations=_verified_evaluations(pack),
+        current_case_solution_revision_ref=CASE_REF,
     )
     assert not changed.valid
     assert changed.reason in {
@@ -540,19 +585,19 @@ def test_mysterybench_ref_is_version_bound_to_policy_and_evidence() -> None:
 
 def test_unverified_evaluation_ref_cannot_be_used_as_bookbench_evidence() -> None:
     pack, policy = _final_pack()
-    verified = set(_verified_evaluation_refs(pack))
+    verified = _verified_evaluations(pack)
     target = next(
         row for row in pack.dimension_evidence if row.dimension == "PROSE_VOICE"
     )
-    verified.remove(target.evaluation_ref)
+    del verified[target.evaluation_ref]
 
     result = _evaluate(
         pack,
         policy,
-        verified_evaluation_refs=frozenset(verified),
+        verified_evaluations=verified,
     )
 
-    assert "MYSTERYBENCH.EVIDENCE.REF_UNVERIFIED" in _codes(result)
+    assert "MYSTERYBENCH.EVIDENCE.ARTIFACT_MISSING" in _codes(result)
     assert not result.qualified
 
 
@@ -586,3 +631,99 @@ def test_private_spoiler_authority_must_be_part_of_exact_authority_snapshot() ->
     result = _evaluate(revised, policy)
 
     assert "MYSTERYBENCH.AUTHORITY.PRIVATE_SPOILER_NOT_IN_SNAPSHOT" in _codes(result)
+
+
+def test_verified_artifact_must_match_declared_snapshot_evaluator_class_rubric_and_purpose() -> None:
+    pack, policy = _final_pack()
+    target = next(
+        row for row in pack.dimension_evidence if row.dimension == "PROSE_VOICE"
+    )
+    baseline = _verified_evaluations(pack)[target.evaluation_ref]
+
+    variants = (
+        (
+            replace(baseline, manuscript_snapshot_ref="bookbench-snapshot:other"),
+            "MYSTERYBENCH.EVIDENCE.ARTIFACT_SNAPSHOT_MISMATCH",
+        ),
+        (
+            replace(baseline, evaluator_identity="different/judge"),
+            "MYSTERYBENCH.EVIDENCE.ARTIFACT_EVALUATOR_MISMATCH",
+        ),
+        (
+            replace(baseline, evaluator_class="SEMANTIC"),
+            "MYSTERYBENCH.EVIDENCE.ARTIFACT_CLASS_MISMATCH",
+        ),
+        (
+            replace(baseline, rubric_ref="wrong-rubric:v9"),
+            "MYSTERYBENCH.EVIDENCE.ARTIFACT_RUBRIC_MISMATCH",
+        ),
+        (
+            replace(baseline, purpose="MYSTERY_DIMENSION:FAIR_PLAY"),
+            "MYSTERYBENCH.EVIDENCE.ARTIFACT_PURPOSE_MISMATCH",
+        ),
+        (
+            replace(baseline, current=False),
+            "MYSTERYBENCH.EVIDENCE.ARTIFACT_NOT_CURRENT_SUCCESS",
+        ),
+        (
+            replace(baseline, status="FAILED"),
+            "MYSTERYBENCH.EVIDENCE.ARTIFACT_NOT_CURRENT_SUCCESS",
+        ),
+    )
+
+    for artifact, expected_code in variants:
+        verified = _verified_evaluations(pack)
+        verified[target.evaluation_ref] = artifact
+        result = _evaluate(pack, policy, verified_evaluations=verified)
+        assert expected_code in _codes(result)
+        assert not result.qualified
+
+
+def test_adversarial_comparison_must_use_current_designated_case_solution() -> None:
+    pack, policy = _final_pack()
+    old_case_ref = "case@rev-old:" + _hash("old-case")
+    stale_adversarial = replace(
+        pack.adversarial_reconstruction,
+        accepted_case_solution_revision_ref=old_case_ref,
+    )
+    assert stale_adversarial is not None
+    revised_pack = replace(
+        pack,
+        authority_revision_refs=(*AUTHORITY_REFS, old_case_ref),
+        private_spoiler_authority_refs=(CASE_REF, old_case_ref),
+        adversarial_reconstruction=stale_adversarial,
+    )
+    verified = _verified_evaluations(revised_pack)
+
+    result = _evaluate(
+        revised_pack,
+        policy,
+        authority_refs=revised_pack.authority_revision_refs,
+        current_case_solution_ref=CASE_REF,
+        verified_evaluations=verified,
+    )
+
+    assert "MYSTERYBENCH.ADVERSARIAL.CASE_SOLUTION_NOT_CURRENT" in _codes(result)
+    assert not result.qualified
+
+
+def test_cold_reader_and_adversarial_artifacts_have_exact_purpose() -> None:
+    pack, policy = _final_pack()
+    verified = _verified_evaluations(pack)
+    first_cold = pack.cold_reader_checkpoints[0]
+    verified[first_cold.evaluation_ref] = replace(
+        verified[first_cold.evaluation_ref],
+        purpose="COLD_READER:POST_REVEAL",
+    )
+    adversarial = pack.adversarial_reconstruction
+    assert adversarial is not None
+    verified[adversarial.reconstruction_ref] = replace(
+        verified[adversarial.reconstruction_ref],
+        purpose="ADVERSARIAL_CASE_COMPARISON",
+    )
+
+    result = _evaluate(pack, policy, verified_evaluations=verified)
+    codes = _codes(result)
+
+    assert "MYSTERYBENCH.COLD_READER.ARTIFACT_PURPOSE_MISMATCH" in codes
+    assert "MYSTERYBENCH.ADVERSARIAL.ARTIFACT_PURPOSE_MISMATCH" in codes
