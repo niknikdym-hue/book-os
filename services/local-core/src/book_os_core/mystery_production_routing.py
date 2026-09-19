@@ -259,15 +259,11 @@ def _cost_authorization_payload(
 def _policy_payload(policy: ProductionRoutingPolicy) -> dict[str, JSONValue]:
     return {
         "max_operation_cost_usd": policy.max_operation_cost_usd,
-        "allowed_agent_operations": _json_strings(
-            tuple(policy.allowed_agent_operations)
-        ),
+        "allowed_agent_operations": _json_strings(tuple(policy.allowed_agent_operations)),
         "require_owner_authorization_for_provider": (
             policy.require_owner_authorization_for_provider
         ),
-        "require_cost_authorization_for_provider": (
-            policy.require_cost_authorization_for_provider
-        ),
+        "require_cost_authorization_for_provider": (policy.require_cost_authorization_for_provider),
         "require_owner_authorization_for_private_content": (
             policy.require_owner_authorization_for_private_content
         ),
@@ -332,9 +328,7 @@ def _validate_prep_bundle(
     current_authority_refs: tuple[str, ...],
     request: ProductionRouteRequest,
     policy: ProductionRoutingPolicy,
-    verified_owner_authorizations: Mapping[
-        str, VerifiedOwnerExecutionAuthorization
-    ],
+    verified_owner_authorizations: Mapping[str, VerifiedOwnerExecutionAuthorization],
     findings: list[ProductionRoutingFinding],
 ) -> None:
     if bundle.private_content_scope not in _VALID_PRIVATE_SCOPES:
@@ -394,9 +388,7 @@ def _validate_prep_bundle(
         findings=findings,
     )
 
-    if tuple(sorted(set(bundle.authority_refs))) != tuple(
-        sorted(set(current_authority_refs))
-    ):
+    if tuple(sorted(set(bundle.authority_refs))) != tuple(sorted(set(current_authority_refs))):
         findings.append(
             _finding(
                 "ROUTING.AGENT.BUNDLE.AUTHORITY_STALE",
@@ -410,9 +402,7 @@ def _validate_prep_bundle(
                 "editorial-prep agent requires an explicit output allowlist",
             )
         )
-    missing_forbidden = sorted(
-        _REQUIRED_AGENT_FORBIDDEN_ACTIONS - set(bundle.forbidden_actions)
-    )
+    missing_forbidden = sorted(_REQUIRED_AGENT_FORBIDDEN_ACTIONS - set(bundle.forbidden_actions))
     for action in missing_forbidden:
         findings.append(
             _finding(
@@ -460,10 +450,7 @@ def _validate_prep_bundle(
         findings.append(
             _finding(
                 "ROUTING.AGENT.BUNDLE.SOURCE_PACKET_WITH_DISABLED_NETWORK",
-                (
-                    "source packets may be supplied only under SOURCE_PACKET_ONLY "
-                    "network mode"
-                ),
+                ("source packets may be supplied only under SOURCE_PACKET_ONLY network mode"),
             )
         )
     if (
@@ -472,9 +459,7 @@ def _validate_prep_bundle(
     ):
         owner_ref = request.owner_authorization_ref
         owner_authorization = (
-            verified_owner_authorizations.get(owner_ref)
-            if owner_ref is not None
-            else None
+            verified_owner_authorizations.get(owner_ref) if owner_ref is not None else None
         )
         if (
             owner_authorization is None
@@ -494,9 +479,7 @@ def evaluate_production_route(
     request: ProductionRouteRequest,
     policy: ProductionRoutingPolicy,
     current_authority_refs: tuple[str, ...],
-    verified_owner_authorizations: Mapping[
-        str, VerifiedOwnerExecutionAuthorization
-    ],
+    verified_owner_authorizations: Mapping[str, VerifiedOwnerExecutionAuthorization],
     verified_cost_authorizations: Mapping[str, VerifiedCostAuthorization],
 ) -> ProductionRouteResult:
     findings: list[ProductionRoutingFinding] = []
@@ -542,8 +525,7 @@ def evaluate_production_route(
             )
         )
     elif minimum_class is not None and (
-        _CLASS_ORDER[request.selected_execution_class]
-        < _CLASS_ORDER[minimum_class]
+        _CLASS_ORDER[request.selected_execution_class] < _CLASS_ORDER[minimum_class]
     ):
         findings.append(
             _finding(
@@ -562,9 +544,7 @@ def evaluate_production_route(
                 "max_operation_cost_usd cannot be negative",
             )
         )
-    if len(set(policy.allowed_agent_operations)) != len(
-        policy.allowed_agent_operations
-    ):
+    if len(set(policy.allowed_agent_operations)) != len(policy.allowed_agent_operations):
         findings.append(
             _finding(
                 "ROUTING.POLICY.DUPLICATE_AGENT_OPERATION",
@@ -812,10 +792,7 @@ def evaluate_production_route(
             findings.append(
                 _finding(
                     "ROUTING.AGENT.OPERATION_NOT_ALLOWED",
-                    (
-                        f"operation {request.operation_kind} is not in the "
-                        "editorial agent allowlist"
-                    ),
+                    (f"operation {request.operation_kind} is not in the editorial agent allowlist"),
                 )
             )
         if (
@@ -924,9 +901,7 @@ def verify_production_route(
     request: ProductionRouteRequest,
     policy: ProductionRoutingPolicy,
     current_authority_refs: tuple[str, ...],
-    verified_owner_authorizations: Mapping[
-        str, VerifiedOwnerExecutionAuthorization
-    ],
+    verified_owner_authorizations: Mapping[str, VerifiedOwnerExecutionAuthorization],
     verified_cost_authorizations: Mapping[str, VerifiedCostAuthorization],
 ) -> ProductionRouteVerification:
     current = evaluate_production_route(
