@@ -639,6 +639,14 @@ def evaluate_production_route(
                     )
                 )
             else:
+                if owner_authorization.authorization_ref != request.owner_authorization_ref:
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.OWNER_AUTH_REF_MISMATCH",
+                            "Owner authorization catalog identity mismatch",
+                            owner_authorization.authorization_ref,
+                        )
+                    )
                 if not owner_authorization.current:
                     findings.append(
                         _finding(
@@ -686,6 +694,22 @@ def evaluate_production_route(
                     )
                 )
             else:
+                if cost_authorization.authorization_ref != request.cost_authorization_ref:
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.COST_AUTH_REF_MISMATCH",
+                            "cost authorization catalog identity mismatch",
+                            cost_authorization.authorization_ref,
+                        )
+                    )
+                if cost_authorization.max_cost_usd < 0:
+                    findings.append(
+                        _finding(
+                            "ROUTING.PROVIDER.COST_AUTH_CAP_INVALID",
+                            "authorized max_cost_usd cannot be negative",
+                            cost_authorization.authorization_ref,
+                        )
+                    )
                 if not cost_authorization.current:
                     findings.append(
                         _finding(
