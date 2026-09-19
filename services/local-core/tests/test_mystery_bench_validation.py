@@ -682,11 +682,12 @@ def test_verified_artifact_must_match_declared_snapshot_evaluator_class_rubric_a
 def test_adversarial_comparison_must_use_current_designated_case_solution() -> None:
     pack, policy = _final_pack()
     old_case_ref = "case@rev-old:" + _hash("old-case")
+    adversarial = pack.adversarial_reconstruction
+    assert adversarial is not None
     stale_adversarial = replace(
-        pack.adversarial_reconstruction,
+        adversarial,
         accepted_case_solution_revision_ref=old_case_ref,
     )
-    assert stale_adversarial is not None
     revised_pack = replace(
         pack,
         authority_revision_refs=(*AUTHORITY_REFS, old_case_ref),
