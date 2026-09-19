@@ -84,15 +84,11 @@ def _validate_task_mode(
         return
     if task_type == "SCENE_DRAFT":
         if admission.production_mode != "MASS_DRAFT":
-            raise FictionWritingAdmissionError(
-                "scene draft task requires MASS_DRAFT admission"
-            )
+            raise FictionWritingAdmissionError("scene draft task requires MASS_DRAFT admission")
         return
     if task_type == "ROUTINE_SCENE_REVISION":
         if admission.production_mode not in {"REPRESENTATIVE_SAMPLE", "MASS_DRAFT"}:
-            raise FictionWritingAdmissionError(
-                "scene revision requires active writing admission"
-            )
+            raise FictionWritingAdmissionError("scene revision requires active writing admission")
         return
     if task_type == "CONTINUITY_EXTRACTION":
         if admission.production_mode not in {"REPRESENTATIVE_SAMPLE", "MASS_DRAFT"}:
@@ -118,9 +114,7 @@ def _validate_admission(
     if route_request.routing_choice is None:
         raise FictionWritingAdmissionError("qualified route has no RoutingChoice")
     if route_result.operation_id != route_request.operation_id:
-        raise FictionWritingAdmissionError(
-            "ProductionRouteResult belongs to another operation id"
-        )
+        raise FictionWritingAdmissionError("ProductionRouteResult belongs to another operation id")
     if route_result.operation_kind != route_request.operation_kind:
         raise FictionWritingAdmissionError(
             "ProductionRouteResult operation kind differs from route request"
@@ -154,13 +148,8 @@ def _validate_admission(
     if admission.scene_id != execution.scene_id:
         raise FictionWritingAdmissionError("admission belongs to another scene")
     if admission.scene_revision_ref != execution.scene_revision_ref:
-        raise FictionWritingAdmissionError(
-            "admission belongs to another SceneContract revision"
-        )
-    if (
-        admission.not_after_epoch is not None
-        and now_epoch >= admission.not_after_epoch
-    ):
+        raise FictionWritingAdmissionError("admission belongs to another SceneContract revision")
+    if admission.not_after_epoch is not None and now_epoch >= admission.not_after_epoch:
         raise FictionWritingAdmissionError("writing admission token has expired")
 
     _validate_task_mode(execution.task_type, admission)
