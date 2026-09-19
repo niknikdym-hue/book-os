@@ -77,6 +77,10 @@ _BAND_ORDER: dict[str, int] = {
     "PROFESSIONAL_RANGE_CANDIDATE": 2,
     "STRONG_PROFESSIONAL_CANDIDATE": 3,
 }
+_VALID_CHECKPOINTS = frozenset(
+    {"PRE_DRAFT", "REPRESENTATIVE_SAMPLE", "MIDBOOK", "WHOLE_BOOK", "FINAL"}
+)
+_VALID_BANDS = frozenset(_BAND_ORDER)
 _VALID_DIMENSIONS = frozenset(
     {
         "PREMISE_IDENTITY",
@@ -131,6 +135,9 @@ class FictionBenchmarkSet:
 
 @dataclass(frozen=True)
 class BenchmarkSetPolicy:
+    expected_subgenre: str
+    expected_target_market: str
+    expected_language: str
     min_references: int
     min_distinct_authors: int
     min_publication_span_years: int
@@ -485,6 +492,44 @@ def validate_benchmark_set(
                 )
             )
 
+    for field_name, actual, expected in (
+        ("SUBGENRE", benchmark_set.subgenre, policy.expected_subgenre),
+        ("TARGET_MARKET", benchmark_set.target_market, policy.expected_target_market),
+        ("LANGUAGE", benchmark_set.language, policy.expected_language),
+    ):
+        if not expected.strip():
+            findings.append(
+                _finding(
+                    f"PRO_BENCH.POLICY.EXPECTED_{field_name}_MISSING",
+                    f"expected {field_name.lower()} must not be blank",
+                )
+            )
+        elif actual != expected:
+            findings.append(
+                _finding(
+                    f"PRO_BENCH.SET.{field_name}_MISMATCH",
+                    (
+                        f"benchmark set {field_name.lower()} {actual!r} does not "
+                        f"match required {expected!r}"
+                    ),
+                )
+            )
+
+    if benchmark_set.last_review_epoch < 0:
+        findings.append(
+            _finding(
+                "PRO_BENCH.SET.LAST_REVIEW_INVALID",
+                "last_review_epoch cannot be negative",
+            )
+        )
+    elif benchmark_set.last_review_epoch > now_epoch:
+        findings.append(
+            _finding(
+                "PRO_BENCH.SET.LAST_REVIEW_IN_FUTURE",
+                "benchmark set last review cannot be in the future",
+            )
+        )
+
     if policy.min_references < 1:
         findings.append(
             _finding(
@@ -511,6 +556,13 @@ def validate_benchmark_set(
             _finding(
                 "PRO_BENCH.POLICY.AUTHOR_FRACTION_INVALID",
                 "max_single_author_fraction must be in (0, 1]",
+            )
+        )
+    if len(set(policy.required_categories)) != len(policy.required_categories):
+        findings.append(
+            _finding(
+                "PRO_BENCH.POLICY.DUPLICATE_REQUIRED_CATEGORY",
+                "required benchmark categories contain duplicates",
             )
         )
     if policy.min_text_access_references < 0:
@@ -887,9 +939,39 @@ def evaluate_professional_benchmark(
     current_manuscript_snapshot_hash: str,
     current_evaluated_revision_refs: tuple[str, ...],
     verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
+    verified_manuscript_evidence_refs: frozenset[str],
     verified_human_disposition_refs: frozenset[str] = frozenset(),
 ) -> ProfessionalBenchmarkResult:
     findings: list[ProfessionalBenchmarkFinding] = []
+
+    if run.checkpoint not in _VALID_CHECKPOINTS:
+        findings.append(
+            _finding(
+                "PRO_BENCH.RUN.CHECKPOINT_UNKNOWN",
+                f"unknown benchmark checkpoint {run.checkpoint}",
+            )
+        )
+    if policy.checkpoint not in _VALID_CHECKPOINTS:
+        findings.append(
+            _finding(
+                "PRO_BENCH.POLICY.CHECKPOINT_UNKNOWN",
+                f"unknown policy checkpoint {policy.checkpoint}",
+            )
+        )
+    if run.readiness_band not in _VALID_BANDS:
+        findings.append(
+            _finding(
+                "PRO_BENCH.BAND.UNKNOWN",
+                f"unknown readiness band {run.readiness_band}",
+            )
+        )
+    if policy.minimum_readiness_band not in _VALID_BANDS:
+        findings.append(
+            _finding(
+                "PRO_BENCH.POLICY.MINIMUM_BAND_UNKNOWN",
+                f"unknown minimum readiness band {policy.minimum_readiness_band}",
+            )
+        )
 
     if policy.checkpoint != run.checkpoint:
         findings.append(
@@ -1065,6 +1147,12 @@ def evaluate_professional_benchmark(
                 )
             )
 
+    allowed_benchmark_observation_refs = {
+        observation_ref
+        for reference in benchmark_set.references
+        for observation_ref in reference.craft_observation_refs
+    }
+
     findings_by_dimension: dict[str, list[FictionBenchmarkFinding]] = {}
     for benchmark_finding in run.findings:
         findings_by_dimension.setdefault(
@@ -1127,6 +1215,19 @@ def evaluate_professional_benchmark(
                     benchmark_finding.dimension,
                 )
             )
+        for evidence_ref in benchmark_finding.manuscript_evidence_refs:
+            if evidence_ref not in verified_manuscript_evidence_refs:
+                findings.append(
+                    _finding(
+                        "PRO_BENCH.FINDING.MANUSCRIPT_EVIDENCE_UNVERIFIED",
+                        (
+                            f"finding {benchmark_finding.dimension} references "
+                            "unverified manuscript evidence"
+                        ),
+                        benchmark_finding.dimension,
+                        evidence_ref,
+                    )
+                )
         if not benchmark_finding.benchmark_observation_refs:
             findings.append(
                 _finding(
@@ -1134,6 +1235,33 @@ def evaluate_professional_benchmark(
                     (
                         f"finding {benchmark_finding.dimension} has no benchmark "
                         "observation refs"
+                    ),
+                    benchmark_finding.dimension,
+                )
+            )
+        for observation_ref in benchmark_finding.benchmark_observation_refs:
+            if observation_ref not in allowed_benchmark_observation_refs:
+                findings.append(
+                    _finding(
+                        "PRO_BENCH.FINDING.BENCHMARK_EVIDENCE_UNVERIFIED",
+                        (
+                            f"finding {benchmark_finding.dimension} references "
+                            "observation outside the qualified benchmark set"
+                        ),
+                        benchmark_finding.dimension,
+                        observation_ref,
+                    )
+                )
+        if (
+            benchmark_finding.non_infringing_comparison is None
+            or not benchmark_finding.non_infringing_comparison.strip()
+        ):
+            findings.append(
+                _finding(
+                    "PRO_BENCH.FINDING.NON_INFRINGING_COMPARISON_MISSING",
+                    (
+                        f"finding {benchmark_finding.dimension} lacks a bounded "
+                        "non-infringing comparison"
                     ),
                     benchmark_finding.dimension,
                 )
@@ -1223,6 +1351,9 @@ def evaluate_professional_benchmark(
         item.status == "MAJOR_GAP" for item in run.dimension_evaluations
     )
 
+    run_band_valid = run.readiness_band in _VALID_BANDS
+    policy_band_valid = policy.minimum_readiness_band in _VALID_BANDS
+
     if has_blocking and run.readiness_band != "BELOW_PROFESSIONAL_FLOOR":
         findings.append(
             _finding(
@@ -1233,6 +1364,7 @@ def evaluate_professional_benchmark(
     elif (
         not has_blocking
         and has_major
+        and run_band_valid
         and _BAND_ORDER[run.readiness_band]
         > _BAND_ORDER["PROFESSIONAL_GAPS_REMAIN"]
     ):
@@ -1245,6 +1377,7 @@ def evaluate_professional_benchmark(
     elif (
         not has_blocking
         and not has_major
+        and run_band_valid
         and _BAND_ORDER[run.readiness_band]
         < _BAND_ORDER["PROFESSIONAL_RANGE_CANDIDATE"]
     ):
@@ -1282,7 +1415,9 @@ def evaluate_professional_benchmark(
             )
 
     if (
-        _BAND_ORDER[run.readiness_band]
+        run_band_valid
+        and policy_band_valid
+        and _BAND_ORDER[run.readiness_band]
         < _BAND_ORDER[policy.minimum_readiness_band]
     ):
         findings.append(
@@ -1316,6 +1451,7 @@ def verify_professional_benchmark(
     current_manuscript_snapshot_hash: str,
     current_evaluated_revision_refs: tuple[str, ...],
     verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
+    verified_manuscript_evidence_refs: frozenset[str],
     verified_human_disposition_refs: frozenset[str] = frozenset(),
 ) -> ProfessionalBenchmarkVerification:
     current = evaluate_professional_benchmark(
@@ -1327,6 +1463,7 @@ def verify_professional_benchmark(
         current_manuscript_snapshot_hash=current_manuscript_snapshot_hash,
         current_evaluated_revision_refs=current_evaluated_revision_refs,
         verified_evaluations=verified_evaluations,
+        verified_manuscript_evidence_refs=verified_manuscript_evidence_refs,
         verified_human_disposition_refs=verified_human_disposition_refs,
     )
     if not current.qualified:
