@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/fiction_scene_output.schema.json",
+  "title": "MYSTERY OS Fiction Scene Writer Output",
+  "type": "object",
+  "required": ["schema_version", "outcome", "text", "blocker_code", "blocker_detail", "notes"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "outcome": {"enum": ["DRAFT", "ARCHITECTURE_BLOCKER"]},
+    "text": {"type": ["string", "null"]},
+    "blocker_code": {"type": ["string", "null"]},
+    "blocker_detail": {"type": ["string", "null"]},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}
