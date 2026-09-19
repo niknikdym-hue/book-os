@@ -70,9 +70,13 @@ def _route_request(
     )
 
 
-def _route_result() -> ProductionRouteResult:
+def _route_result(task_type: str = "SCENE_DRAFT") -> ProductionRouteResult:
     return ProductionRouteResult(
         qualified=True,
+        operation_id=f"op:{task_type.lower()}:1",
+        operation_kind=task_type,  # type: ignore[arg-type]
+        provider="fake",
+        model="fake-model",
         execution_route_ref="mystery-production-route:green-v1",
         provider_execution_requested=True,
         execution_authorization_ref="owner-auth:v1",
@@ -135,7 +139,7 @@ def test_representative_sample_executes_through_shared_model_gateway() -> None:
         execution=_execution("REPRESENTATIVE_SAMPLE_DRAFT"),
         admission=_admission(mode="REPRESENTATIVE_SAMPLE"),
         route_request=route_request,
-        route_result=_route_result(),
+        route_result=_route_result("REPRESENTATIVE_SAMPLE_DRAFT"),
         now_epoch=NOW,
     )
 
@@ -160,7 +164,7 @@ def test_mass_scene_draft_requires_mass_draft_admission() -> None:
             execution=_execution("SCENE_DRAFT"),
             admission=_admission(mode="REPRESENTATIVE_SAMPLE"),
             route_request=_route_request("SCENE_DRAFT"),
-            route_result=_route_result(),
+            route_result=_route_result("SCENE_DRAFT"),
             now_epoch=NOW,
         )
 
@@ -175,7 +179,7 @@ def test_expired_admission_never_reaches_provider() -> None:
             execution=_execution("SCENE_DRAFT"),
             admission=_admission(mode="MASS_DRAFT", not_after_epoch=NOW),
             route_request=_route_request("SCENE_DRAFT"),
-            route_result=_route_result(),
+            route_result=_route_result("SCENE_DRAFT"),
             now_epoch=NOW,
         )
 
@@ -186,6 +190,10 @@ def test_route_and_authority_snapshot_must_match_exact_admission() -> None:
     gateway = ModelGateway({"fake": DeterministicFakeAdapter()})
     bad_route = ProductionRouteResult(
         qualified=True,
+        operation_id="op:scene_draft:1",
+        operation_kind="SCENE_DRAFT",
+        provider="fake",
+        model="fake-model",
         execution_route_ref="mystery-production-route:other",
         provider_execution_requested=True,
         execution_authorization_ref="owner-auth:v1",
@@ -223,7 +231,7 @@ def test_route_and_authority_snapshot_must_match_exact_admission() -> None:
             execution=bad_execution,
             admission=_admission(mode="MASS_DRAFT"),
             route_request=_route_request("SCENE_DRAFT"),
-            route_result=_route_result(),
+            route_result=_route_result("SCENE_DRAFT"),
             now_epoch=NOW,
         )
 
@@ -238,7 +246,7 @@ def test_malformed_provider_output_is_rejected_after_gateway_call() -> None:
             execution=_execution("SCENE_DRAFT"),
             admission=_admission(mode="MASS_DRAFT"),
             route_request=_route_request("SCENE_DRAFT"),
-            route_result=_route_result(),
+            route_result=_route_result("SCENE_DRAFT"),
             now_epoch=NOW,
         )
 
@@ -270,7 +278,7 @@ def test_continuity_extraction_uses_evaluator_role_and_no_prose_schema() -> None
         execution=_execution("CONTINUITY_EXTRACTION"),
         admission=_admission(mode="MASS_DRAFT"),
         route_request=_route_request("CONTINUITY_EXTRACTION"),
-        route_result=_route_result(),
+        route_result=_route_result("CONTINUITY_EXTRACTION"),
         now_epoch=NOW,
     )
 
