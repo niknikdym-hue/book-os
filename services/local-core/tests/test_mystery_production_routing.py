@@ -568,3 +568,23 @@ def test_unknown_blast_radius_fails_closed() -> None:
     result = _evaluate(request, owner=owner, cost=cost)
 
     assert "ROUTING.BLAST_RADIUS_UNKNOWN" in _codes(result)
+
+
+def test_authorization_catalog_key_must_match_artifact_identity() -> None:
+    request = _standard_request()
+    owner, cost = _auth_maps(request)
+    owner[OWNER_REF] = replace(
+        owner[OWNER_REF],
+        authorization_ref="owner-auth:other",
+    )
+    cost[COST_REF] = replace(
+        cost[COST_REF],
+        authorization_ref="cost-auth:other",
+    )
+
+    result = _evaluate(request, owner=owner, cost=cost)
+    codes = _codes(result)
+
+    assert "ROUTING.PROVIDER.OWNER_AUTH_REF_MISMATCH" in codes
+    assert "ROUTING.PROVIDER.COST_AUTH_REF_MISMATCH" in codes
+    assert not result.qualified
