@@ -15,7 +15,7 @@ concurrency:
 
 env:
   PRODUCT_BRANCH: codex/auto-book-complete-cycle-20260913
-  PRODUCT_SHA: 1b17b0525bf26a31c9532a6a65fbc124a0fad109
+  PRODUCT_SHA: d7c32a6e370c2b9de88f965b229b3e5ea793e979
 
 jobs:
   build-owner-test-app:
@@ -48,6 +48,12 @@ jobs:
       - name: Install desktop dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile --prod=false
+      - name: Verify Desktop UX fix
+        working-directory: apps/desktop
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
       - name: Build owner-test macOS app bundle
         working-directory: apps/desktop
         run: pnpm tauri build --bundles app
@@ -106,13 +112,13 @@ jobs:
       - name: Package owner-test app
         run: |
           APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
-          ZIP="$RUNNER_TEMP/BOOK-OS-macOS-owner-test-1b17b052.zip"
+          ZIP="$RUNNER_TEMP/BOOK-OS-macOS-owner-test-d7c32a6e.zip"
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
           test -s "$ZIP"
       - name: Upload owner-test app
         uses: actions/upload-artifact@v4
         with:
-          name: BOOK-OS-macOS-owner-test-1b17b052
-          path: ${{ runner.temp }}/BOOK-OS-macOS-owner-test-1b17b052.zip
+          name: BOOK-OS-macOS-owner-test-d7c32a6e
+          path: ${{ runner.temp }}/BOOK-OS-macOS-owner-test-d7c32a6e.zip
           if-no-files-found: error
           retention-days: 7
