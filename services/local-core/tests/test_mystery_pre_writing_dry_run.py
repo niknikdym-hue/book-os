@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
-
 from book_os_core.model_gateway import (
     AuthorityInputRef,
     DeterministicFakeAdapter,
@@ -196,9 +194,9 @@ def _route(
     authority_refs: tuple[str, ...],
 ):
     choice = RoutingChoice(
-        provider="openai",
-        provider_label="OpenAI",
-        model="gpt-5.6-sol",
+        provider="fake",
+        provider_label="Fake",
+        model="fake-model",
         selection_mode="AUTO",
         selection_scope=None,
         operation=operation_kind,
@@ -264,18 +262,6 @@ def _execute_fake_fiction_task(
 ):
     adapter = DeterministicFakeAdapter()
     gateway = ModelGateway({"fake": adapter})
-    fake_request = replace(
-        route_request,
-        routing_choice=RoutingChoice(
-            provider="fake",
-            provider_label="Fake",
-            model="fake-model",
-            selection_mode="AUTO",
-            selection_scope=None,
-            operation=task_type,
-            rationale="synthetic no-cost fiction gateway dry run",
-        ),
-    )
     execution = FictionGatewayExecutionRequest(
         task_id=f"synthetic:{task_type.lower()}:1",
         task_type=task_type,  # type: ignore[arg-type]
@@ -296,7 +282,7 @@ def _execute_fake_fiction_task(
         gateway=gateway,
         execution=execution,
         admission=token,
-        route_request=fake_request,
+        route_request=route_request,
         route_result=route_result,
         now_epoch=NOW,
     )
@@ -383,16 +369,6 @@ def test_full_series_pre_writing_dry_run_reaches_representative_sample_writing_a
     )
 
     assert result.state.writing_allowed
-    assert result.token is not None
-    gateway_result = _execute_fake_fiction_task(
-        task_type="REPRESENTATIVE_SAMPLE_DRAFT",
-        token=result.token,
-        route_request=route_request,
-        route_result=route,
-        authority_refs=authority_refs,
-        authority_inputs=authority_inputs,
-    )
-    assert gateway_result.output.outcome == "DRAFT"
     assert result.token is not None
     for exact_ref in (
         "anti-cliche:synthetic-green",
@@ -507,3 +483,13 @@ def test_agent_capability_is_not_a_runtime_dependency_for_normal_writing() -> No
     )
 
     assert result.state.writing_allowed
+    assert result.token is not None
+    gateway_result = _execute_fake_fiction_task(
+        task_type="REPRESENTATIVE_SAMPLE_DRAFT",
+        token=result.token,
+        route_request=route_request,
+        route_result=route,
+        authority_refs=authority_refs,
+        authority_inputs=authority_inputs,
+    )
+    assert gateway_result.output.outcome == "DRAFT"
