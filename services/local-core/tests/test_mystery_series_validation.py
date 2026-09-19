@@ -36,6 +36,7 @@ PROFILE = SeriesProfileSnapshot(
 
 HISTORICAL_PROFILE_REF = f"series-profile:{PROFILE.profile_id}:{_hash('series-profile-v1')}"
 CURRENT_PROFILE_REF = series_profile_ref(PROFILE)
+WRITER_ID = "writer/model-standard"
 
 POLICY = SeriesCollisionPolicy(
     exact_blocking_dimensions=(
@@ -163,6 +164,7 @@ def _semantic_evidence(
         current_passport=current,
         prior_passports=prior,
         policy=policy,
+        writer_executor_identity=WRITER_ID,
     )
     rows: list[SeriesSemanticCollisionEvidence] = []
     artifacts: dict[str, VerifiedEvaluationArtifact] = {}
@@ -228,6 +230,7 @@ def _evaluate(
         current_passport=current,
         prior_passports=prior,
         policy=policy,
+        writer_executor_identity=WRITER_ID,
         semantic_evidence=semantic,
         verified_evaluations=artifacts,
         verified_human_disposition_refs=human_refs,
@@ -573,6 +576,7 @@ def test_series_brain_ref_changes_when_semantic_evidence_changes() -> None:
         current_passport=CURRENT,
         prior_passports=(ACCEPTED_ONE,),
         policy=POLICY,
+        writer_executor_identity=WRITER_ID,
         semantic_evidence=changed_semantic,
         verified_evaluations=changed_artifacts,
     )
@@ -656,6 +660,7 @@ def test_strongly_serialized_profile_can_relax_standalone_rules() -> None:
         current_passport=current,
         prior_passports=(ACCEPTED_ONE,),
         policy=POLICY,
+        writer_executor_identity=WRITER_ID,
         semantic_evidence=semantic,
         verified_evaluations=artifacts,
     )
@@ -727,4 +732,65 @@ def test_policy_dimension_overlap_is_rejected() -> None:
     )
 
     assert "SERIES.POLICY.DIMENSION_OVERLAP" in _codes(result)
+    assert not result.qualified
+
+
+def test_semantic_series_editor_cannot_be_writer_executor() -> None:
+    semantic, artifacts = _semantic_evidence()
+    target = semantic[0]
+    changed = replace(
+        target,
+        evaluator_identity=WRITER_ID,
+    )
+    revised = (changed, *semantic[1:])
+    revised_artifacts = dict(artifacts)
+    revised_artifacts[target.evaluation_ref] = replace(
+        revised_artifacts[target.evaluation_ref],
+        evaluator_identity=WRITER_ID,
+    )
+
+    result = _evaluate(
+        semantic=revised,
+        artifacts=revised_artifacts,
+    )
+
+    assert "SERIES.SEMANTIC.SAME_WRITER_EXECUTOR" in _codes(result)
+    assert not result.qualified
+
+
+def test_malformed_historical_series_profile_ref_blocks() -> None:
+    broken_prior = replace(
+        PRIOR_ONE,
+        series_profile_ref="series-profile:other:garbage",
+    )
+    accepted = _accepted(broken_prior)
+    semantic, artifacts = _semantic_evidence(prior=(accepted,))
+
+    result = _evaluate(
+        prior=(accepted,),
+        semantic=semantic,
+        artifacts=artifacts,
+    )
+
+    assert "SERIES.PASSPORT.SERIES_PROFILE_REF_INVALID" in _codes(result)
+    assert not result.qualified
+
+
+def test_prior_passport_number_must_really_precede_current_book() -> None:
+    future_prior = _passport(
+        book_id="book-future",
+        number=9,
+        profile_ref=HISTORICAL_PROFILE_REF,
+        suffix="future",
+    )
+    accepted = _accepted(future_prior)
+    semantic, artifacts = _semantic_evidence(prior=(accepted,))
+
+    result = _evaluate(
+        prior=(accepted,),
+        semantic=semantic,
+        artifacts=artifacts,
+    )
+
+    assert "SERIES.PRIOR.NOT_ACTUALLY_PRIOR" in _codes(result)
     assert not result.qualified
