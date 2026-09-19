@@ -1,0 +1,11 @@
++++ b/services/local-core/tests/test_model_gateway.py
+@@ -322,7 +322,8 @@ def test_fake_bookbench_judge_and_pairwise_are_typed_and_bounded() -> None:
+         }
+     )
+     judge_result = adapter.generate(judge, BOOKBENCH_JUDGE_V1)
+-    assert judge_result.output["verdict"] == "ATTENTION"
++    assert judge_result.output["verdict"] == "PASS"
++    assert judge_result.output["findings"] == []
+     pairwise = judge.model_copy(
+         update={
+             "task_type": "BOOKBENCH_PAIRWISE",

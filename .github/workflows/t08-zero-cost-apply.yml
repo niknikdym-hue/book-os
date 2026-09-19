@@ -1,0 +1,100 @@
+name: T08 Zero-Cost Apply
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/t08-zero-cost-apply.yml'
+      - 'tools/agents_api/apply_t08_audio_fidelity.py'
+      - 'tools/agents_api/apply_t08_remove_obsolete_recording.py'
+      - 'tools/agents_api/apply_t08_fixture_migration.py'
+      - 'tools/agents_api/apply_t08_scope_freeze_trim.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: t08-zero-cost-apply
+  cancel-in-progress: true
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve reviewed T08 patchers
+        run: |
+          cp tools/agents_api/apply_t08_audio_fidelity.py /tmp/apply_t08_audio_fidelity.py
+          cp tools/agents_api/apply_t08_remove_obsolete_recording.py /tmp/apply_t08_remove_obsolete_recording.py
+          cp tools/agents_api/apply_t08_fixture_migration.py /tmp/apply_t08_fixture_migration.py
+          cp tools/agents_api/apply_t08_scope_freeze_trim.py /tmp/apply_t08_scope_freeze_trim.py
+          python -m py_compile \
+            /tmp/apply_t08_audio_fidelity.py \
+            /tmp/apply_t08_remove_obsolete_recording.py \
+            /tmp/apply_t08_fixture_migration.py \
+            /tmp/apply_t08_scope_freeze_trim.py
+      - name: Checkout exact T07 product candidate
+        run: |
+          git fetch origin codex/auto-book-complete-cycle-20260913
+          git checkout -B codex/auto-book-complete-cycle-20260913 origin/codex/auto-book-complete-cycle-20260913
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="759dd9ed0f351e0946e6e57affbf6a18e877d4fb"
+          echo "actual=$ACTUAL expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+      - name: Apply T08 AudioScript fidelity hardening
+        run: |
+          python /tmp/apply_t08_audio_fidelity.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t08_remove_obsolete_recording.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t08_fixture_migration.py "$GITHUB_WORKSPACE"
+          python /tmp/apply_t08_scope_freeze_trim.py "$GITHUB_WORKSPACE"
+          git diff --check
+      - name: Install Local Core dependencies
+        working-directory: services/local-core
+        run: pip install -q -r requirements-dev.lock
+      - name: Format Ruff Mypy
+        working-directory: services/local-core
+        run: |
+          ruff format \
+            src/book_os_core/audio_script.py \
+            src/book_os_core/audio_attention.py \
+            src/book_os_core/audio_script_api.py \
+            src/book_os_core/auto_book_finalizer.py \
+            tests/test_audio_script.py \
+            tests/test_audio_script_api.py \
+            tests/test_auto_book_exports.py \
+            tests/test_auto_book_finalizer.py
+          ruff check .
+          mypy src
+      - name: Targeted T08 regressions
+        working-directory: services/local-core
+        run: |
+          pytest -q \
+            tests/test_audio_script.py \
+            tests/test_audio_script_api.py \
+            tests/test_auto_book_exports.py \
+            tests/test_auto_book_finalizer.py
+      - name: Full Local Core pytest
+        working-directory: services/local-core
+        run: pytest
+      - name: Commit exact tested T08 change to existing PR 38 branch
+        run: |
+          git diff --check
+          git config user.name 'BOOK OS Central Brain'
+          git config user.email 'central-brain@invalid'
+          git add \
+            services/local-core/src/book_os_core/audio_script.py \
+            services/local-core/src/book_os_core/audio_attention.py \
+            services/local-core/src/book_os_core/audio_script_api.py \
+            services/local-core/src/book_os_core/auto_book_finalizer.py \
+            services/local-core/tests/test_audio_script.py \
+            services/local-core/tests/test_audio_script_api.py \
+            services/local-core/tests/test_auto_book_exports.py \
+            services/local-core/tests/test_auto_book_finalizer.py
+          git commit -m 'Harden AudioScript fidelity and exact approval'
+          git push origin HEAD:codex/auto-book-complete-cycle-20260913

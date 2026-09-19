@@ -1,0 +1,124 @@
+name: Owner Test macOS Build
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/owner-test-macos-build.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owner-test-macos-build
+  cancel-in-progress: true
+
+env:
+  PRODUCT_BRANCH: codex/auto-book-complete-cycle-20260913
+  PRODUCT_SHA: d7c32a6e370c2b9de88f965b229b3e5ea793e979
+
+jobs:
+  build-owner-test-app:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_BRANCH }}
+          fetch-depth: 1
+      - name: Require exact frozen product candidate
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare standalone Local Core
+        run: |
+          python3.12 -m venv services/local-core/.venv
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-build.lock
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --prod=false
+      - name: Verify Desktop UX fix
+        working-directory: apps/desktop
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+      - name: Build owner-test macOS app bundle
+        working-directory: apps/desktop
+        run: pnpm tauri build --bundles app
+      - name: Verify self-contained app and launch
+        env:
+          RUST_BACKTRACE: '1'
+        run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          EXEC="$APP/Contents/MacOS/BOOK OS"
+          BUNDLED_CORE="$APP/Contents/Resources/book-os-core"
+          LOG="$RUNNER_TEMP/book-os-owner-test.log"
+          FRONTEND_MARKER="$RUNNER_TEMP/book-os-frontend-ready"
+          CORE_MARKER="$RUNNER_TEMP/book-os-core-ready"
+          PROJECT_MARKER="$RUNNER_TEMP/book-os-project-created"
+          CORE_STARTUP_LOG="$HOME/Library/Application Support/com.bookos.desktop/local-core-startup.log"
+
+          test -d "$APP"
+          test -x "$EXEC"
+          test -x "$BUNDLED_CORE"
+          /usr/bin/plutil -lint "$APP/Contents/Info.plist"
+          /usr/bin/codesign --force --deep --sign - "$APP"
+          /usr/bin/codesign --verify --deep --strict "$APP"
+
+          mv services/local-core/.venv "$RUNNER_TEMP/book-os-build-venv"
+          mv services/local-core/src "$RUNNER_TEMP/book-os-source-hidden"
+          test ! -e services/local-core/.venv
+          test ! -e services/local-core/src
+
+          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$PROJECT_MARKER" "$CORE_STARTUP_LOG"
+          BOOK_OS_FRONTEND_READY_FILE="$FRONTEND_MARKER" \
+          BOOK_OS_CORE_READY_FILE="$CORE_MARKER" \
+          BOOK_OS_PACKAGED_PROJECT_PROBE_FILE="$PROJECT_MARKER" \
+          "$EXEC" >"$LOG" 2>&1 &
+          PID=$!
+          cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          for _ in {1..300}; do
+            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ] && [ -s "$PROJECT_MARKER" ]; then break; fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              cat "$LOG" 2>/dev/null || true
+              cat "$CORE_STARTUP_LOG" 2>/dev/null || true
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          test -s "$FRONTEND_MARKER"
+          test -s "$CORE_MARKER"
+          test -s "$PROJECT_MARKER"
+          grep -F "ready" "$FRONTEND_MARKER"
+          grep -F "healthy" "$CORE_MARKER"
+          grep -E '^[0-9A-HJKMNP-TV-Z]{26}$' "$PROJECT_MARKER"
+          grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
+          cleanup
+      - name: Package owner-test app
+        run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          ZIP="$RUNNER_TEMP/BOOK-OS-macOS-owner-test-d7c32a6e.zip"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+          test -s "$ZIP"
+      - name: Upload owner-test app
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOOK-OS-macOS-owner-test-d7c32a6e
+          path: ${{ runner.temp }}/BOOK-OS-macOS-owner-test-d7c32a6e.zip
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,140 @@
+diff --git a/services/local-core/src/book_os_core/auto_book_finalizer.py b/services/local-core/src/book_os_core/auto_book_finalizer.py
+index 2fa5a02..e44adf6 100644
+--- a/services/local-core/src/book_os_core/auto_book_finalizer.py
++++ b/services/local-core/src/book_os_core/auto_book_finalizer.py
+@@ -124,6 +124,7 @@ class AutoBookFinalizationView(BaseModel):
+ 
+ class AutoBookFinalizer:
+     _LITRES_FORBIDDEN = str.maketrans("", "", "ˊˈʻʼˋʹːˌ")
++    _MAX_CORRECTION_PASSES = 2
+ 
+     def __init__(self, data_dir: Path, gateway: ModelGateway) -> None:
+         self.data_dir = data_dir
+@@ -1622,6 +1623,8 @@ class AutoBookFinalizer:
+         book_id: str,
+         state: AutoBookRunView,
+         snapshot: StructuredBookMaster,
++        *,
++        attempts_used: int = 0,
+     ) -> AutoQualityReport:
+         cap = self._remaining_cap(state)
+         manual_model, manual_effort, mode = self._choice(state)
+@@ -1673,7 +1676,12 @@ class AutoBookFinalizer:
+             prompt=AUTO_BOOK_INDEPENDENT_CRITIQUE_V1,
+             cap=cap,
+         )
+-        judge = BookBenchJudgeOutput.model_validate(result.output)
++        try:
++            judge = BookBenchJudgeOutput.model_validate(result.output)
++        except ValidationError as exc:
++            raise AutoBookGateError(
++                "independent critic returned malformed or internally inconsistent evidence"
++            ) from exc
+         severity = "BLOCKING" if judge.verdict == "BLOCKING" else "ATTENTION"
+         model_findings = [
+             AutoQualityFinding(
+@@ -1694,13 +1702,18 @@ class AutoBookFinalizer:
+                 f"{result.provider_run_id or 'no-provider-id'}"
+             ),
+             additional_findings=model_findings,
++            critic_verdict=judge.verdict,
++            critic_rationale=judge.rationale,
++            critic_confidence=judge.confidence,
++            attempts_used=attempts_used,
++            max_attempts=self._MAX_CORRECTION_PASSES,
+         )
+         checkpoint_status = cast(
+             Any,
+             "BLOCKING"
+-            if quality_report.status == "REWORK"
++            if quality_report.finding_counts["BLOCKING"]
+             else "ATTENTION"
+-            if judge.verdict == "ATTENTION"
++            if quality_report.finding_counts["ATTENTION"] or judge.verdict == "ATTENTION"
+             else "PASS",
+         )
+         self.series.record_checkpoint(
+@@ -1721,6 +1734,26 @@ class AutoBookFinalizer:
+         )
+         return quality_report
+ 
++    def _validated_candidate_quality(
++        self,
++        candidate_payload: dict[str, Any],
++        *,
++        current_master_hash: str,
++    ) -> AutoQualityReport:
++        if candidate_payload.get("snapshot_hash") != current_master_hash:
++            raise AutoBookGateError("final candidate payload does not match the exact snapshot")
++        try:
++            report = AutoQualityReport.model_validate(candidate_payload["quality_report"])
++        except (KeyError, TypeError, ValidationError) as exc:
++            raise AutoBookGateError(
++                "final candidate has malformed quality-review evidence"
++            ) from exc
++        if not self.quality.may_complete(report, current_master_hash=current_master_hash):
++            raise AutoBookGateError(
++                "final candidate quality review is stale, incomplete, or has unresolved findings"
++            )
++        return report
++
+     def _final_candidate(self, book_id: str, run_id: str) -> dict[str, Any] | None:
+         engine = self._engine(book_id)
+         try:
+@@ -1748,17 +1781,24 @@ class AutoBookFinalizer:
+         state: AutoBookRunView,
+         *,
+         snapshot: StructuredBookMaster,
++        quality_report: AutoQualityReport,
+         bookbench_snapshot_id: str,
+         bibliography_evidence: dict[str, Any],
+         prepare_litres_docx: bool,
+     ) -> dict[str, Any]:
++        if not self.quality.may_complete(
++            quality_report, current_master_hash=snapshot.manifest_hash
++        ):
++            raise AutoBookGateError(
++                "current exact-snapshot quality review is required before final candidate admission"
++            )
+         candidate = {
+             "snapshot_hash": snapshot.manifest_hash,
+             "bookbench_snapshot_id": bookbench_snapshot_id,
+             "bibliography_evidence": bibliography_evidence,
+             "prepare_litres_docx": prepare_litres_docx,
+             "selected_outputs": self.runtime.get(book_id, state.run_id).intent.outputs.selected(),
+-            "findings_remaining": 0,
++            "quality_report": quality_report.model_dump(mode="json"),
+         }
+         candidate_id = new_ulid()
+         now = utc_now()
+@@ -1781,11 +1821,16 @@ class AutoBookFinalizer:
+                 )
+         finally:
+             engine.dispose()
+-        return self._final_candidate(book_id, state.run_id) or {
++        recorded = self._final_candidate(book_id, state.run_id) or {
+             "candidate_id": candidate_id,
+             "status": "AWAITING",
+             "candidate": candidate,
+         }
++        self._validated_candidate_quality(
++            cast(dict[str, Any], recorded["candidate"]),
++            current_master_hash=snapshot.manifest_hash,
++        )
++        return recorded
+ 
+     def decide_final_candidate(
+         self,
+@@ -1797,8 +1842,11 @@ class AutoBookFinalizer:
+         reason: str,
+     ) -> dict[str, Any]:
+         actor = human_actor.strip()
+-        if not actor:
++        if not actor or actor.casefold().startswith("system:"):
+             raise AutoBookGateError("final acceptance requires the actual human actor")
++        decision_reason = reason.strip()
++        if not decision_reason:
++            raise AutoBookGateError("final acceptance requires the human's recorded reason")
+         current = self._final_candidate(book_id, state.run_id)
+         if current is None or current["status"] != "AWAITING":
+             raise AutoBookGateError("no current final candidate is awaiting human acceptance")

@@ -1,0 +1,256 @@
+name: T07 Exact-Head Reconciliation
+
+on:
+  push:
+    branches: [brain/agents-api-development-lane-20260914]
+    paths:
+      - '.github/workflows/t07-exact-head-reconcile.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: t07-exact-head-reconcile-759dd9ed
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: 759dd9ed0f351e0946e6e57affbf6a18e877d4fb
+  PRODUCT_PARENT: c3967d34fe75639e3656d98f92582f4f131dfdee
+
+jobs:
+  local-core:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/local-core } }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '759dd9ed0f351e0946e6e57affbf6a18e877d4fb', fetch-depth: 0, persist-credentials: false }
+      - run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+        working-directory: ${{ github.workspace }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r requirements-dev.lock
+      - run: ruff format --diff .
+      - run: ruff check .
+      - run: mypy src
+      - run: pytest
+
+  desktop:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/desktop } }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '759dd9ed0f351e0946e6e57affbf6a18e877d4fb', fetch-depth: 0, persist-credentials: false }
+      - run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+        working-directory: ${{ github.workspace }}
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/desktop/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile --prod=false
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm audit --prod --audit-level=high
+
+  tauri-smoke:
+    runs-on: macos-latest
+    defaults: { run: { working-directory: apps/desktop/src-tauri } }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '759dd9ed0f351e0946e6e57affbf6a18e877d4fb', fetch-depth: 0, persist-credentials: false }
+      - run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+        working-directory: ${{ github.workspace }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+      - run: cargo check --locked
+
+  macos-native-launch:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '759dd9ed0f351e0946e6e57affbf6a18e877d4fb', fetch-depth: 0, persist-credentials: false }
+      - run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/desktop/pnpm-lock.yaml }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare standalone Local Core
+        run: |
+          python3.12 -m venv services/local-core/.venv
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-dev.lock
+          services/local-core/.venv/bin/pip install -r services/local-core/requirements-build.lock
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --prod=false
+      - name: Build production macOS app bundle
+        working-directory: apps/desktop
+        run: pnpm tauri build --bundles app
+      - name: Launch self-contained packaged and Desktop apps
+        env:
+          RUST_BACKTRACE: '1'
+        run: |
+          APP="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/bundle/macos/BOOK OS.app"
+          EXEC="$APP/Contents/MacOS/BOOK OS"
+          BUNDLED_CORE="$APP/Contents/Resources/book-os-core"
+          LOG="$RUNNER_TEMP/book-os-native-launch.log"
+          FRONTEND_MARKER="$RUNNER_TEMP/book-os-frontend-ready"
+          CORE_MARKER="$RUNNER_TEMP/book-os-core-ready"
+          PROJECT_MARKER="$RUNNER_TEMP/book-os-project-created"
+          CORE_STARTUP_LOG="$HOME/Library/Application Support/com.bookos.desktop/local-core-startup.log"
+          DESKTOP_APP="$HOME/Desktop/BOOK OS.app"
+          DESKTOP_EXEC="$DESKTOP_APP/Contents/MacOS/BOOK OS"
+          DESKTOP_CORE="$DESKTOP_APP/Contents/Resources/book-os-core"
+          DESKTOP_LOG="$RUNNER_TEMP/book-os-desktop-launch.log"
+          DESKTOP_FRONTEND_MARKER="$RUNNER_TEMP/book-os-desktop-frontend-ready"
+          DESKTOP_CORE_MARKER="$RUNNER_TEMP/book-os-desktop-core-ready"
+
+          dump_logs() {
+            echo "=== BOOK OS NATIVE LOG ==="
+            cat "$LOG" 2>/dev/null || true
+            echo "=== LOCAL CORE STARTUP LOG ==="
+            cat "$CORE_STARTUP_LOG" 2>/dev/null || echo "startup log not found: $CORE_STARTUP_LOG"
+          }
+
+          test -d "$APP"
+          test -x "$EXEC"
+          test -x "$BUNDLED_CORE"
+          /usr/bin/plutil -lint "$APP/Contents/Info.plist"
+          /usr/bin/codesign --force --deep --sign - "$APP"
+          /usr/bin/codesign --verify --deep --strict "$APP"
+
+          mv services/local-core/.venv "$RUNNER_TEMP/book-os-build-venv"
+          mv services/local-core/src "$RUNNER_TEMP/book-os-source-hidden"
+          test ! -e services/local-core/.venv
+          test ! -e services/local-core/src
+
+          rm -f "$FRONTEND_MARKER" "$CORE_MARKER" "$PROJECT_MARKER" "$CORE_STARTUP_LOG"
+          BOOK_OS_FRONTEND_READY_FILE="$FRONTEND_MARKER" \
+          BOOK_OS_CORE_READY_FILE="$CORE_MARKER" \
+          BOOK_OS_PACKAGED_PROJECT_PROBE_FILE="$PROJECT_MARKER" \
+          "$EXEC" >"$LOG" 2>&1 &
+          PID=$!
+          cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          for _ in {1..300}; do
+            if [ -s "$FRONTEND_MARKER" ] && [ -s "$CORE_MARKER" ] && [ -s "$PROJECT_MARKER" ]; then break; fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              dump_logs
+              echo "BOOK OS packaged app exited before frontend/core/project readiness"
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          test -s "$FRONTEND_MARKER" || { dump_logs; exit 1; }
+          test -s "$CORE_MARKER" || { dump_logs; exit 1; }
+          test -s "$PROJECT_MARKER" || { dump_logs; exit 1; }
+          grep -F "ready" "$FRONTEND_MARKER"
+          grep -F "healthy" "$CORE_MARKER"
+          grep -E '^[0-9A-HJKMNP-TV-Z]{26}$' "$PROJECT_MARKER"
+          grep -F "BOOK OS frontend ready" "$LOG"
+          grep -F "BOOK OS local core healthy" "$LOG"
+          grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
+
+          test -x "$DESKTOP_EXEC"
+          test -x "$DESKTOP_CORE"
+          /usr/bin/plutil -lint "$DESKTOP_APP/Contents/Info.plist"
+          /usr/bin/codesign --verify --deep --strict "$DESKTOP_APP"
+          grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$LOG"
+
+          cleanup
+          rm -f "$DESKTOP_FRONTEND_MARKER" "$DESKTOP_CORE_MARKER" "$CORE_STARTUP_LOG"
+          BOOK_OS_FRONTEND_READY_FILE="$DESKTOP_FRONTEND_MARKER" \
+          BOOK_OS_CORE_READY_FILE="$DESKTOP_CORE_MARKER" \
+          "$DESKTOP_EXEC" >"$DESKTOP_LOG" 2>&1 &
+          PID=$!
+
+          for _ in {1..300}; do
+            if [ -s "$DESKTOP_FRONTEND_MARKER" ] && [ -s "$DESKTOP_CORE_MARKER" ]; then break; fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              LOG="$DESKTOP_LOG" dump_logs
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          test -s "$DESKTOP_FRONTEND_MARKER" || { LOG="$DESKTOP_LOG" dump_logs; exit 1; }
+          test -s "$DESKTOP_CORE_MARKER" || { LOG="$DESKTOP_LOG" dump_logs; exit 1; }
+          grep -F "ready" "$DESKTOP_FRONTEND_MARKER"
+          grep -F "healthy" "$DESKTOP_CORE_MARKER"
+          grep -F "BOOK OS desktop app ready: $DESKTOP_APP" "$DESKTOP_LOG"
+          grep -F "BOOK OS frontend ready" "$DESKTOP_LOG"
+          grep -F "BOOK OS local core healthy" "$DESKTOP_LOG"
+          grep -F "core_mode=bundled" "$CORE_STARTUP_LOG"
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '759dd9ed0f351e0946e6e57affbf6a18e877d4fb', fetch-depth: 0, persist-credentials: false }
+      - run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  evidence:
+    if: always()
+    needs: [local-core, desktop, tauri-smoke, macos-native-launch, secret-scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '759dd9ed0f351e0946e6e57affbf6a18e877d4fb', fetch-depth: 0, persist-credentials: false }
+      - name: Build reconciliation evidence contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          mkdir -p evidence
+          git diff --binary "$PRODUCT_PARENT" "$PRODUCT_SHA" > evidence/book-os.patch
+          cat > evidence/report.md <<EOF
+          # T07 exact-head reconciliation report
+
+          Product PR: #38
+          Product SHA: $PRODUCT_SHA
+          Product parent: $PRODUCT_PARENT
+          Prior bounded T07b apply run: 34997379458
+          Prior bounded proof: Ruff GREEN; mypy GREEN; targeted export regressions 8/8 GREEN; full Local Core 300/300 GREEN; model/provider/TTS calls 0.
+
+          This reconciliation run does not call any model/provider/TTS API. It re-verifies the exact product SHA with the five required engineering gates from canonical CI.
+
+          Gate results:
+          - local-core: ${{ needs.local-core.result }}
+          - desktop: ${{ needs.desktop.result }}
+          - tauri-smoke: ${{ needs.tauri-smoke.result }}
+          - macos-native-launch: ${{ needs.macos-native-launch.result }}
+          - secret-scan: ${{ needs.secret-scan.result }}
+
+          Normal PR CI run 34998776749 ended action_required before jobs were created; this report does not relabel that run as GREEN. It records an independent exact-SHA verification.
+
+          Model session/task identity: none — deterministic zero-cost engineering reconciliation, GitHub workflow run $GITHUB_RUN_ID.
+          Merge/deploy/install authorization: none.
+          EOF
+          (cd evidence && sha256sum report.md book-os.patch > SHA256SUMS.txt)
+          (cd evidence && zip -q result.zip report.md book-os.patch SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: T07-exact-head-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require all five exact-head gates GREEN
+        shell: bash
+        run: |
+          test '${{ needs.local-core.result }}' = success
+          test '${{ needs.desktop.result }}' = success
+          test '${{ needs.tauri-smoke.result }}' = success
+          test '${{ needs.macos-native-launch.result }}' = success
+          test '${{ needs.secret-scan.result }}' = success
