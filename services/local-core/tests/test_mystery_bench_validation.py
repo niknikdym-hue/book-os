@@ -66,10 +66,7 @@ def _final_cold_checkpoints() -> tuple[ColdReaderCheckpoint, ...]:
 
 
 def _midbook_cold_checkpoints() -> tuple[ColdReaderCheckpoint, ...]:
-    return tuple(
-        _cold_checkpoint(kind)
-        for kind in ("EARLY", "QUARTER", "MIDPOINT")
-    )
+    return tuple(_cold_checkpoint(kind) for kind in ("EARLY", "QUARTER", "MIDPOINT"))
 
 
 def _adversarial(**overrides: object) -> AdversarialCaseReconstruction:
@@ -298,9 +295,7 @@ def test_clean_final_mysterybench_passes_with_coldreader_and_adversarial_evidenc
 
 def test_required_dimension_missing_blocks() -> None:
     pack, policy = _final_pack()
-    dimensions = tuple(
-        row for row in pack.dimension_evidence if row.dimension != "CASE_COHERENCE"
-    )
+    dimensions = tuple(row for row in pack.dimension_evidence if row.dimension != "CASE_COHERENCE")
 
     result = _evaluate(replace(pack, dimension_evidence=dimensions), policy)
 
@@ -330,9 +325,7 @@ def test_blocking_gap_cannot_be_waived() -> None:
 def test_major_gap_requires_explicit_human_disposition() -> None:
     pack, policy = _final_pack()
     undisposed = tuple(
-        replace(row, status="MAJOR_GAP")
-        if row.dimension == "PROSE_VOICE"
-        else row
+        replace(row, status="MAJOR_GAP") if row.dimension == "PROSE_VOICE" else row
         for row in pack.dimension_evidence
     )
     blocked = _evaluate(replace(pack, dimension_evidence=undisposed), policy)
@@ -351,9 +344,7 @@ def test_major_gap_requires_explicit_human_disposition() -> None:
     allowed = _evaluate(
         replace(pack, dimension_evidence=disposed),
         policy,
-        verified_human_disposition_refs=frozenset(
-            {"human-disposition:prose-voice:v1"}
-        ),
+        verified_human_disposition_refs=frozenset({"human-disposition:prose-voice:v1"}),
     )
     assert allowed.qualified
 
@@ -432,13 +423,9 @@ def test_cold_reader_never_receives_private_case_solution_or_spoiler_authority()
 
 
 def test_final_cold_reader_requires_all_checkpoints_and_post_reveal_fields() -> None:
-    cold = tuple(
-        row for row in _final_cold_checkpoints() if row.checkpoint != "THREE_QUARTER"
-    )
+    cold = tuple(row for row in _final_cold_checkpoints() if row.checkpoint != "THREE_QUARTER")
     post_missing = tuple(
-        replace(row, solution_earned=None)
-        if row.checkpoint == "POST_REVEAL"
-        else row
+        replace(row, solution_earned=None) if row.checkpoint == "POST_REVEAL" else row
         for row in cold
     )
     pack, policy = _final_pack(cold=post_missing)
@@ -480,7 +467,8 @@ def test_final_fair_play_reveal_and_case_dimensions_must_consume_protocol_eviden
     pack, policy = _final_pack()
     dimensions = tuple(
         replace(row, supporting_evidence_refs=())
-        if row.dimension in {
+        if row.dimension
+        in {
             "CASE_COHERENCE",
             "FAIR_PLAY",
             "REVEAL_QUALITY",
@@ -514,9 +502,7 @@ def test_supernatural_and_audio_dimensions_are_conditional() -> None:
     mystic_policy = replace(plain_policy, supernatural_material=True)
     mystic_pack, _ = _final_pack(policy=mystic_policy)
     missing = tuple(
-        row
-        for row in mystic_pack.dimension_evidence
-        if row.dimension != "SUPERNATURAL_INTEGRITY"
+        row for row in mystic_pack.dimension_evidence if row.dimension != "SUPERNATURAL_INTEGRITY"
     )
     blocked = _evaluate(replace(mystic_pack, dimension_evidence=missing), mystic_policy)
     assert "MYSTERYBENCH.DIMENSION.MISSING" in _codes(blocked)
@@ -586,9 +572,7 @@ def test_mysterybench_ref_is_version_bound_to_policy_and_evidence() -> None:
 def test_unverified_evaluation_ref_cannot_be_used_as_bookbench_evidence() -> None:
     pack, policy = _final_pack()
     verified = _verified_evaluations(pack)
-    target = next(
-        row for row in pack.dimension_evidence if row.dimension == "PROSE_VOICE"
-    )
+    target = next(row for row in pack.dimension_evidence if row.dimension == "PROSE_VOICE")
     del verified[target.evaluation_ref]
 
     result = _evaluate(
@@ -633,11 +617,11 @@ def test_private_spoiler_authority_must_be_part_of_exact_authority_snapshot() ->
     assert "MYSTERYBENCH.AUTHORITY.PRIVATE_SPOILER_NOT_IN_SNAPSHOT" in _codes(result)
 
 
-def test_verified_artifact_must_match_declared_snapshot_evaluator_class_rubric_and_purpose() -> None:
+def test_verified_artifact_must_match_declared_snapshot_evaluator_class_rubric_and_purpose() -> (
+    None
+):
     pack, policy = _final_pack()
-    target = next(
-        row for row in pack.dimension_evidence if row.dimension == "PROSE_VOICE"
-    )
+    target = next(row for row in pack.dimension_evidence if row.dimension == "PROSE_VOICE")
     baseline = _verified_evaluations(pack)[target.evaluation_ref]
 
     variants = (
