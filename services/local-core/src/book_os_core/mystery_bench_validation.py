@@ -74,9 +74,7 @@ _VALID_DIMENSIONS: frozenset[str] = frozenset(
         "AUDIO_READINESS",
     }
 )
-_VALID_STATUSES: frozenset[str] = frozenset(
-    {"PASS", "MAJOR_GAP", "BLOCKING_GAP", "NOT_EVALUATED"}
-)
+_VALID_STATUSES: frozenset[str] = frozenset({"PASS", "MAJOR_GAP", "BLOCKING_GAP", "NOT_EVALUATED"})
 _VALID_EVALUATOR_CLASSES: frozenset[str] = frozenset(
     {"DETERMINISTIC", "SEMANTIC", "LLM_JUDGE", "PAIRWISE", "HUMAN_LABEL"}
 )
@@ -284,9 +282,7 @@ def _cold_reader_checkpoint_payload(
         "evaluation_ref": checkpoint.evaluation_ref,
         "evaluator_identity": checkpoint.evaluator_identity,
         "private_case_solution_exposed": checkpoint.private_case_solution_exposed,
-        "private_spoiler_authority_refs": _json_strings(
-            checkpoint.private_spoiler_authority_refs
-        ),
+        "private_spoiler_authority_refs": _json_strings(checkpoint.private_spoiler_authority_refs),
         "top_suspect_ids": _json_strings(checkpoint.top_suspect_ids),
         "hypothesis_refs": _json_strings(checkpoint.hypothesis_refs),
         "perceived_clue_refs": _json_strings(checkpoint.perceived_clue_refs),
@@ -325,9 +321,7 @@ def _adversarial_payload(
         "evaluator_identity": evidence.evaluator_identity,
         "reconstruction_ref": evidence.reconstruction_ref,
         "blind_input_refs": _json_strings(evidence.blind_input_refs),
-        "accepted_case_solution_revision_ref": (
-            evidence.accepted_case_solution_revision_ref
-        ),
+        "accepted_case_solution_revision_ref": (evidence.accepted_case_solution_revision_ref),
         "comparison_ref": evidence.comparison_ref,
         "reveal_order": evidence.reveal_order,
         "missing_required_fact": evidence.missing_required_fact,
@@ -336,9 +330,7 @@ def _adversarial_payload(
         "accepted_solution_contradicts_manuscript": (
             evidence.accepted_solution_contradicts_manuscript
         ),
-        "unstated_decisive_supernatural_rule": (
-            evidence.unstated_decisive_supernatural_rule
-        ),
+        "unstated_decisive_supernatural_rule": (evidence.unstated_decisive_supernatural_rule),
         "unfair_decisive_withholding": evidence.unfair_decisive_withholding,
     }
 
@@ -387,9 +379,7 @@ def _pack_ref(
         "manuscript_snapshot_ref": pack.manuscript_snapshot_ref,
         "manuscript_snapshot_hash": pack.manuscript_snapshot_hash,
         "authority_revision_refs": _json_strings(pack.authority_revision_refs),
-        "private_spoiler_authority_refs": _json_strings(
-            pack.private_spoiler_authority_refs
-        ),
+        "private_spoiler_authority_refs": _json_strings(pack.private_spoiler_authority_refs),
         "writer_executor_identity": pack.writer_executor_identity,
         "dimension_evidence": _json_objects(
             tuple(
@@ -432,10 +422,7 @@ def _verified_artifact(
         findings.append(
             _finding(
                 f"{finding_prefix}.ARTIFACT_ID_MISMATCH",
-                (
-                    f"evaluation catalog key {evaluation_ref} resolves to "
-                    f"{artifact.evaluation_ref}"
-                ),
+                (f"evaluation catalog key {evaluation_ref} resolves to {artifact.evaluation_ref}"),
                 evaluation_ref,
                 artifact.evaluation_ref,
             )
@@ -455,10 +442,7 @@ def _verified_artifact(
         findings.append(
             _finding(
                 f"{finding_prefix}.ARTIFACT_SNAPSHOT_MISMATCH",
-                (
-                    f"evaluation {evaluation_ref} is bound to a different "
-                    "manuscript snapshot"
-                ),
+                (f"evaluation {evaluation_ref} is bound to a different manuscript snapshot"),
                 evaluation_ref,
             )
         )
@@ -466,10 +450,7 @@ def _verified_artifact(
         findings.append(
             _finding(
                 f"{finding_prefix}.ARTIFACT_EVALUATOR_MISMATCH",
-                (
-                    f"evaluation {evaluation_ref} evaluator identity differs "
-                    "from declared evidence"
-                ),
+                (f"evaluation {evaluation_ref} evaluator identity differs from declared evidence"),
                 evaluation_ref,
             )
         )
@@ -479,10 +460,7 @@ def _verified_artifact(
         findings.append(
             _finding(
                 f"{finding_prefix}.ARTIFACT_CLASS_MISMATCH",
-                (
-                    f"evaluation {evaluation_ref} evaluator class differs "
-                    "from declared evidence"
-                ),
+                (f"evaluation {evaluation_ref} evaluator class differs from declared evidence"),
                 evaluation_ref,
             )
         )
@@ -501,10 +479,7 @@ def _verified_artifact(
         findings.append(
             _finding(
                 f"{finding_prefix}.ARTIFACT_RUBRIC_MISMATCH",
-                (
-                    f"evaluation {evaluation_ref} rubric differs from "
-                    "declared mystery rubric"
-                ),
+                (f"evaluation {evaluation_ref} rubric differs from declared mystery rubric"),
                 evaluation_ref,
             )
         )
@@ -595,10 +570,7 @@ def _validate_cold_reader(
             findings.append(
                 _finding(
                     "MYSTERYBENCH.COLD_READER.SPOILER_AUTHORITY_EXPOSED",
-                    (
-                        f"checkpoint {checkpoint.checkpoint} received private spoiler "
-                        "authority refs"
-                    ),
+                    (f"checkpoint {checkpoint.checkpoint} received private spoiler authority refs"),
                     checkpoint.checkpoint,
                     *checkpoint.private_spoiler_authority_refs,
                 )
@@ -721,17 +693,12 @@ def _validate_adversarial(
         )
     forbidden_blind_refs = set(pack.private_spoiler_authority_refs)
     forbidden_blind_refs.add(evidence.accepted_case_solution_revision_ref)
-    contaminated_refs = sorted(
-        forbidden_blind_refs.intersection(evidence.blind_input_refs)
-    )
+    contaminated_refs = sorted(forbidden_blind_refs.intersection(evidence.blind_input_refs))
     if contaminated_refs:
         findings.append(
             _finding(
                 "MYSTERYBENCH.ADVERSARIAL.PRIVATE_AUTHORITY_IN_BLIND_INPUT",
-                (
-                    "private spoiler authority was included in blind reconstruction "
-                    "inputs"
-                ),
+                ("private spoiler authority was included in blind reconstruction inputs"),
                 *contaminated_refs,
             )
         )
@@ -783,9 +750,7 @@ def evaluate_mystery_bench(
     findings: list[MysteryBenchFinding] = []
 
     if not pack.book_id.strip():
-        findings.append(
-            _finding("MYSTERYBENCH.BOOK_ID_MISSING", "book_id must not be blank")
-        )
+        findings.append(_finding("MYSTERYBENCH.BOOK_ID_MISSING", "book_id must not be blank"))
     if not pack.manuscript_snapshot_ref.strip():
         findings.append(
             _finding(
@@ -1068,10 +1033,7 @@ def evaluate_mystery_bench(
                 )
             )
         elif evidence.status == "MAJOR_GAP":
-            if (
-                evidence.human_disposition_ref is None
-                or not evidence.human_disposition_ref.strip()
-            ):
+            if evidence.human_disposition_ref is None or not evidence.human_disposition_ref.strip():
                 findings.append(
                     _finding(
                         "MYSTERYBENCH.EVIDENCE.MAJOR_UNDISPOSED",
@@ -1121,17 +1083,10 @@ def evaluate_mystery_bench(
                     )
                 )
 
-    if (
-        policy.stage == "FINAL"
-        and _adversarial_required(policy)
-        and adversarial_ref is not None
-    ):
+    if policy.stage == "FINAL" and _adversarial_required(policy) and adversarial_ref is not None:
         for dimension in ("CASE_COHERENCE", "FAIR_PLAY", "NARRATIVE_INTEGRITY"):
             evidence = by_dimension.get(dimension)
-            if (
-                evidence is not None
-                and adversarial_ref not in evidence.supporting_evidence_refs
-            ):
+            if evidence is not None and adversarial_ref not in evidence.supporting_evidence_refs:
                 findings.append(
                     _finding(
                         "MYSTERYBENCH.EVIDENCE.ADVERSARIAL_NOT_CONSUMED",
