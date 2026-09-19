@@ -99,9 +99,7 @@ _VALID_SEMANTIC_STATES = frozenset({"CLEAR", "ATTENTION", "MATERIAL_COLLISION"})
 _VALID_EVALUATOR_CLASSES = frozenset(
     {"DETERMINISTIC", "SEMANTIC", "LLM_JUDGE", "PAIRWISE", "HUMAN_LABEL"}
 )
-_VALID_INDEPENDENCE = frozenset(
-    {"INDEPENDENT", "SAME_CONFIG", "UNKNOWN", "NOT_APPLICABLE"}
-)
+_VALID_INDEPENDENCE = frozenset({"INDEPENDENT", "SAME_CONFIG", "UNKNOWN", "NOT_APPLICABLE"})
 
 
 @dataclass(frozen=True)
@@ -249,9 +247,7 @@ def _series_profile_payload(
         "content_hash": profile.content_hash,
         "status": profile.status,
         "series_name": profile.series_name,
-        "allowed_recurring_asset_codes": _json_strings(
-            profile.allowed_recurring_asset_codes
-        ),
+        "allowed_recurring_asset_codes": _json_strings(profile.allowed_recurring_asset_codes),
         "shared_invariant_refs": _json_strings(profile.shared_invariant_refs),
         "strongly_serialized": profile.strongly_serialized,
     }
@@ -310,22 +306,12 @@ def passport_ref(passport: MysteryBookPassport) -> str:
 
 def _policy_payload(policy: SeriesCollisionPolicy) -> dict[str, JSONValue]:
     return {
-        "exact_blocking_dimensions": _json_strings(
-            tuple(policy.exact_blocking_dimensions)
-        ),
-        "exact_attention_dimensions": _json_strings(
-            tuple(policy.exact_attention_dimensions)
-        ),
-        "semantic_required_dimensions": _json_strings(
-            tuple(policy.semantic_required_dimensions)
-        ),
+        "exact_blocking_dimensions": _json_strings(tuple(policy.exact_blocking_dimensions)),
+        "exact_attention_dimensions": _json_strings(tuple(policy.exact_attention_dimensions)),
+        "semantic_required_dimensions": _json_strings(tuple(policy.semantic_required_dimensions)),
         "require_semantic_independence": policy.require_semantic_independence,
-        "attention_requires_human_disposition": (
-            policy.attention_requires_human_disposition
-        ),
-        "require_standalone_case_resolution": (
-            policy.require_standalone_case_resolution
-        ),
+        "attention_requires_human_disposition": (policy.attention_requires_human_disposition),
+        "require_standalone_case_resolution": (policy.require_standalone_case_resolution),
     }
 
 
@@ -478,7 +464,7 @@ def _valid_series_profile_ref_for_id(
     prefix = f"series-profile:{profile_id}:"
     if not value.startswith(prefix):
         return False
-    return bool(_SHA256.fullmatch(value[len(prefix):]))
+    return bool(_SHA256.fullmatch(value[len(prefix) :]))
 
 
 def _validate_passport_shape(
@@ -778,10 +764,7 @@ def _validate_policy(
                 dimension,
                 current_book_id,
                 None,
-                (
-                    f"dimension {dimension} cannot be both exact-blocking and "
-                    "exact-attention"
-                ),
+                (f"dimension {dimension} cannot be both exact-blocking and exact-attention"),
             )
         )
 
@@ -797,12 +780,10 @@ def _validate_policy(
                 dimension,
                 current_book_id,
                 None,
-                (
-                    f"semantic collision policy must cover core dimension "
-                    f"{dimension}"
-                ),
+                (f"semantic collision policy must cover core dimension {dimension}"),
             )
         )
+
 
 def _validate_prior_passports(
     *,
@@ -994,10 +975,7 @@ def _check_exact_collisions(
                         dimension,
                         current.book_id,
                         prior.book_id,
-                        (
-                            f"exact series collision in {dimension}: "
-                            f"{current_value!r}"
-                        ),
+                        (f"exact series collision in {dimension}: {current_value!r}"),
                         passport_ref(prior),
                     )
                 )
@@ -1010,10 +988,7 @@ def _check_exact_collisions(
                         dimension,
                         current.book_id,
                         prior.book_id,
-                        (
-                            f"exact repeated pattern in {dimension}: "
-                            f"{current_value!r}"
-                        ),
+                        (f"exact repeated pattern in {dimension}: {current_value!r}"),
                         passport_ref(prior),
                     )
                 )
@@ -1056,9 +1031,7 @@ def _prior_asset_ledger(
         key=lambda item: (item.passport.book_number, item.passport.book_id),
     ):
         prior = accepted.passport
-        recurring_at_acceptance = set(
-            accepted.recurring_asset_codes_at_acceptance
-        )
+        recurring_at_acceptance = set(accepted.recurring_asset_codes_at_acceptance)
         prior_consumed = set(prior.assets_consumed)
         prior_claims = set(prior.reservation_claim_codes)
 
@@ -1073,10 +1046,7 @@ def _prior_asset_ledger(
                         "ASSET",
                         current_book_id,
                         prior.book_id,
-                        (
-                            f"historical claim {claim_code} has no earlier "
-                            "reservation"
-                        ),
+                        (f"historical claim {claim_code} has no earlier reservation"),
                         claim_code,
                     )
                 )
@@ -1099,10 +1069,7 @@ def _prior_asset_ledger(
 
         for asset_code in prior.assets_consumed:
             prior_consumer = all_consumed_by.get(asset_code)
-            if (
-                asset_code not in recurring_at_acceptance
-                and prior_consumer is not None
-            ):
+            if asset_code not in recurring_at_acceptance and prior_consumer is not None:
                 findings.append(
                     _finding(
                         "SERIES.PRIOR_ASSET.REUSED_CONSUMED",
@@ -1184,10 +1151,7 @@ def _prior_asset_ledger(
                         "ASSET",
                         current_book_id,
                         prior.book_id,
-                        (
-                            f"historical asset {asset_code} was already reserved "
-                            f"by {prior_reserver}"
-                        ),
+                        (f"historical asset {asset_code} was already reserved by {prior_reserver}"),
                         asset_code,
                     )
                 )
@@ -1238,10 +1202,7 @@ def _check_assets(
                     "ASSET",
                     current.book_id,
                     None,
-                    (
-                        f"reservation claim {claim_code} must appear in "
-                        "assets_consumed"
-                    ),
+                    (f"reservation claim {claim_code} must appear in assets_consumed"),
                     claim_code,
                 )
             )
@@ -1284,10 +1245,7 @@ def _check_assets(
         if asset_code in recurring:
             continue
         prior_consumer = all_consumed_by.get(asset_code)
-        if (
-            prior_consumer is not None
-            and prior_one_use_consumer is None
-        ):
+        if prior_consumer is not None and prior_one_use_consumer is None:
             findings.append(
                 _finding(
                     "SERIES.ASSET.REUSED_AFTER_SIGNATURE_REMOVAL",
@@ -1363,9 +1321,7 @@ def _validate_semantic_evidence(
 ) -> None:
     prior_ids = {accepted.passport.book_id for accepted in prior_passports}
     required_dimensions = set(policy.semantic_required_dimensions)
-    evidence_by_key: dict[
-        tuple[str, str], SeriesSemanticCollisionEvidence
-    ] = {}
+    evidence_by_key: dict[tuple[str, str], SeriesSemanticCollisionEvidence] = {}
 
     for evidence in semantic_evidence:
         if evidence.current_book_id != current.book_id:
@@ -1459,10 +1415,7 @@ def _validate_semantic_evidence(
                     evidence.evaluation_ref,
                 )
             )
-        elif (
-            policy.require_semantic_independence
-            and evidence.independence_state != "INDEPENDENT"
-        ):
+        elif policy.require_semantic_independence and evidence.independence_state != "INDEPENDENT":
             findings.append(
                 _finding(
                     "SERIES.SEMANTIC.NOT_INDEPENDENT",
@@ -1526,8 +1479,7 @@ def _validate_semantic_evidence(
             )
         else:
             expected_purpose = (
-                f"SERIES_COLLISION:{current.book_id}:"
-                f"{evidence.prior_book_id}:{evidence.dimension}"
+                f"SERIES_COLLISION:{current.book_id}:{evidence.prior_book_id}:{evidence.dimension}"
             )
             for code, actual, expected in (
                 (
@@ -1600,12 +1552,8 @@ def _validate_semantic_evidence(
                 )
             )
         elif evidence.state == "ATTENTION":
-            if (
-                policy.attention_requires_human_disposition
-                and (
-                    evidence.human_disposition_ref is None
-                    or not evidence.human_disposition_ref.strip()
-                )
+            if policy.attention_requires_human_disposition and (
+                evidence.human_disposition_ref is None or not evidence.human_disposition_ref.strip()
             ):
                 findings.append(
                     _finding(
@@ -1621,8 +1569,7 @@ def _validate_semantic_evidence(
                 )
             elif (
                 policy.attention_requires_human_disposition
-                and evidence.human_disposition_ref
-                not in verified_human_disposition_refs
+                and evidence.human_disposition_ref not in verified_human_disposition_refs
             ):
                 findings.append(
                     _finding(
@@ -1763,10 +1710,7 @@ def evaluate_series_uniqueness(
                 "SERIES_DEPENDENCY",
                 current_passport.book_id,
                 None,
-                (
-                    "later standalone-friendly volume requires a bounded "
-                    "late-entry orientation ref"
-                ),
+                ("later standalone-friendly volume requires a bounded late-entry orientation ref"),
             )
         )
 
@@ -1786,11 +1730,7 @@ def evaluate_series_uniqueness(
         context_ref=context_ref,
         semantic_evidence=semantic_evidence,
     )
-    blockers = [
-        finding
-        for finding in findings
-        if finding.severity in {"BLOCKING", "MAJOR"}
-    ]
+    blockers = [finding for finding in findings if finding.severity in {"BLOCKING", "MAJOR"}]
     return SeriesUniquenessResult(
         qualified=not blockers,
         series_brain_ref=final_brain_ref,
