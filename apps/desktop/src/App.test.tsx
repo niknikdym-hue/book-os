@@ -162,6 +162,22 @@ it("keeps a healthy Home calm and free of technical system noise", async () => {
   expect(screen.queryByText(/max requests/i)).not.toBeInTheDocument();
 });
 
+it("does not show empty series in recent projects", async () => {
+  installFixture({
+    series: [{
+      series_profile_id: "01JEMPTY00000000000000000",
+      name: "Секреты продвижения услуг",
+      profile_status: "DRAFT",
+      books: [],
+    }],
+  });
+  render(<App />);
+
+  await screen.findByText("Последние проекты");
+  expect(screen.queryByText("Секреты продвижения услуг")).not.toBeInTheDocument();
+  expect(screen.getByText("Здесь появятся ваши книги и серии")).toBeInTheDocument();
+});
+
 it("opens one accessible Create flow for a Book or a Series", async () => {
   installFixture();
   render(<App />);
