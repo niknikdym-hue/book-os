@@ -621,7 +621,15 @@ class OpenAIResponsesAdapter:
             raise ModelOutputError("OpenAI structured output must be an object")
         try:
             output_type: type[BaseModel] = SectionDraftOutput
-            if request.task_type == "BOOK_CONTRACT_PROPOSAL":
+            if request.task_type in {
+                "REPRESENTATIVE_SAMPLE_DRAFT",
+                "SCENE_DRAFT",
+                "ROUTINE_SCENE_REVISION",
+            }:
+                output_type = FictionSceneDraftOutput
+            elif request.task_type == "CONTINUITY_EXTRACTION":
+                output_type = FictionContinuityExtractionOutput
+            elif request.task_type == "BOOK_CONTRACT_PROPOSAL":
                 output_type = BookContractProposalOutput
             elif request.task_type == "ARCHITECTURE_PROPOSAL":
                 output_type = BookArchitectureProposalOutput
