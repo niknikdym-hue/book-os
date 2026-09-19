@@ -3,34 +3,154 @@
   "$id": "https://book-os.local/contracts/mystery-os/professional_fiction_benchmark.schema.json",
   "title": "MYSTERY OS Professional Fiction Benchmark Run",
   "type": "object",
-  "required": ["schema_version", "benchmark_set_id", "evaluated_revision_refs", "findings", "readiness_band"],
+  "required": [
+    "schema_version",
+    "book_id",
+    "checkpoint",
+    "manuscript_snapshot_ref",
+    "manuscript_snapshot_hash",
+    "evaluated_revision_refs",
+    "benchmark_set_ref",
+    "benchmark_set_hash",
+    "writer_executor_identity",
+    "dimension_evaluations",
+    "findings",
+    "readiness_band",
+    "mimicry_request_detected",
+    "protected_expression_reproduction_detected"
+  ],
   "properties": {
-    "schema_version": {"const": "0.1.0"},
-    "benchmark_set_id": {"type": "string", "minLength": 1},
-    "evaluated_revision_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-    "checkpoint": {"enum": ["PRE_DRAFT", "REPRESENTATIVE_SAMPLE", "MIDBOOK", "WHOLE_BOOK", "FINAL"]},
-    "readiness_band": {"enum": ["BELOW_PROFESSIONAL_FLOOR", "PROFESSIONAL_GAPS_REMAIN", "PROFESSIONAL_RANGE_CANDIDATE", "STRONG_PROFESSIONAL_CANDIDATE"]},
+    "schema_version": {"const": "0.2.0"},
+    "book_id": {"type": "string", "minLength": 1},
+    "checkpoint": {
+      "enum": ["PRE_DRAFT", "REPRESENTATIVE_SAMPLE", "MIDBOOK", "WHOLE_BOOK", "FINAL"]
+    },
+    "manuscript_snapshot_ref": {"type": "string", "minLength": 1},
+    "manuscript_snapshot_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evaluated_revision_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "benchmark_set_ref": {"type": "string", "minLength": 1},
+    "benchmark_set_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "writer_executor_identity": {"type": "string", "minLength": 1},
+    "dimension_evaluations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "dimension",
+          "status",
+          "evaluation_ref",
+          "rubric_ref",
+          "evaluator_identity",
+          "evaluator_class",
+          "comparison_mode"
+        ],
+        "properties": {
+          "dimension": {
+            "enum": [
+              "PREMISE_IDENTITY",
+              "NARRATIVE_ENGINE",
+              "CHARACTERS",
+              "SCENES",
+              "DIALOGUE",
+              "MYSTERY_CONSTRUCTION",
+              "SUSPENSE",
+              "PROSE_VOICE",
+              "SETTING",
+              "EMOTIONAL_ARCHITECTURE",
+              "WHOLE_BOOK_STRUCTURE",
+              "ORIGINALITY",
+              "AUDIO_READINESS"
+            ]
+          },
+          "status": {"enum": ["PASS", "MAJOR_GAP", "BLOCKING_GAP"]},
+          "evaluation_ref": {"type": "string", "minLength": 1},
+          "rubric_ref": {"type": "string", "minLength": 1},
+          "evaluator_identity": {"type": "string", "minLength": 1},
+          "evaluator_class": {
+            "enum": ["DETERMINISTIC", "SEMANTIC", "LLM_JUDGE", "PAIRWISE", "HUMAN_LABEL"]
+          },
+          "comparison_mode": {
+            "enum": ["CRITERION", "BLIND_PAIRWISE", "CORPUS_DIAGNOSTIC"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["dimension", "severity", "observation", "recommended_action"],
+        "required": [
+          "dimension",
+          "severity",
+          "observation",
+          "recommended_action",
+          "manuscript_evidence_refs",
+          "benchmark_observation_refs",
+          "evaluation_ref"
+        ],
         "properties": {
-          "dimension": {"enum": ["PREMISE_IDENTITY", "NARRATIVE_ENGINE", "CHARACTERS", "SCENES", "DIALOGUE", "MYSTERY_CONSTRUCTION", "SUSPENSE", "PROSE_VOICE", "SETTING", "EMOTIONAL_ARCHITECTURE", "WHOLE_BOOK_STRUCTURE", "ORIGINALITY", "AUDIO_READINESS"]},
-          "scope": {"type": ["string", "null"]},
+          "dimension": {
+            "enum": [
+              "PREMISE_IDENTITY",
+              "NARRATIVE_ENGINE",
+              "CHARACTERS",
+              "SCENES",
+              "DIALOGUE",
+              "MYSTERY_CONSTRUCTION",
+              "SUSPENSE",
+              "PROSE_VOICE",
+              "SETTING",
+              "EMOTIONAL_ARCHITECTURE",
+              "WHOLE_BOOK_STRUCTURE",
+              "ORIGINALITY",
+              "AUDIO_READINESS"
+            ]
+          },
           "severity": {"enum": ["BLOCKING", "MAJOR", "MINOR", "NOTE"]},
           "observation": {"type": "string", "minLength": 1},
-          "manuscript_examples": {"type": "array", "items": {"type": "string"}},
-          "non_infringing_comparison": {"type": ["string", "null"]},
           "recommended_action": {"type": "string", "minLength": 1},
-          "human_disposition": {"type": ["string", "null"]}
+          "manuscript_evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "benchmark_observation_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "evaluation_ref": {"type": "string", "minLength": 1},
+          "scope": {"type": ["string", "null"]},
+          "non_infringing_comparison": {"type": ["string", "null"]},
+          "human_disposition_ref": {"type": ["string", "null"]}
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
-    "evaluator_provenance": {"type": "array", "items": {"type": "string"}},
-    "cost_provenance_refs": {"type": "array", "items": {"type": "string"}},
-    "human_release_disposition": {"type": ["string", "null"]}
+    "readiness_band": {
+      "enum": [
+        "BELOW_PROFESSIONAL_FLOOR",
+        "PROFESSIONAL_GAPS_REMAIN",
+        "PROFESSIONAL_RANGE_CANDIDATE",
+        "STRONG_PROFESSIONAL_CANDIDATE"
+      ]
+    },
+    "mimicry_request_detected": {"type": "boolean"},
+    "protected_expression_reproduction_detected": {"type": "boolean"},
+    "strong_candidate_human_ref": {"type": ["string", "null"]}
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
