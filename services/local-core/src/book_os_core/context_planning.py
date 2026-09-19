@@ -7,6 +7,7 @@ from .book_context import BookContextService
 from .model_gateway import AuthorityInputRef, ModelGateway, ReasoningEffort
 from .planning import PlanningGateError, PlanningService
 from .prompts import PromptTemplate
+from .series_workspace import SeriesWorkspaceService
 
 
 class ContextAwarePlanningService(PlanningService):
@@ -15,6 +16,7 @@ class ContextAwarePlanningService(PlanningService):
     def __init__(self, data_dir: Path, gateway: ModelGateway) -> None:
         super().__init__(data_dir, gateway)
         self.contexts = BookContextService(data_dir)
+        self.series_workspaces = SeriesWorkspaceService(data_dir)
 
     def _book_context_payload(self, book_id: str) -> dict[str, Any]:
         context = self.contexts.get_context(book_id)
@@ -39,13 +41,17 @@ class ContextAwarePlanningService(PlanningService):
                 else None
             ),
             "target_characters": context.target_characters,
+            "target_length_policy": "GUIDANCE_NOT_PADDING",
             "min_characters": context.min_characters,
             "max_characters": context.max_characters,
             "include_bibliography": context.include_bibliography,
+            "bibliography_preference": context.bibliography_preference,
+            "internal_research_and_evidence": "ALWAYS_PRESERVED",
             "plan_illustrations": context.plan_illustrations,
             "visual_asset_format": context.visual_asset_format,
             "visual_materials_policy": context.visual_materials_policy,
             "characters_unit": context.characters_unit,
+            "series_continuity": self.series_workspaces.generation_context(book_id),
         }
 
     def _run(
@@ -64,6 +70,7 @@ class ContextAwarePlanningService(PlanningService):
         max_output_tokens: int,
         max_cost_usd: float,
         reasoning_effort: ReasoningEffort | None = None,
+        untrusted_context: list[str] | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, Any], str | None]:
         book_context = self._book_context_payload(book_id)
         return super()._run(
@@ -98,9 +105,14 @@ class ContextAwarePlanningService(PlanningService):
                         else None
                     ),
                     "target_characters": book_context["target_characters"],
+                    "target_length_policy": book_context["target_length_policy"],
                     "min_characters": book_context["min_characters"],
                     "max_characters": book_context["max_characters"],
                     "include_bibliography": book_context["include_bibliography"],
+                    "bibliography_preference": book_context["bibliography_preference"],
+                    "internal_research_and_evidence": book_context[
+                        "internal_research_and_evidence"
+                    ],
                     "plan_illustrations": book_context["plan_illustrations"],
                     "visual_asset_format": book_context["visual_asset_format"],
                     "visual_materials_policy": book_context["visual_materials_policy"],
@@ -110,4 +122,5 @@ class ContextAwarePlanningService(PlanningService):
             max_output_tokens=max_output_tokens,
             max_cost_usd=max_cost_usd,
             reasoning_effort=reasoning_effort,
+            untrusted_context=untrusted_context,
         )

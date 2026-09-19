@@ -5,7 +5,7 @@ from typing import Any, Literal, Protocol
 import json
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .prompts import PromptTemplate
 from .secrets import SecretStore
@@ -50,6 +50,21 @@ class BookContractProposalOutput(BaseModel):
     readiness_criteria: list[str] = Field(min_length=1)
 
 
+class BookConceptProposalOutput(BaseModel):
+    essence: str = Field(min_length=1)
+    reader_job: str = Field(min_length=1)
+    reader_problem: str = Field(min_length=1)
+    reader_transformation: str = Field(min_length=1)
+    central_idea: str = Field(min_length=1)
+    central_promise: str = Field(min_length=1)
+    differentiation: str = Field(min_length=1)
+    why_now: str = Field(min_length=1)
+    scope_in: list[str] = Field(min_length=1)
+    scope_out: list[str] = Field(min_length=1)
+    series_place: str = Field(min_length=1)
+    overlap_risks: list[str] = Field(default_factory=list)
+
+
 class ArchitectureChapterProposalOutput(BaseModel):
     title: str = Field(min_length=1)
     purpose: str = Field(min_length=1)
@@ -87,16 +102,28 @@ class ChapterContractProposalOutput(BaseModel):
 
 
 class JudgeFindingOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     location: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
     recommended_action: str = Field(min_length=1)
 
 
 class BookBenchJudgeOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     verdict: Literal["PASS", "ATTENTION", "BLOCKING"]
-    findings: list[JudgeFindingOutput] = Field(default_factory=list)
+    findings: list[JudgeFindingOutput]
     confidence: float = Field(ge=0, le=1)
     rationale: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_verdict_findings(self) -> BookBenchJudgeOutput:
+        if self.verdict in {"ATTENTION", "BLOCKING"} and not self.findings:
+            raise ValueError(f"{self.verdict} verdict requires at least one finding")
+        if self.verdict == "PASS" and self.findings:
+            raise ValueError("PASS verdict cannot contain unresolved findings")
+        return self
 
 
 class BookBenchPairwiseOutput(BaseModel):
@@ -111,6 +138,7 @@ class ModelTaskRequest(BaseModel):
     task_id: str
     task_type: Literal[
         "SECTION_DRAFT",
+        "BOOK_CONCEPT_PROPOSAL",
         "BOOK_CONTRACT_PROPOSAL",
         "ARCHITECTURE_PROPOSAL",
         "CHAPTER_CONTRACT_PROPOSAL",
@@ -180,6 +208,27 @@ class DeterministicFakeAdapter:
                 provider_run_id="fake-malformed",
                 output={"notes": ["missing required text"]},
                 usage={"input_tokens": 10, "output_tokens": 2},
+            )
+        if request.task_type == "BOOK_CONCEPT_PROPOSAL":
+            return ModelAdapterResult(
+                provider_run_id="fake-book-concept",
+                output={
+                    "essence": "Практическая книга о системе прибыльных продаж онлайн-курсов",
+                    "reader_job": "Эксперт или владелец небольшой онлайн-школы с нестабильными продажами",
+                    "reader_problem": "Есть знания или курс, но неясно, где ломается экономика продаж",
+                    "reader_transformation": "От разрозненных запусков к управляемой системе спроса, предложения и экономики",
+                    "central_idea": "В эпоху AI ценность курса создаёт не информация, а проверяемый путь к результату",
+                    "central_promise": "Научиться диагностировать и собирать прибыльную систему продаж курса",
+                    "differentiation": "Фокус на механике продаж и экономике, а не на записи уроков",
+                    "why_now": "AI удешевил информацию и повысил требования к доказуемому результату обучения",
+                    "scope_in": ["спрос", "обещание результата", "цена", "воронка", "экономика"],
+                    "scope_out": ["техника записи уроков", "обзор платформ ради обзора"],
+                    "series_place": "Самостоятельная книга серии со своей задачей и территорией",
+                    "overlap_risks": [
+                        "не повторять общие советы по продвижению из завершённых книг"
+                    ],
+                },
+                usage={"input_tokens": 110, "output_tokens": 220},
             )
         if request.task_type == "BOOK_CONTRACT_PROPOSAL":
             return ModelAdapterResult(
@@ -327,7 +376,9 @@ class OpenAIResponsesAdapter:
     @staticmethod
     def output_schema(task_type: str = "SECTION_DRAFT") -> dict[str, Any]:
         schema: dict[str, Any]
-        if task_type == "BOOK_CONTRACT_PROPOSAL":
+        if task_type == "BOOK_CONCEPT_PROPOSAL":
+            schema = BookConceptProposalOutput.model_json_schema()
+        elif task_type == "BOOK_CONTRACT_PROPOSAL":
             schema = BookContractProposalOutput.model_json_schema()
         elif task_type == "ARCHITECTURE_PROPOSAL":
             schema = BookArchitectureProposalOutput.model_json_schema()
@@ -547,7 +598,9 @@ class OpenAIResponsesAdapter:
             raise ModelOutputError("OpenAI structured output must be an object")
         try:
             output_type: type[BaseModel] = SectionDraftOutput
-            if request.task_type == "BOOK_CONTRACT_PROPOSAL":
+            if request.task_type == "BOOK_CONCEPT_PROPOSAL":
+                output_type = BookConceptProposalOutput
+            elif request.task_type == "BOOK_CONTRACT_PROPOSAL":
                 output_type = BookContractProposalOutput
             elif request.task_type == "ARCHITECTURE_PROPOSAL":
                 output_type = BookArchitectureProposalOutput

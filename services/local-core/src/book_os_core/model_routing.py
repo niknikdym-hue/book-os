@@ -15,6 +15,7 @@ from .projects import ProjectService
 SelectionMode = Literal["AUTO", "MANUAL"]
 SelectionScope = Literal["OPERATION", "BOOK"]
 WorkLevel = Literal["medium", "high", "xhigh"]
+TaskComplexity = Literal["ROUTINE", "STANDARD", "COMPLEX", "FRONTIER"]
 
 
 class ModelRoutingError(RuntimeError):
@@ -43,6 +44,10 @@ class RoutingChoice(BaseModel):
     selection_scope: SelectionScope | None
     operation: str
     rationale: str
+    reasoning_effort: WorkLevel | None = None
+    policy_version: str = "model-routing.v1"
+    quality_floor: str = "BOOKBENCH"
+    escalation_condition: str | None = None
 
 
 class BookModelPinView(BaseModel):
@@ -71,6 +76,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         auto={
             # Core book creation is deliberately Astra-first. Sol remains a first-class
             # manual author choice, but Auto Book must not silently switch families.
+            "BOOK_CONCEPT_PROPOSAL": "gpt-6-astra",
             "BOOK_CONTRACT_PROPOSAL": "gpt-6-astra",
             "ARCHITECTURE_PROPOSAL": "gpt-6-astra",
             "CHAPTER_CONTRACT_PROPOSAL": "gpt-6-astra",
@@ -90,6 +96,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
             ("yandexgpt-5-lite", "YandexGPT Lite 5"),
         ),
         auto={
+            "BOOK_CONCEPT_PROPOSAL": "aliceai-llm",
             "BOOK_CONTRACT_PROPOSAL": "aliceai-llm",
             "ARCHITECTURE_PROPOSAL": "aliceai-llm",
             "CHAPTER_CONTRACT_PROPOSAL": "aliceai-llm",
@@ -102,6 +109,87 @@ PROVIDERS: dict[str, ProviderSpec] = {
 
 
 class ModelRoutingService:
+    POLICY_VERSION = "auto-book-routing.v2.0.0"
+
+    # Rules are deliberately deterministic: choosing a model must not itself consume a model
+    # request.  The policy chooses the least expensive *measured-quality eligible* route, not the
+    # cheapest route in isolation.  Sol is limited to bounded routine work; core authorship starts
+    # at Astra Medium/High and Extra High remains an addressable escalation.
+    _AUTO_POLICY: dict[str, tuple[str, WorkLevel | None, TaskComplexity, str | None]] = {
+        "MATERIAL_CLASSIFICATION": (
+            "gpt-5.6-sol",
+            None,
+            "ROUTINE",
+            "Escalate when structural coverage or classification precision fails",
+        ),
+        "METADATA_EXTRACTION": (
+            "gpt-5.6-sol",
+            None,
+            "ROUTINE",
+            "Escalate when required fields remain ambiguous",
+        ),
+        "AUDIO_ADAPTATION": (
+            "gpt-6-astra",
+            "medium",
+            "STANDARD",
+            "Escalate on loss of meaning, voice, evidence strength, or table semantics",
+        ),
+        "CHAPTER_CONTRACT_PROPOSAL": (
+            "gpt-6-astra",
+            "medium",
+            "STANDARD",
+            "Escalate when the chapter function overlaps or lacks a distinct reader outcome",
+        ),
+        "LOCAL_EDITORIAL_REVISION": (
+            "gpt-6-astra",
+            "medium",
+            "STANDARD",
+            "Escalate only for a concrete unresolved semantic or voice defect",
+        ),
+        "BOOK_CONCEPT_PROPOSAL": (
+            "gpt-6-astra",
+            "high",
+            "COMPLEX",
+            "Escalate only when reader value, differentiation, or series boundaries remain weak",
+        ),
+        "BOOK_CONTRACT_PROPOSAL": (
+            "gpt-6-astra",
+            "high",
+            "COMPLEX",
+            "Escalate only when the promise, mechanism, and boundaries remain contradictory",
+        ),
+        "ARCHITECTURE_PROPOSAL": (
+            "gpt-6-astra",
+            "high",
+            "COMPLEX",
+            "Escalate only for an unresolved whole-book structural contradiction",
+        ),
+        "SECTION_DRAFT": (
+            "gpt-6-astra",
+            "high",
+            "COMPLEX",
+            "Escalate only after a critic identifies a specific unresolved high-risk defect",
+        ),
+        "WHOLE_BOOK_EDIT": (
+            "gpt-6-astra",
+            "high",
+            "COMPLEX",
+            "Escalate only for a concrete unresolved cross-book defect",
+        ),
+        "INDEPENDENT_CRITIQUE": (
+            "gpt-6-astra",
+            "high",
+            "COMPLEX",
+            "Use Extra High only for an identified difficult contradiction or argument rebuild",
+        ),
+        "ARGUMENT_REBUILD": (
+            "gpt-6-astra",
+            "xhigh",
+            "FRONTIER",
+            None,
+        ),
+    }
+
     def __init__(self, data_dir: Path) -> None:
         self.projects = ProjectService(data_dir)
 
@@ -234,6 +322,9 @@ class ModelRoutingService:
         selection_mode: SelectionMode,
         selection_scope: SelectionScope | None,
         model: str | None,
+        complexity: TaskComplexity | None = None,
+        quality_risk: Literal["LOW", "MEDIUM", "HIGH"] = "MEDIUM",
+        escalation_reason: str | None = None,
     ) -> RoutingChoice:
         if selection_mode == "MANUAL":
             if selection_scope not in {"OPERATION", "BOOK"}:
@@ -255,28 +346,47 @@ class ModelRoutingService:
                 selection_scope=selection_scope,
                 operation=operation,
                 rationale=rationale,
+                policy_version=self.POLICY_VERSION,
+                escalation_condition=None,
             )
 
         if selection_scope is not None:
             raise ModelRoutingError("AUTO selection cannot declare a manual scope")
         existing = self.get_book_pin(book_id)
+        pin_resolution = ""
         if existing is not None:
-            return RoutingChoice(
-                provider=existing.provider,
-                provider_label=existing.provider_label,
-                model=existing.model,
-                selection_mode="MANUAL",
-                selection_scope="BOOK",
-                operation=operation,
-                rationale="Existing human whole-book model pin overrides Auto routing",
+            self.clear_book_pin(book_id)
+            pin_resolution = (
+                f"; Auto explicitly cleared prior BOOK pin {existing.provider}/{existing.model}"
             )
         spec = self._provider(provider)
-        try:
-            auto_model = spec.auto[operation]
-        except KeyError as exc:
-            raise ModelRoutingError(
-                f"Auto routing is not defined for operation {operation}"
-            ) from exc
+        policy = self._AUTO_POLICY.get(operation)
+        if policy is None:
+            try:
+                auto_model = spec.auto[operation]
+            except KeyError as exc:
+                raise ModelRoutingError(
+                    f"Auto routing is not defined for operation {operation}"
+                ) from exc
+            effort: WorkLevel | None = "high" if auto_model == "gpt-6-astra" else None
+            baseline_complexity: TaskComplexity = "COMPLEX"
+            escalation: str | None = "Escalate only after a recorded quality failure"
+        else:
+            auto_model, effort, baseline_complexity, escalation = policy
+        effective_complexity = complexity or baseline_complexity
+        qualifying_escalation = bool(escalation_reason and escalation_reason.strip())
+        if qualifying_escalation:
+            auto_model = "gpt-6-astra"
+            effort = "xhigh"
+        elif effort == "xhigh":
+            effort = "high"
+        elif effective_complexity == "ROUTINE" and operation in {
+            "MATERIAL_CLASSIFICATION",
+            "METADATA_EXTRACTION",
+        }:
+            auto_model = "gpt-5.6-sol"
+            effort = None
+        self.validate_model(provider, auto_model)
         return RoutingChoice(
             provider=provider,
             provider_label=spec.label,
@@ -284,7 +394,20 @@ class ModelRoutingService:
             selection_mode="AUTO",
             selection_scope=None,
             operation=operation,
-            rationale=f"BOOK OS Auto routing for {operation}",
+            rationale=(
+                f"Auto routing {self.POLICY_VERSION}: {effective_complexity}/{quality_risk}; "
+                f"least-cost route eligible for the {operation} quality floor"
+                f"{pin_resolution}"
+                + (
+                    f"; explicit escalation: {escalation_reason.strip()}"
+                    if qualifying_escalation and escalation_reason is not None
+                    else ""
+                )
+            ),
+            reasoning_effort=effort,
+            policy_version=self.POLICY_VERSION,
+            quality_floor="BOOKBENCH_AND_EDITORIAL",
+            escalation_condition=escalation,
         )
 
     def record_run(self, book_id: str, run_id: str, choice: RoutingChoice) -> None:

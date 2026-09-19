@@ -1,168 +1,120 @@
 # BOOK OS — PROJECT STATE
 
-**Status:** SMM PRODUCTION PILOT PREP — ASTRA READY / TASK 017 DELIVERY GATE  
-**Version:** 2.1.0  
-**Date:** 2026-09-07  
+**Status:** AUTO BOOK COMPLETE CYCLE — IMPLEMENTED AWAITING EXACT-HEAD REVIEW
+**Version:** 3.1.0-candidate
+**Date:** 2026-09-14
 **Canonical repository:** `https://github.com/niknikdym-hue/book-os`
 
-## Current phase
+## Canonical baseline
 
-BOOK OS is now being prepared for its first representative production-book run.
+- accepted `origin/main`: `19ab44ba30036936f843e9b13f2a0f7c8f7b1204` (PR #37 merged);
+- implementation branch: `codex/auto-book-complete-cycle-20260913`;
+- this branch is a review candidate, not accepted authority;
+- private manuscripts and provider credentials remain outside Git.
 
-The content pilot is maintained outside this repository:
+GitHub `main` remains the system source of truth. Chat history is not required to reconstruct the
+product or its authority.
 
-- pilot series: **«Инструменты интернет-маркетинга»**;
-- first production book: **«SMM продвижение»**;
-- book/content source of truth: `niknikdym-hue/books-for-litres`;
-- BOOK OS has no runtime dependency on that repository and must remain generic.
+## Candidate capability
 
-The external branch `brain/services-series-clean-restart-20260907` is reference evidence only. Its book content/architecture is not BOOK OS authority. A transferable observation from that project is that GPT-6 Astra at `high` reasoning has produced strong sequential long-form results; this evidence informed Task 018 but does not hard-code Astra as the only executor.
+The current review candidate extends the existing BOOK OS modules instead of adding a parallel
+product layer:
 
-## Canonical main checkpoint
+- one author-facing Auto Book launch with Auto as the default, explicit attachments, selected
+  outputs, visual policy, hard request/cost limits and natural-language change requests;
+- Local Core owns execution, leases, durable stage/operation checkpoints, restart recovery,
+  idempotency and unknown-paid-outcome handling; the desktop is an observer/controller;
+- deterministic operation-aware model routing uses Sol for eligible routine work and Astra at the
+  measured level required by complexity/risk; manual modes remain available;
+- explicit research, architecture, chapter planning/writing/review, mid-book audit, whole-book edit,
+  fact/evidence gate, literary edit, visuals, independent critique, bounded correction and master
+  export stages;
+- structured Literary Master outputs include native tables, programmatic PNG visuals, captions,
+  alt/audio equivalents, bibliography and independent format QA;
+- selected DOCX/LitRes/PDF/EPUB/audio/TXT/pronunciation/extras/publisher outputs are generated
+  independently and become stale when their exact master changes;
+- audio outputs require a separately versioned exact-source AudioScript, source/semantic and
+  listenability checks, explicit HUMAN approval, exact per-finding human disposition of every
+  ATTENTION finding, one clean UTF-8 recording TXT and an immutable Audiobook Studio handoff;
+  AUDIO_FIRST/DUAL constraints propagate upstream and existing-text audio adaptation remains a
+  separate workflow;
+- Series Studio supports new series, external import and continuation of a saved BOOK OS series,
+  including 3–5 proposed concepts for a new series, Series Bible, Book Passports, immutable sources,
+  explicit rights, semantic/structural difference maps, Topic Ownership, overlap disposition and
+  fail-closed writing/finalization gates;
+- Series Map freshness depends on material comparison inputs (Series Bible, passports, architecture,
+  source hashes and archive inclusion), not volatile workflow status/timestamps;
+- the Owner-authorized «Секреты продвижения услуг» preset preserves its fixed existing titles/order
+  and planned directions without starting manuscript generation;
+- Author Experience v2 exposes the author workflow as `Главная / Серии / Книги / Библиотека /
+  Настройки` and seven book stages without making technical routing controls the primary surface;
+- durable book and series cost views distinguish confirmed, reserved, unknown and forecast cost.
 
-Current accepted `main` after Task 018:
+## Candidate schema
 
-- main merge: `a08d0ea6768ae33d225ca2ede83496684e3a1fd7`;
-- Task 018 accepted implementation HEAD: `1b4f8a76344885b15d1cf399dc4ab74880f86895`;
-- Task 018 authoritative CI: `34147087684`;
-- canonical jobs: `local-core`, `desktop`, `tauri-smoke`, `macos-native-launch`, `secret-scan` — all SUCCESS;
-- PR #26 review threads: 0;
-- canonical schema remains Alembic `0015` because Task 018 required no migration.
+Candidate schema head: Alembic `0028`.
 
-## Accepted milestones / capabilities
+- `0021` — durable Auto Book runtime;
+- `0022` — series workspace/read model and Owner decisions;
+- `0023` — AudioScript authority, source/script-bound QA, pronunciation and production handoff;
+- `0024` — explicit series-book origin semantics;
+- `0025` — nonfiction bibliography default;
+- `0026` — safe correction of historical series-origin inference;
+- `0027` — Auto Book recovery/paid-operation truth and final-acceptance support;
+- `0028` — completed series-governance records required by the current candidate.
 
-The previously accepted chain remains authoritative:
+Schema and backup compatibility are tested through the current head. A stale lower migration number
+must not be used as candidate-state evidence.
 
-- M0–M7 / Tasks 001–008 — accepted;
-- Task 010 — Literary Master + exports — accepted;
-- Task 011 — real-book pilot instrumentation — accepted;
-- Task 012 — macOS launch hardening — accepted;
-- Task 013 — visible/installable macOS Desktop app — accepted;
-- Task 014 — Russian first-book launch workspace — accepted;
-- Task 015 — Shared Content Quality Lexicon contract — accepted;
-- Task 016 — superseded/absorbed by Task 014; Owner UX decision preserved;
-- PR #23 — audio-native / recording-script / series authority — accepted;
-- **Task 018 — GPT-6 Astra production lane — ACCEPTED AND MERGED.**
+## Acceptance boundary
 
-Do not return to accepted milestones without a concrete regression.
+This implementation is not `ACCEPTED` until the exact published head has green canonical CI and a
+fresh Central Brain review. Technical GREEN does not establish literary quality. A separate
+Owner-authorized, hard-budgeted quality trial may be run later only if the Owner requests it after
+reviewing the actual application.
 
-## Task 018 — accepted Astra production lane
+Deterministic implementation/CI work must make zero production provider/model/TTS calls and zero
+paid calls. Private manuscripts, API keys and credentials must not be committed.
 
-BOOK OS now treats `gpt-6-astra` as a fully bounded OpenAI executor rather than only a routing label.
+The current Owner gate is to finish every assignment from the 2026-09-13/14 work package and exact-head
+free verification. **After that verification, stop before any installation, replacement, update or
+other change to the application on the Owner's Desktop.** Application changes require a separate
+explicit Owner instruction after the completion report.
 
-Accepted behavior:
+## Known bounded limitations — do not overclaim
 
-- Astra is registered as `gpt-6-astra`;
-- conservative preflight pricing is registered and auditable;
-- requests above the existing 272K estimated-input threshold use the long-context pricing tier before HTTP;
-- every cost-capped request remains fail-closed before Keychain read/provider HTTP when the worst-case bound exceeds the Owner cap;
-- Astra defaults to reasoning `high` when Astra is intentionally used and no explicit supported effort is supplied;
-- explicit `low | medium | high | xhigh | max` reasoning can be passed through Planner/Writer flows;
-- actual/requested reasoning is carried into usage/provenance where available;
-- `xhigh/max` remain selective high-complexity modes rather than a blanket default;
-- operation-level Auto routing remains intact;
-- existing HUMAN manual operation and whole-book pins remain supported;
-- `/api/launch/readiness` can report Astra model/pricing/credential readiness with `external_calls=0` and `paid_calls=0`;
-- tests/CI make no provider/model/paid calls.
+- scanned PDFs whose text cannot be extracted remain PARTIAL/fail-closed; arbitrary OCR is not
+  claimed;
+- DOCX/PDF/EPUB QA is structural/reopen/reference QA, not pixel-level platform certification;
+- LitRes output must keep platform-acceptance claims false until actual platform acceptance exists;
+- deterministic fixtures prove workflow and safety invariants, not final literary quality.
 
-This acceptance does **not** authorize a live Astra request. First live paid execution still requires an explicit bounded Owner financial approval.
+These limitations do not authorize weakening quality gates. They are not evidence of platform
+certification or literary-quality acceptance.
 
-## Model strategy
+## Next safe action
 
-The governing rule remains:
+1. Run canonical free CI on the exact final candidate head and perform a fresh Central Brain review.
+2. Verify the complete 2026-09-13/14 assignment checklist against the repository, not only PR prose.
+3. Keep PR Draft and unmerged.
+4. Publish the completion status to the Owner.
+5. **STOP. Do not install, replace, update, open a replacement build, or otherwise modify the
+   Owner's Desktop application until the Owner gives a new explicit instruction.**
 
-**best executor for the editorial operation, not one model monopoly.**
-
-Current production evidence supports a strong Astra lane:
-
-- high-value Book Contract / Architecture work may use Astra;
-- when the human deliberately pins Astra for long-form Writer work, `high` is the default reasoning profile;
-- `xhigh/max` are reserved for bounded harder work such as difficult structural rework, whole-book/adversarial diagnosis or another explicitly justified operation;
-- Writer, Editor, Judge and Adversarial Reviewer remain independently routable.
-
-Provider-neutral architecture remains mandatory.
-
-## Current pre-writing blocker — Task 017 / PR #25
-
-The accepted 2026-09-07 series-production decision requires executable gates before the first pilot is treated as representative:
-
-1. Series Canon asset statuses/reservations;
-2. Book Uniqueness Ledger;
-3. structured Book Definition Pack;
-4. stronger Chapter Contract;
-5. per-chapter `WRITING_ALLOWED` admission;
-6. deterministic Writer rejection before model/provider access when admission is absent/stale;
-7. mandatory mid-book audit;
-8. independent Adversarial Review;
-9. Series Closure bound to the exact Literary Master.
-
-Task 017 / PR #25 is the only remaining system-level pre-writing blocker.
-
-Codex has produced a locally validated implementation with:
-
-- linear migration `0015 → 0016`;
-- full backend `pytest -q` = **121 passed** after fixture reconciliation;
-- targeted series-production/migration/backup tests green;
-- ruff/mypy green;
-- frontend lint/typecheck/tests/build green;
-- provider/model/paid calls = 0;
-- no manuscript generation;
-- no `books-for-litres` runtime dependency.
-
-However that implementation has not been transported into the remote PR branch because the Codex environment could not push and later hit usage limits. Therefore Task 017 is **NOT ACCEPTED** until the exact implementation is present in GitHub, canonical CI is green, and review is clean.
-
-Do not weaken the new gates merely to preserve historical fixture assumptions.
-
-## Current product pilot
-
-The real product-validation path is:
-
-`SMM final Book Definition Pack → HUMAN approval → Architecture → per-chapter admission → bounded Astra/other routed production → Chapter QA → mid-book audit → whole-book edit → Adversarial Review → Literary Master → HUMAN GO | CONDITIONAL_GO | NO_GO`
-
-Content authority and private manuscript/research remain outside the public BOOK OS repository.
-
-## Immediate next action
-
-Critical path:
-
-1. deliver/reconstruct Task 017 in GitHub from the already validated behavior;
-2. run exact-head canonical CI and Central Brain review;
-3. accept/merge Task 017 and advance canonical schema to `0016`;
-4. complete the external SMM Book Definition Pack and obtain HUMAN approval;
-5. create/approve Architecture;
-6. admit chapters individually;
-7. before the first live Astra request, present an explicit bounded request/token/cost slice for Owner approval;
-8. begin representative production.
-
-No new infrastructure milestone is permitted unless a concrete pilot defect proves it necessary.
+No paid literary-quality run, merge, deploy, notarization, application update or production release
+is authorized by this state document.
 
 ## Non-negotiable invariants
 
-- GitHub `main` is source of truth for BOOK OS system authority.
-- `books-for-litres` is not a BOOK OS runtime dependency.
-- Human/Owner authority cannot be auto-approved by AI.
-- Accepted authority is immutable; replacements are traceable / SUPERSEDED.
-- Architecture approval does not globally unlock Writing once Task 017 is accepted.
-- BookBench / production BLOCKING gates cannot be averaged away.
-- Real private manuscripts/evaluation corpus are not committed publicly.
-- Provider-specific code cannot become book authority.
-- No hidden automatic manuscript acceptance.
-- Literary Master must be reproducible from exact accepted revisions.
-- No paid/model execution without explicit bounded Owner approval.
-- Quality target is highest professional nonfiction quality realistically achievable; technical GREEN is necessary but not sufficient.
-
-## Change log
-
-### 2.1.0 — 2026-09-07
-- Accepted and merged Task 018 / PR #26.
-- Added bounded GPT-6 Astra pricing, long-context fail-closed cost guard, reasoning control/provenance and zero-call readiness.
-- Preserved operation-level routing and explicit HUMAN whole-book/operation pins.
-- Recorded the SMM series/book pilot identity without introducing runtime coupling.
-- Removed the obsolete abstract “Owner creative gate”: pilot title/series are already decided externally.
-- Identified Task 017 delivery as the only remaining system-level pre-writing blocker.
-
-### 2.0.0 — 2026-09-07
-- Completed Task 014 stacked reconciliation.
-- Accepted Task 015 and PR #23 authority.
-- Closed Task 016 implementation as absorbed by Task 014.
-- Activated the first real Business Nonfiction product-validation path.
+- GitHub `main` is the accepted system source of truth.
+- Owner/HUMAN authority cannot be silently replaced by a model.
+- A stale or missing Series Bible, Book Passport, difference map, evidence link or exact snapshot
+  fails closed.
+- A blocking quality finding cannot be averaged away or exported as a ready Literary Master.
+- Imported originals are immutable until the author explicitly deletes the source.
+- Import does not grant permission to imitate, rewrite or publish a third party's text.
+- Auto may select an executor, but may not bypass authority, quality, budget or provenance gates.
+- Extra High is not a routine default; escalation requires a concrete recorded reason.
+- No blind retry is allowed after an unknown provider outcome.
+- Starting one series book never starts writing another planned book.
+- Private manuscripts, secrets and evaluation corpora are not committed.

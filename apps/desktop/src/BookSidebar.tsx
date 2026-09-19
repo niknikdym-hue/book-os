@@ -11,6 +11,8 @@ type Props = {
   onOpen: (bookId: string) => void;
   onProjectListChanged: (removedBookId?: string) => void | Promise<void>;
   stageLabel: (value: string) => string;
+  showHeader?: boolean;
+  showLibrary?: boolean;
 };
 
 type BookLocation = "active" | "library";
@@ -28,6 +30,8 @@ export function BookSidebar({
   onOpen,
   onProjectListChanged,
   stageLabel,
+  showHeader = true,
+  showLibrary = true,
 }: Props) {
   const [library, setLibrary] = useState<ProjectSummary[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
@@ -125,13 +129,15 @@ export function BookSidebar({
   }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-heading">
-        <h2>Книги</h2>
-        <button className="primary small" onClick={onNew} disabled={busy || actionBusy}>
-          + Новая
-        </button>
-      </div>
+    <section className="sidebar book-sidebar-panel" aria-label="Книги в работе">
+      {showHeader && (
+        <div className="sidebar-heading">
+          <h2>Книги</h2>
+          <button className="primary small" onClick={onNew} disabled={busy || actionBusy}>
+            + Новая
+          </button>
+        </div>
+      )}
 
       {projects.length === 0 && <p className="muted">Проектов книг пока нет.</p>}
       <nav aria-label="Активные книги" className="book-list">
@@ -139,6 +145,7 @@ export function BookSidebar({
           <div className="project-row" key={item.book_id}>
             <button
               className={`project-link ${activeBookId === item.book_id ? "active" : ""}`}
+              aria-label={`Открыть книгу «${item.working_title}»`}
               onClick={() => onOpen(item.book_id)}
               disabled={busy || actionBusy}
             >
@@ -160,7 +167,7 @@ export function BookSidebar({
         ))}
       </nav>
 
-      <details className="library-drawer">
+      {showLibrary && <details className="library-drawer">
         <summary>Библиотека{library.length > 0 ? ` · ${library.length}` : ""}</summary>
         {library.length === 0 ? (
           <p className="muted library-empty">В библиотеке пока нет книг.</p>
@@ -200,7 +207,7 @@ export function BookSidebar({
             ))}
           </div>
         )}
-      </details>
+      </details>}
 
       {error && <div className="book-lifecycle-error">{error}</div>}
 
@@ -276,6 +283,6 @@ export function BookSidebar({
           </section>
         </div>
       )}
-    </aside>
+    </section>
   );
 }

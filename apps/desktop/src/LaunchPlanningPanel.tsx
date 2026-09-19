@@ -23,23 +23,112 @@ type ContextProfile = {
 type BookContextView = {
   author_profile: ContextProfile | null;
   target_characters: number | null;
+  include_bibliography?: boolean;
   ready_for_planning: boolean;
+};
+
+type BookConcept = {
+  essence: string;
+  reader_job: string;
+  reader_problem: string;
+  reader_transformation: string;
+  central_idea: string;
+  central_promise: string;
+  differentiation: string;
+  why_now: string;
+  scope_in: string[];
+  scope_out: string[];
+  series_place: string;
+  overlap_risks: string[];
 };
 
 type AutoBookState = {
   run_id: string;
-  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED";
+  status: "RUNNING" | "DONE" | "FAILED" | "STOPPED" | "AWAITING_CONCEPT_APPROVAL" | "AWAITING_FINAL_ACCEPTANCE" | "AWAITING_AUDIO_APPROVAL";
   phase: string;
   requests_used: number;
   max_requests: number;
   authorized_cost_usd: number;
+  estimated_cost_usd?: number;
+  reserved_cost_usd?: number;
+  confirmed_cost_usd?: number;
+  unknown_cost_usd?: number;
   max_total_cost_usd: number;
   current_chapter_ordinal: number | null;
   last_action: string;
   output_path: string | null;
+  audio_script_id?: string | null;
   error: string | null;
+  selected_outputs?: string[];
+  output_files?: Array<{
+    output_kind: string;
+    relative_path: string;
+    status: "READY" | "FAILED" | "STALE";
+  }>;
+  research_source_count?: number;
+  current_stage?: string;
+  progress_completed?: number;
+  progress_total?: number;
   started_at?: string | null;
   updated_at?: string | null;
+  concept?: BookConcept | null;
+  concept_revision?: number;
+};
+
+type FinalCandidate = {
+  candidate_id: string;
+  snapshot_hash: string;
+  status: "AWAITING" | "ACCEPTED" | "REWORK_REQUESTED" | "STALE";
+  candidate: {
+    selected_outputs?: string[];
+    findings_remaining?: number;
+    bookbench_snapshot_id?: string;
+  };
+};
+
+type AudioScriptState = {
+  audio_script_id: string;
+  version: number;
+  status: "DRAFT" | "PROPOSED" | "APPROVED" | "SUPERSEDED";
+  source_identity: string;
+  source_hash: string;
+  content_hash: string;
+  adaptation_mode: "SOURCE_FAITHFUL" | "LISTENING_ADAPTATION" | "AUDIO_NATIVE";
+  content: AudioScriptContentState;
+  quality_checks: Array<{
+    check_kind: string;
+    state: "PASS" | "ATTENTION" | "BLOCKING";
+    findings: Array<{ code: string; location: string; detail: string; severity: string }>;
+  }>;
+};
+
+type AudioVisualDisposition =
+  | "SPOKEN_REWRITE"
+  | "AUDIO_EXPLANATION"
+  | "COMPANION_ARTIFACT"
+  | "SUPPLEMENT_REFERENCE"
+  | "OMIT_FROM_AUDIO"
+  | "BLOCKED";
+
+type AudioScriptContentState = {
+  title: string;
+  author: string;
+  language: string;
+  sections: Array<{
+    source_chapter_id: string;
+    title: string;
+    paragraphs: string[];
+    visual_decisions: Array<{
+      object_id: string;
+      kind: "TABLE" | "CHART" | "SCHEME" | "ILLUSTRATION";
+      title: string;
+      significant: boolean;
+      disposition: AudioVisualDisposition;
+      placement_after_paragraph: number;
+      explanation: string;
+      source_facts: string[];
+    }>;
+  }>;
 };
 
 type PlanningChoiceId = "AUTO" | "ASTRA_MEDIUM" | "ASTRA_HIGH" | "ASTRA_XHIGH" | "SOL";
@@ -58,12 +147,43 @@ const PLANNING_CHOICES: readonly PlanningChoice[] = [
 ];
 
 const PROGRESS_STAGES = [
-  { label: "Основа книги", threshold: 18 },
-  { label: "Архитектура", threshold: 34 },
-  { label: "Главы", threshold: 82 },
-  { label: "Финальная проверка", threshold: 96 },
-  { label: "Готово", threshold: 100 },
+  { label: "Замысел", threshold: 10 },
+  { label: "План", threshold: 20 },
+  { label: "Архитектура", threshold: 32 },
+  { label: "Написание", threshold: 58 },
+  { label: "Редактура", threshold: 72 },
+  { label: "Проверка", threshold: 92 },
+  { label: "Выпуск", threshold: 100 },
 ] as const;
+
+const OUTPUT_CHOICES = [
+  ["full_manuscript_docx", "Полная рукопись DOCX"],
+  ["litres_ebook_docx", "Электронная версия для ЛитРес DOCX"],
+  ["reading_pdf", "Версия для чтения PDF"],
+  ["epub", "Электронная книга EPUB"],
+  ["audio_reading_docx", "Аудиоредакция для чтения DOCX"],
+  ["audio_litres_docx", "Аудиоредакция для ЛитРес DOCX"],
+  ["voice_text_txt", "Текст для озвучки TXT"],
+  ["pronunciation_dictionary", "Словарь произношения для авточтеца"],
+  ["reader_extras", "Дополнительные материалы читателю"],
+  ["publisher_pack", "Издательский пакет"],
+] as const;
+
+type OutputChoiceId = (typeof OUTPUT_CHOICES)[number][0];
+type OutputSelection = Record<OutputChoiceId, boolean>;
+
+const DEFAULT_OUTPUTS: OutputSelection = {
+  full_manuscript_docx: true,
+  litres_ebook_docx: false,
+  reading_pdf: false,
+  epub: false,
+  audio_reading_docx: false,
+  audio_litres_docx: false,
+  voice_text_txt: false,
+  pronunciation_dictionary: false,
+  reader_extras: false,
+  publisher_pack: false,
+};
 
 type Props = {
   project: ProjectView;
@@ -71,11 +191,24 @@ type Props = {
   onProject: (project: ProjectView) => void;
   coreReady?: boolean;
   api?: LaunchApi;
+  surface?: "full" | "new-book" | "release";
+  initialSetup?: {
+    idea: string;
+    readerHint: string;
+    authorName: string;
+    seriesName: string;
+    targetCharacters: string;
+  };
 };
 
 function progressPercent(state: AutoBookState | null): number {
   if (!state) return 0;
   if (state.status === "DONE" || state.phase === "DONE") return 100;
+  if (state.status === "AWAITING_AUDIO_APPROVAL") return 96;
+  if (state.status === "AWAITING_FINAL_ACCEPTANCE") return 94;
+  if (state.progress_total && state.progress_total > 0) {
+    return Math.min(99, Math.round(((state.progress_completed ?? 0) * 100) / state.progress_total));
+  }
   if (state.phase === "BOOK_CONTRACT") return 8;
   if (state.phase === "APPROVE_BOOK_CONTRACT") return 18;
   if (state.phase === "ARCHITECTURE") return 25;
@@ -94,9 +227,31 @@ function progressPercent(state: AutoBookState | null): number {
 function progressMessage(state: AutoBookState | null): string {
   if (!state) return "Подготовка запуска";
   if (state.status === "DONE") return "Книга создана и финальная проверка завершена";
+  if (state.status === "AWAITING_AUDIO_APPROVAL") {
+    return "Аудиоредакция готова к проверке и утверждению";
+  }
+  if (state.status === "AWAITING_FINAL_ACCEPTANCE") {
+    return "Финальный кандидат готов к вашему решению";
+  }
+  const runtimeMessages: Record<string, string> = {
+    RESEARCH: "Исследую тему и собираю доказательную основу",
+    CHAPTER_REVIEW: "Проверяю и дорабатываю главы",
+    MIDBOOK_AUDIT: "Проверяю середину книги и сквозную логику",
+    WHOLE_BOOK_EDIT: "Редактирую всю книгу как единое целое",
+    FACT_CHECK: "Проверяю факты и актуальность источников",
+    LITERARY_EDIT: "Делаю литературную редактуру",
+    VISUALS: "Готовлю полезные таблицы, схемы и иллюстрации",
+    INDEPENDENT_CRITIQUE: "Провожу независимую критику всей книги",
+    CORRECTION: "Исправляю замечания и повторяю проверки",
+    MASTER_AND_EXPORTS: "Собираю master и выбранные файлы",
+  };
+  if (state.current_stage && runtimeMessages[state.current_stage]) {
+    return runtimeMessages[state.current_stage];
+  }
   if (state.phase === "BOOK_CONTRACT" || state.phase === "APPROVE_BOOK_CONTRACT") {
     return "Формирую основу и контракт книги";
   }
+  if (state.phase === "RESEARCH") return "Исследую тему и собираю карту источников";
   if (state.phase === "ARCHITECTURE" || state.phase === "APPROVE_ARCHITECTURE") {
     return "Строю архитектуру книги";
   }
@@ -111,28 +266,232 @@ function progressMessage(state: AutoBookState | null): string {
   return "BOOK OS продолжает создание книги";
 }
 
+type AttachmentRole = "SOURCE" | "LEGACY_BOOK" | "VOICE_REFERENCE";
+type LegacyIntent = "WRITE_FROM_ZERO" | "DEEP_REWRITE" | "CONTINUE";
+
+type PendingAttachment = {
+  file: File;
+  role: AttachmentRole;
+  intent?: LegacyIntent;
+};
+
+type ExistingAudioResult = {
+  run_id: string;
+  audio_script: AudioScriptState;
+  artifacts?: Array<{ output_kind: string; relative_path: string }>;
+};
+
+async function encodeAttachment(item: PendingAttachment) {
+  const bytes = new Uint8Array(await item.file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return {
+    path: item.file.name,
+    role: item.role,
+    intent: item.intent ?? null,
+    content_base64: window.btoa(binary),
+  };
+}
+
+function AudioScriptRevisionEditor({
+  script,
+  busy,
+  onSave,
+}: {
+  script: AudioScriptState;
+  busy: boolean;
+  onSave: (content: AudioScriptContentState, summary: string) => Promise<void>;
+}) {
+  const [content, setContent] = useState<AudioScriptContentState>(script.content);
+  const [summary, setSummary] = useState("");
+
+  useEffect(() => {
+    setContent(script.content);
+    setSummary("");
+  }, [script.audio_script_id, script.content]);
+
+  const invalid =
+    !summary.trim() ||
+    content.sections.some(
+      (section) =>
+        section.paragraphs.length === 0 ||
+        section.paragraphs.some((paragraph) => !paragraph.trim()) ||
+        section.visual_decisions.some(
+          (visual) =>
+            ["SPOKEN_REWRITE", "AUDIO_EXPLANATION"].includes(visual.disposition) &&
+            !visual.explanation.trim(),
+        ),
+    );
+
+  return (
+    <details className="advanced-settings planning-settings" open>
+      <summary>Исправить отмеченные места в новой версии AudioScript</summary>
+      <p className="muted">
+        Исходная рукопись и предыдущая версия сохранятся. После сохранения BOOK OS заново выполнит
+        все проверки; выпуск останется закрыт, пока есть BLOCKING.
+      </p>
+      {content.sections.map((section, sectionIndex) => (
+        <div className="planning-step" key={section.source_chapter_id}>
+          <strong>{section.title}</strong>
+          <label className="field">
+            <span>Текст раздела для последовательного прослушивания</span>
+            <textarea
+              rows={10}
+              value={section.paragraphs.join("\n\n")}
+              onChange={(event) => {
+                const paragraphs = event.target.value
+                  .split(/\n\s*\n/)
+                  .map((item) => item.trim())
+                  .filter(Boolean);
+                setContent((current) => ({
+                  ...current,
+                  sections: current.sections.map((item, index) =>
+                    index === sectionIndex ? { ...item, paragraphs } : item,
+                  ),
+                }));
+              }}
+            />
+          </label>
+          {section.visual_decisions.map((visual, visualIndex) => (
+            <div className="form-grid" key={visual.object_id}>
+              <label className="field">
+                <span>{visual.kind}: {visual.title}</span>
+                <select
+                  value={visual.disposition}
+                  onChange={(event) => {
+                    const disposition = event.target.value as AudioVisualDisposition;
+                    setContent((current) => ({
+                      ...current,
+                      sections: current.sections.map((item, index) =>
+                        index === sectionIndex
+                          ? {
+                              ...item,
+                              visual_decisions: item.visual_decisions.map((decision, position) =>
+                                position === visualIndex ? { ...decision, disposition } : decision,
+                              ),
+                            }
+                          : item,
+                      ),
+                    }));
+                  }}
+                >
+                  <option value="AUDIO_EXPLANATION">Объяснить словами</option>
+                  <option value="SPOKEN_REWRITE">Переписать для произнесения</option>
+                  <option value="SUPPLEMENT_REFERENCE">Ссылка на дополнительные материалы</option>
+                  <option value="COMPANION_ARTIFACT">Сопроводительный материал</option>
+                  <option value="OMIT_FROM_AUDIO">Не включать без потери смысла</option>
+                  <option value="BLOCKED">Пока заблокировано</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Что услышит слушатель в этом месте</span>
+                <textarea
+                  rows={5}
+                  value={visual.explanation}
+                  onChange={(event) => {
+                    const explanation = event.target.value;
+                    setContent((current) => ({
+                      ...current,
+                      sections: current.sections.map((item, index) =>
+                        index === sectionIndex
+                          ? {
+                              ...item,
+                              visual_decisions: item.visual_decisions.map((decision, position) =>
+                                position === visualIndex ? { ...decision, explanation } : decision,
+                              ),
+                            }
+                          : item,
+                      ),
+                    }));
+                  }}
+                />
+                <small>Сохраните факты, числа, ограничение и вывод визуального материала.</small>
+              </label>
+            </div>
+          ))}
+        </div>
+      ))}
+      <label className="field required-field">
+        <span>Что исправлено</span>
+        <input
+          value={summary}
+          onChange={(event) => setSummary(event.target.value)}
+          placeholder="Например: убраны ссылки на страницу, уточнено произнесение чисел"
+        />
+      </label>
+      <button
+        type="button"
+        className={`primary auto-launch-button ${invalid ? "" : "ready"}`}
+        disabled={invalid || busy}
+        onClick={() => void onSave(content, summary.trim())}
+      >
+        Сохранить исправленную версию и повторить проверки
+      </button>
+    </details>
+  );
+}
+
 export function LaunchPlanningPanel({
   project,
   onProject,
   coreReady = true,
   api = coreApi,
+  surface = "full",
+  initialSetup,
 }: Props) {
   const [readiness, setReadiness] = useState<LaunchReadiness | null>(null);
   const [bookContext, setBookContext] = useState<BookContextView | null>(null);
   const [profiles, setProfiles] = useState<ContextProfile[]>([]);
-  const [choiceId, setChoiceId] = useState<PlanningChoiceId>("ASTRA_HIGH");
-  const [idea, setIdea] = useState("");
-  const [readerHint, setReaderHint] = useState("");
-  const [authorName, setAuthorName] = useState("");
-  const [targetCharacters, setTargetCharacters] = useState("180000");
+  const [choiceId, setChoiceId] = useState<PlanningChoiceId>("AUTO");
+  const [idea, setIdea] = useState(initialSetup?.idea ?? "");
+  const [readerHint, setReaderHint] = useState(initialSetup?.readerHint ?? "");
+  const [authorName, setAuthorName] = useState(initialSetup?.authorName ?? "");
+  const [seriesName, setSeriesName] = useState(initialSetup?.seriesName ?? "");
+  const [targetCharacters, setTargetCharacters] = useState(
+    initialSetup?.targetCharacters ?? "180000",
+  );
   const [autoTotalBudget, setAutoTotalBudget] = useState("25.00");
   const [autoPerRequestBudget, setAutoPerRequestBudget] = useState("1.00");
   const [autoMaxRequests, setAutoMaxRequests] = useState("40");
-  const [prepareLitres, setPrepareLitres] = useState(true);
+  const [outputs, setOutputs] = useState<OutputSelection>(DEFAULT_OUTPUTS);
+  const [deliveryProfile, setDeliveryProfile] = useState<
+    "TEXT_FIRST" | "AUDIO_FIRST" | "DUAL_TEXT_AUDIO"
+  >("TEXT_FIRST");
+  const [visualsAsNeeded, setVisualsAsNeeded] = useState(true);
+  const [allowGenerativeVisuals, setAllowGenerativeVisuals] = useState(false);
+  const [includeOptionalVisuals, setIncludeOptionalVisuals] = useState(true);
+  const [omitPublicBibliography, setOmitPublicBibliography] = useState(false);
   const [authorizeAuto, setAuthorizeAuto] = useState(false);
   const [autoState, setAutoState] = useState<AutoBookState | null>(null);
+  const [conceptDraft, setConceptDraft] = useState<BookConcept | null>(null);
+  const [editingConcept, setEditingConcept] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [changeRequest, setChangeRequest] = useState("");
+  const [changeSaved, setChangeSaved] = useState<string | null>(null);
+  const [changeStatus, setChangeStatus] = useState<string | null>(null);
+  const [changeId, setChangeId] = useState<string | null>(null);
+  const [finalAccepted, setFinalAccepted] = useState(false);
+  const [finalCandidate, setFinalCandidate] = useState<FinalCandidate | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [legacyIntent, setLegacyIntent] = useState<LegacyIntent>("WRITE_FROM_ZERO");
+  const [audioScript, setAudioScript] = useState<AudioScriptState | null>(null);
+  const [approveAudio, setApproveAudio] = useState(false);
+  const [workflowMode, setWorkflowMode] = useState<"NEW_BOOK" | "EXISTING_AUDIO">("NEW_BOOK");
+  const [existingSource, setExistingSource] = useState<File | null>(null);
+  const [existingMode, setExistingMode] = useState<
+    "SOURCE_FAITHFUL" | "LISTENING_ADAPTATION"
+  >("SOURCE_FAITHFUL");
+  const [existingAuthorize, setExistingAuthorize] = useState(false);
+  const [existingReadingDocx, setExistingReadingDocx] = useState(true);
+  const [existingLitresDocx, setExistingLitresDocx] = useState(false);
+  const [existingDictionary, setExistingDictionary] = useState(true);
+  const [existingAudio, setExistingAudio] = useState<ExistingAudioResult | null>(null);
+  const [existingApprovedFiles, setExistingApprovedFiles] = useState<
+    Array<{ output_kind: string; relative_path: string }>
+  >([]);
 
   const credentialAvailable = readiness?.openai_credential_state === "AVAILABLE";
   const contractApproved =
@@ -144,9 +503,32 @@ export function LaunchPlanningPanel({
   }, [api]);
 
   const reloadAutoState = useCallback(async () => {
-    setAutoState(
-      await api<AutoBookState | null>("GET", `/api/projects/${project.book_id}/auto-book`),
+    const state = await api<AutoBookState | null>(
+      "GET",
+      `/api/projects/${project.book_id}/auto-book`,
     );
+    setAutoState(state);
+    if (state?.concept) setConceptDraft(state.concept);
+    if (state?.status === "AWAITING_FINAL_ACCEPTANCE") {
+      setFinalCandidate(
+        await api<FinalCandidate>(
+          "GET",
+          `/api/projects/${project.book_id}/auto-book/final-candidate`,
+        ),
+      );
+    } else {
+      setFinalCandidate(null);
+    }
+    if (state?.audio_script_id) {
+      setAudioScript(
+        await api<AudioScriptState>(
+          "GET",
+          `/api/projects/${project.book_id}/auto-book/audio-script`,
+        ),
+      );
+    } else {
+      setAudioScript(null);
+    }
   }, [api, project.book_id]);
 
   const reloadContext = useCallback(async () => {
@@ -161,6 +543,7 @@ export function LaunchPlanningPanel({
         ? String(context.target_characters)
         : current,
     );
+    setOmitPublicBibliography(context.include_bibliography === false);
   }, [api, project.book_id]);
 
   useEffect(() => {
@@ -178,15 +561,20 @@ export function LaunchPlanningPanel({
     setError(null);
     let current = initial;
     try {
-      for (let step = 0; step < 250 && current.status === "RUNNING"; step += 1) {
+      current = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/resume`,
+      );
+      for (let poll = 0; poll < 7200 && current.status === "RUNNING"; poll += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
         current = await api<AutoBookState>(
-          "POST",
-          `/api/projects/${project.book_id}/auto-book/advance`,
+          "GET",
+          `/api/projects/${project.book_id}/auto-book`,
         );
         setAutoState(current);
       }
       if (current.status === "RUNNING") {
-        throw new Error("Auto Book превысил внутренний безопасный лимит шагов");
+        throw new Error("Local Core продолжает работу; обновите состояние позже");
       }
       await refreshProject();
     } catch (reason) {
@@ -221,6 +609,10 @@ export function LaunchPlanningPanel({
   const formReady = ideaReady && authorReady && targetReady && budgetReady;
   const autoCanStart = systemReady && formReady && authorizeAuto && !autoBusy;
   const progress = progressPercent(autoState);
+  const audioBlockingChecks =
+    audioScript?.quality_checks.filter((check) => check.state === "BLOCKING") ?? [];
+  const audioAttentionChecks =
+    audioScript?.quality_checks.filter((check) => check.state === "ATTENTION") ?? [];
 
   async function startAutoBook() {
     if (!autoCanStart) return;
@@ -230,6 +622,7 @@ export function LaunchPlanningPanel({
     setAutoBusy(true);
     setError(null);
     try {
+      const encodedAttachments = await Promise.all(attachments.map(encodeAttachment));
       const started = await api<AutoBookState>(
         "POST",
         `/api/projects/${project.book_id}/auto-book/start`,
@@ -239,11 +632,22 @@ export function LaunchPlanningPanel({
           author_name: authorName.trim(),
           target_characters: target,
           model_choice: choiceId,
+          delivery_profile: deliveryProfile,
           max_cost_usd_per_request: perRequestBudget,
           max_total_cost_usd: totalBudget,
           max_requests: maxRequests,
-          prepare_litres_docx: prepareLitres,
+          series_name: seriesName.trim() || null,
+          prepare_litres_docx: outputs.litres_ebook_docx,
+          omit_public_bibliography: omitPublicBibliography,
+          outputs,
+          visuals: {
+            as_needed: visualsAsNeeded,
+            allow_generative_illustrations: allowGenerativeVisuals,
+            include_optional_illustrations: includeOptionalVisuals,
+          },
+          attachments: encodedAttachments,
           owner_authorizes_auto_progress: true,
+          final_human_acceptance_required: true,
         },
       );
       setAutoState(started);
@@ -256,6 +660,43 @@ export function LaunchPlanningPanel({
     }
   }
 
+  async function acceptConcept() {
+    if (!conceptDraft) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const accepted = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/concept/approve`,
+        { concept: conceptDraft },
+      );
+      setAutoState(accepted);
+      setEditingConcept(false);
+      await driveAutoBook(accepted);
+    } catch (reason) {
+      setError(String(reason));
+      setAutoBusy(false);
+    }
+  }
+
+  async function requestAnotherConcept() {
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const next = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/concept/alternative`,
+        { feedback: editingConcept ? "Предложить иной профессиональный угол с учётом правок автора" : "" },
+      );
+      setAutoState(next);
+      setEditingConcept(false);
+      await driveAutoBook(next);
+    } catch (reason) {
+      setError(String(reason));
+      setAutoBusy(false);
+    }
+  }
+
   async function stopAutoBook() {
     try {
       setAutoState(
@@ -263,6 +704,213 @@ export function LaunchPlanningPanel({
       );
     } catch (reason) {
       setError(String(reason));
+    }
+  }
+
+  async function saveChangeRequest() {
+    if (!autoState || !changeRequest.trim()) return;
+    setChangeSaved(null);
+    try {
+      const result = await api<{
+        change_id: string;
+        status: string;
+        result?: { changed_unit_ids?: string[] };
+        clarification?: { question?: string };
+      }>(
+        "POST",
+        changeId
+          ? `/api/projects/${project.book_id}/auto-book/changes/${changeId}/clarify`
+          : `/api/projects/${project.book_id}/auto-book/changes`,
+        changeId
+          ? { clarification: changeRequest.trim() }
+          : { request_text: changeRequest.trim() },
+      );
+      setChangeStatus(result.status);
+      setChangeId(result.status === "NEEDS_CLARIFICATION" ? result.change_id : null);
+      setChangeSaved(
+        result.status === "DONE"
+          ? `Готово. Изменены фрагменты: ${result.result?.changed_unit_ids?.join(", ") || "указанная глава"}. Зависимые проверки повторены.`
+          : result.status === "NEEDS_CLARIFICATION"
+            ? result.clarification?.question || "Нужно уточнить запрос."
+            : `Состояние запроса: ${result.status}`,
+      );
+      setChangeRequest("");
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function decideFinal(accept: boolean) {
+    if (!autoState) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const result = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/final-candidate/${accept ? "accept" : "rework"}`,
+        {
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          reason: accept
+            ? "Автор проверил и принял точный финальный кандидат"
+            : "Автор запросил доработку финального кандидата",
+        },
+      );
+      setAutoState(result);
+      setFinalAccepted(false);
+      await reloadAutoState();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
+  async function approveAudioScript() {
+    if (!audioScript || !approveAudio) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const acceptedAttentionCodes = Array.from(
+        new Set(
+          audioScript.quality_checks.flatMap((check) =>
+            check.findings
+              .filter((finding) => finding.severity === "ATTENTION")
+              .map((finding) => finding.code),
+          ),
+        ),
+      );
+      const completed = await api<AutoBookState>(
+        "POST",
+        `/api/projects/${project.book_id}/auto-book/audio-script/approve`,
+        {
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          accepted_attention_codes: acceptedAttentionCodes,
+        },
+      );
+      setAutoState(completed);
+      setApproveAudio(false);
+      await Promise.all([reloadAutoState(), refreshProject()]);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
+  async function reviseAutoAudioScript(content: AudioScriptContentState, summary: string) {
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const revised = await api<AudioScriptState>(
+        "PUT",
+        `/api/projects/${project.book_id}/auto-book/audio-script`,
+        {
+          content,
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          change_summary: summary,
+        },
+      );
+      setAudioScript(revised);
+      setApproveAudio(false);
+      await reloadAutoState();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
+  async function prepareExistingAudio() {
+    if (!existingSource || !existingAuthorize || !credentialAvailable) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const encoded = await encodeAttachment({ file: existingSource, role: "LEGACY_BOOK" });
+      const prepared = await api<ExistingAudioResult>(
+        "POST",
+        `/api/projects/${project.book_id}/audio-scripts/prepare`,
+        {
+          source_filename: existingSource.name,
+          source_content_base64: encoded.content_base64,
+          title: project.working_title,
+          author: bookContext?.author_profile?.name || authorName.trim() || "Автор",
+          adaptation_mode: existingMode,
+          model_choice: choiceId,
+          max_cost_usd_per_request: Number(autoPerRequestBudget),
+          max_total_cost_usd: Number(autoTotalBudget),
+          max_requests: Number(autoMaxRequests),
+          reading_docx: existingReadingDocx,
+          litres_docx: existingLitresDocx,
+          pronunciation_dictionary: existingDictionary,
+          owner_authorizes_paid_requests: true,
+        },
+      );
+      setExistingAudio(prepared);
+      setExistingApprovedFiles(prepared.artifacts ?? []);
+      setExistingAuthorize(false);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
+  async function approveExistingAudio() {
+    if (!existingAudio || !approveAudio) return;
+    const attention = Array.from(
+      new Set(
+        existingAudio.audio_script.quality_checks.flatMap((check) =>
+          check.findings
+            .filter((finding) => finding.severity === "ATTENTION")
+            .map((finding) => finding.code),
+        ),
+      ),
+    );
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const result = await api<{
+        artifacts: Array<{ output_kind: string; relative_path: string }>;
+      }>(
+        "POST",
+        `/api/projects/${project.book_id}/audio-scripts/${existingAudio.audio_script.audio_script_id}/approve`,
+        {
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          accepted_attention_codes: attention,
+          reading_docx: existingReadingDocx,
+          litres_docx: existingLitresDocx,
+          pronunciation_dictionary: existingDictionary,
+        },
+      );
+      setExistingApprovedFiles(result.artifacts);
+      setApproveAudio(false);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
+  async function reviseExistingAudioScript(content: AudioScriptContentState, summary: string) {
+    if (!existingAudio) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const revised = await api<AudioScriptState>(
+        "PUT",
+        `/api/projects/${project.book_id}/audio-scripts/${existingAudio.audio_script.audio_script_id}`,
+        {
+          content,
+          human_actor: bookContext?.author_profile?.name || authorName.trim() || "Owner",
+          change_summary: summary,
+        },
+      );
+      setExistingAudio({ ...existingAudio, audio_script: revised, artifacts: [] });
+      setApproveAudio(false);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutoBusy(false);
     }
   }
 
@@ -281,30 +929,63 @@ export function LaunchPlanningPanel({
         </span>
       </div>
 
-      {autoState?.status !== "RUNNING" && !autoBusy && autoState?.status !== "DONE" && (
+      {surface !== "new-book" && (
+      <section className="planning-step primary-planning-step" aria-label="Что вы хотите сделать">
+        <h4>{surface === "release" ? "Что подготовить?" : "Что вы хотите сделать?"}</h4>
+        <div className="writer-levels writer-astra-modes" role="group" aria-label="Сценарий работы">
+          <button
+            type="button"
+            className={workflowMode === "NEW_BOOK" ? "active" : ""}
+            aria-pressed={workflowMode === "NEW_BOOK"}
+            onClick={() => setWorkflowMode("NEW_BOOK")}
+          >
+            {surface === "release" ? "Файлы этой книги" : "Создать книгу с нуля"}
+          </button>
+          <button
+            type="button"
+            className={workflowMode === "EXISTING_AUDIO" ? "active" : ""}
+            aria-pressed={workflowMode === "EXISTING_AUDIO"}
+            onClick={() => setWorkflowMode("EXISTING_AUDIO")}
+          >
+            {surface === "release" ? "Аудиоверсия готовой книги" : "Подготовить текст для аудиозаписи готовой книги"}
+          </button>
+        </div>
+      </section>
+      )}
+
+      {workflowMode === "NEW_BOOK" && autoState?.status !== "RUNNING" && !autoBusy && autoState?.status !== "DONE" && autoState?.status !== "AWAITING_CONCEPT_APPROVAL" && autoState?.status !== "AWAITING_FINAL_ACCEPTANCE" && autoState?.status !== "AWAITING_AUDIO_APPROVAL" && (
         <>
-          <section className="planning-step primary-planning-step" aria-label="Модель для книги">
-            <h4>1. Модель</h4>
-            <div className="writer-levels writer-astra-modes" role="group" aria-label="Модель Auto Book">
-              {PLANNING_CHOICES.map((choice) => (
-                <button
-                  key={choice.id}
-                  type="button"
-                  className={choiceId === choice.id ? "active" : ""}
-                  aria-pressed={choiceId === choice.id}
-                  onClick={() => {
-                    setChoiceId(choice.id);
-                    setAuthorizeAuto(false);
-                  }}
-                >
-                  {choice.label}
-                </button>
-              ))}
-            </div>
-          </section>
+          <details className="advanced-settings ai-project-settings">
+            <summary>
+              AI: {PLANNING_CHOICES.find((choice) => choice.id === choiceId)?.label ?? "Автоматически"}
+              {choiceId === "AUTO" ? " — рекомендуется" : ""}
+            </summary>
+            <section className="planning-step primary-planning-step" aria-label="Модель для книги">
+              <p className="muted">
+                В автоматическом режиме BOOK OS подбирает модель и глубину отдельно для каждой
+                редакционной операции. Ручной выбор действует только по вашему явному решению.
+              </p>
+              <div className="writer-levels writer-astra-modes" role="group" aria-label="Модель Auto Book">
+                {PLANNING_CHOICES.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className={choiceId === choice.id ? "active" : ""}
+                    aria-pressed={choiceId === choice.id}
+                    onClick={() => {
+                      setChoiceId(choice.id);
+                      setAuthorizeAuto(false);
+                    }}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </details>
 
           <section className="planning-step primary-planning-step" aria-label="Обязательные данные книги">
-            <h4>2. Данные книги</h4>
+            <h4>Книга</h4>
             {!contractApproved && (
               <div className="form-grid">
                 <label className="field required-field">
@@ -315,9 +996,12 @@ export function LaunchPlanningPanel({
                     rows={5}
                     value={idea}
                     onChange={(event) => setIdea(event.target.value)}
-                    placeholder="О чём книга и какой результат она должна дать читателю"
+                    placeholder="Например: хочу написать книгу о том, как продавать онлайн-курсы. Не про создание курсов, а про систему продаж и прибыльность."
                   />
-                  {!ideaReady && <small className="field-error">Нужно минимум 3 символа.</small>}
+                  <small>
+                    Опишите замысел свободно. Обычно достаточно 1–3 предложений. BOOK OS сам
+                    поможет превратить идею в полноценную концепцию книги.
+                  </small>
                 </label>
                 <label className="field">
                   <span>Кому книга — необязательно</span>
@@ -360,14 +1044,202 @@ export function LaunchPlanningPanel({
                   aria-invalid={!targetReady}
                 />
                 <small className={targetReady ? "" : "field-error"}>
-                  Минимум 4 000, максимум 2 000 000 знаков.
+                  Это ориентир, а не требование раздувать текст. Качество и полнота важнее точного
+                  числа. Допустимый диапазон: 4 000–2 000 000 знаков.
                 </small>
               </label>
+              <label className="field">
+                <span>Серия — необязательно</span>
+                <input
+                  value={seriesName}
+                  onChange={(event) => setSeriesName(event.target.value)}
+                  placeholder="Например: Секреты продвижения услуг"
+                />
+                <small>Оставьте пустым для отдельной книги.</small>
+              </label>
             </div>
+            <details className="advanced-settings attachment-settings">
+              <summary>Добавить материалы — необязательно</summary>
+              <p className="muted">
+                Укажите роль файла: источник подтверждает факты, старая книга задаёт исходный
+                материал, а эталон подачи помогает сохранить голос без копирования содержания.
+              </p>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Источники</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".txt,.md,.docx,.pdf,.rtf"
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      setAttachments((current) => [
+                        ...current.filter((item) => item.role !== "SOURCE"),
+                        ...files.map((file) => ({ file, role: "SOURCE" as const })),
+                      ]);
+                    }}
+                  />
+                  <small>Для исследования и проверки фактов. Файл не считается доказательством сам по себе.</small>
+                </label>
+                <label className="field">
+                  <span>Старая книга или рукопись</span>
+                  <input
+                    type="file"
+                    accept=".txt,.md,.docx,.pdf,.rtf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      setAttachments((current) => [
+                        ...current.filter((item) => item.role !== "LEGACY_BOOK"),
+                        ...(file ? [{ file, role: "LEGACY_BOOK" as const, intent: legacyIntent }] : []),
+                      ]);
+                    }}
+                  />
+                  <select
+                    aria-label="Что сделать со старой книгой"
+                    value={legacyIntent}
+                    onChange={(event) => {
+                      const intent = event.target.value as LegacyIntent;
+                      setLegacyIntent(intent);
+                      setAttachments((current) =>
+                        current.map((item) =>
+                          item.role === "LEGACY_BOOK" ? { ...item, intent } : item,
+                        ),
+                      );
+                    }}
+                  >
+                    <option value="WRITE_FROM_ZERO">Написать с нуля</option>
+                    <option value="DEEP_REWRITE">Глубоко переработать</option>
+                    <option value="CONTINUE">Продолжить рукопись</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Эталон подачи</span>
+                  <input
+                    type="file"
+                    accept=".txt,.md,.docx,.pdf,.rtf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      setAttachments((current) => [
+                        ...current.filter((item) => item.role !== "VOICE_REFERENCE"),
+                        ...(file ? [{ file, role: "VOICE_REFERENCE" as const }] : []),
+                      ]);
+                    }}
+                  />
+                  <small>Только манера и голос; кейсы, механизмы и композиция не копируются.</small>
+                </label>
+              </div>
+              {attachments.length > 0 && (
+                <p className="launch-summary">Добавлено файлов: {attachments.length}</p>
+              )}
+            </details>
           </section>
 
+          <details className="advanced-settings delivery-project-settings">
+            <summary>Форматы результата · можно выбрать сейчас или на этапе «Выпуск»</summary>
+          <section className="planning-step primary-planning-step" aria-label="Формат создаваемой книги">
+            <h4>Как будет использоваться книга?</h4>
+            <div className="writer-levels writer-astra-modes" role="group" aria-label="Основной формат книги">
+              {([
+                ["TEXT_FIRST", "Текст"],
+                ["AUDIO_FIRST", "Аудио — основной формат"],
+                ["DUAL_TEXT_AUDIO", "Текст + аудио"],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={deliveryProfile === id ? "active" : ""}
+                  aria-pressed={deliveryProfile === id}
+                  onClick={() => {
+                    setDeliveryProfile(id);
+                    setAuthorizeAuto(false);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="muted">
+              Для аудиокниги правила восприятия на слух применяются уже к архитектуре и главам.
+              Текстовая книга получает отдельную AudioScript-редакцию только если позже выбран аудиовыход.
+            </p>
+          </section>
+
+          <section className="planning-step primary-planning-step" aria-label="Что подготовить">
+            <h4>Что подготовить</h4>
+            <p className="muted">
+              Полная рукопись выбрана по умолчанию. Другие форматы создаются из того же проверенного master.
+            </p>
+            <div className="output-choice-grid">
+              {OUTPUT_CHOICES.map(([id, label]) => (
+                <label className="paid-approval compact-option" key={id}>
+                  <input
+                    type="checkbox"
+                    checked={outputs[id]}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setOutputs((current) => ({
+                        ...current,
+                        [id]: checked,
+                        ...((id === "audio_reading_docx" || id === "audio_litres_docx") && checked
+                          ? { voice_text_txt: true }
+                          : {}),
+                      }));
+                    }}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="visual-choice-box">
+              <label className="paid-approval compact-option">
+                <input
+                  type="checkbox"
+                  checked={visualsAsNeeded}
+                  onChange={(event) => setVisualsAsNeeded(event.target.checked)}
+                />
+                <span>Визуальные материалы — по необходимости</span>
+              </label>
+              {visualsAsNeeded && (
+                <>
+                  <label className="paid-approval compact-option">
+                    <input
+                      type="checkbox"
+                      checked={includeOptionalVisuals}
+                      onChange={(event) => setIncludeOptionalVisuals(event.target.checked)}
+                    />
+                    <span>Добавлять необязательные поясняющие иллюстрации</span>
+                  </label>
+                  <label className="paid-approval compact-option">
+                    <input
+                      type="checkbox"
+                      checked={allowGenerativeVisuals}
+                      onChange={(event) => setAllowGenerativeVisuals(event.target.checked)}
+                    />
+                    <span>Разрешить генеративные иллюстрации, если они действительно нужны</span>
+                  </label>
+                </>
+              )}
+              <div className="bibliography-default">
+                <strong>Библиография включена автоматически</strong>
+                <p className="muted">
+                  Для нонфикшена BOOK OS формирует список реально использованных и проверенных
+                  источников. Внутренние Research, Evidence и provenance сохраняются всегда.
+                </p>
+                <label className="paid-approval compact-option">
+                  <input
+                    type="checkbox"
+                    checked={omitPublicBibliography}
+                    onChange={(event) => setOmitPublicBibliography(event.target.checked)}
+                  />
+                  <span>Убрать библиографию из книги</span>
+                </label>
+              </div>
+            </div>
+          </section>
+          </details>
+
           <details className="advanced-settings planning-settings">
-            <summary>Расширенные настройки — обычно менять не нужно</summary>
+            <summary>AI и расходы · Advanced</summary>
             <div className="form-grid">
               <label className="field">
                 <span>Общий лимит, USD</span>
@@ -399,25 +1271,13 @@ export function LaunchPlanningPanel({
                 Проверьте лимиты: общий бюджет должен быть не меньше лимита одного запроса.
               </p>
             )}
-            <label className="paid-approval compact-option">
-              <input
-                type="checkbox"
-                checked={prepareLitres}
-                onChange={(event) => setPrepareLitres(event.target.checked)}
-              />
-              <span>Подготовить DOCX для ЛитРес после финальной проверки.</span>
-            </label>
           </details>
 
           <section className="launch-readiness" aria-label="Готовность к запуску">
-            <h4>3. Готовность к запуску</h4>
+            <h4>Готовность к запуску</h4>
             <div className="readiness-grid">
-              <span className={coreReady ? "ready" : "missing"}>
-                {coreReady ? "✓" : "○"} Local Core {coreReady ? "готов" : "запускается"}
-              </span>
-              <span className={credentialAvailable ? "ready" : "missing"}>
-                {credentialAvailable ? "✓" : "○"} OpenAI {credentialAvailable ? "подключён" : "не подключён"}
-              </span>
+              {!coreReady && <span className="missing">○ BOOK OS ещё запускается</span>}
+              {!credentialAvailable && <span className="missing">○ AI не подключён</span>}
               <span className={ideaReady ? "ready" : "missing"}>
                 {ideaReady ? "✓" : "○"} Идея книги
               </span>
@@ -427,10 +1287,12 @@ export function LaunchPlanningPanel({
               <span className={targetReady ? "ready" : "missing"}>
                 {targetReady ? "✓" : "○"} Объём книги
               </span>
-              <span className={budgetReady ? "ready" : "missing"}>
-                {budgetReady ? "✓" : "○"} Лимиты Auto Book
-              </span>
+              <span className={budgetReady ? "ready" : "missing"}>{budgetReady ? "✓" : "○"} Расходы ограничены</span>
             </div>
+            <p className="launch-summary">
+              AI-расходы ограничены настройками проекта ✓ · выбрано результатов: {Object.values(outputs).filter(Boolean).length}.
+              Максимальный бюджет этого запуска — ${Number.isFinite(totalBudget) ? totalBudget.toFixed(2) : "—"}.
+            </p>
           </section>
 
           {!credentialAvailable && coreReady && (
@@ -463,14 +1325,315 @@ export function LaunchPlanningPanel({
         </>
       )}
 
-      {(autoState?.status === "RUNNING" || autoBusy) && (
+      {workflowMode === "NEW_BOOK" && autoState?.status === "AWAITING_CONCEPT_APPROVAL" && conceptDraft && (
+        <section className="planning-step concept-review-card" aria-label="BOOK OS предлагает концепцию">
+          <p className="eyebrow">НУЖНО РЕШЕНИЕ АВТОРА</p>
+          <h4>BOOK OS предлагает концепцию</h4>
+          <p className="muted">
+            Это ещё не Book Definition. Проверьте направление: после принятия BOOK OS продолжит
+            исследование, архитектуру и полный цикл книги.
+          </p>
+          {([
+            ["essence", "Суть книги"],
+            ["reader_job", "Для кого"],
+            ["reader_transformation", "Что изменится после прочтения"],
+            ["central_promise", "Главное обещание"],
+            ["differentiation", "Чем книга отличается"],
+            ["why_now", "Почему сейчас"],
+            ["series_place", "Место в серии"],
+          ] as const).map(([key, label]) => (
+            <label className="field" key={key}>
+              <span>{label}</span>
+              {editingConcept ? (
+                <textarea
+                  rows={key === "essence" ? 3 : 2}
+                  value={conceptDraft[key]}
+                  onChange={(event) => setConceptDraft({ ...conceptDraft, [key]: event.target.value })}
+                />
+              ) : (
+                <p>{conceptDraft[key]}</p>
+              )}
+            </label>
+          ))}
+          {([ ["scope_in", "Что входит в книгу"], ["scope_out", "Что сознательно не входит"] ] as const).map(([key, label]) => (
+            <label className="field" key={key}>
+              <span>{label}</span>
+              {editingConcept ? (
+                <textarea
+                  rows={3}
+                  value={conceptDraft[key].join("\n")}
+                  onChange={(event) => setConceptDraft({
+                    ...conceptDraft,
+                    [key]: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean),
+                  })}
+                />
+              ) : (
+                <p>{conceptDraft[key].join(" · ")}</p>
+              )}
+            </label>
+          ))}
+          <div className="actions planning-action">
+            <button className="primary" type="button" disabled={autoBusy} onClick={() => void acceptConcept()}>
+              Принять концепцию
+            </button>
+            <button className="ghost" type="button" disabled={autoBusy} onClick={() => setEditingConcept((value) => !value)}>
+              {editingConcept ? "Закончить правки" : "Изменить"}
+            </button>
+            <button className="ghost" type="button" disabled={autoBusy} onClick={() => void requestAnotherConcept()}>
+              Предложить другой вариант
+            </button>
+          </div>
+        </section>
+      )}
+
+      {workflowMode === "EXISTING_AUDIO" && (
+        <section className="planning-step primary-planning-step" aria-label="Аудиоверсия готовой книги">
+          <p className="eyebrow">ОТДЕЛЬНЫЙ СЦЕНАРИЙ</p>
+          <h4>Подготовить AudioScript из готовой книги</h4>
+          <p className="muted">
+            Исходник сохраняется неизменным. BOOK OS создаёт отдельную версию текста для слушания,
+            а синтез голоса и мастеринг остаются в Audiobook Studio.
+          </p>
+          {!existingAudio && existingApprovedFiles.length === 0 && (
+            <>
+              <label className="field required-field">
+                <span>Готовая книга: TXT, DOCX, PDF, EPUB, MD или RTF</span>
+                <input
+                  type="file"
+                  accept=".txt,.md,.docx,.pdf,.rtf,.epub"
+                  onChange={(event) => {
+                    setExistingSource(event.target.files?.[0] ?? null);
+                    setExistingAuthorize(false);
+                  }}
+                />
+                <small>Неполное извлечение блокирует запуск: пропавшие страницы не игнорируются.</small>
+              </label>
+              <div className="writer-levels writer-astra-modes" role="group" aria-label="Режим аудиоадаптации">
+                <button
+                  type="button"
+                  className={existingMode === "SOURCE_FAITHFUL" ? "active" : ""}
+                  aria-pressed={existingMode === "SOURCE_FAITHFUL"}
+                  onClick={() => {
+                    setExistingMode("SOURCE_FAITHFUL");
+                    setExistingAuthorize(false);
+                  }}
+                >
+                  По оригиналу, с адаптацией для аудио
+                </button>
+                <button
+                  type="button"
+                  className={existingMode === "LISTENING_ADAPTATION" ? "active" : ""}
+                  aria-pressed={existingMode === "LISTENING_ADAPTATION"}
+                  onClick={() => {
+                    setExistingMode("LISTENING_ADAPTATION");
+                    setExistingAuthorize(false);
+                  }}
+                >
+                  Сохранить суть и концепцию, переписать для аудио
+                </button>
+              </div>
+              <p className="muted">
+                Во втором режиме текст может сильно отличаться по ритму и формулировкам, но смысл,
+                концепция, факты, доказательства и выводы оригинала остаются обязательными.
+              </p>
+              <div className="output-choice-grid" aria-label="Файлы аудиоверсии">
+                <label className="paid-approval compact-option">
+                  <input type="checkbox" checked disabled readOnly />
+                  <span>Текст для озвучки TXT — обязателен</span>
+                </label>
+                <label className="paid-approval compact-option">
+                  <input
+                    type="checkbox"
+                    checked={existingReadingDocx}
+                    onChange={(event) => {
+                      setExistingReadingDocx(event.target.checked);
+                      setExistingAuthorize(false);
+                    }}
+                  />
+                  <span>Аудиоредакция для чтения DOCX</span>
+                </label>
+                <label className="paid-approval compact-option">
+                  <input
+                    type="checkbox"
+                    checked={existingLitresDocx}
+                    onChange={(event) => {
+                      setExistingLitresDocx(event.target.checked);
+                      setExistingAuthorize(false);
+                    }}
+                  />
+                  <span>Аудиоредакция для ЛитРес DOCX</span>
+                </label>
+                <label className="paid-approval compact-option">
+                  <input
+                    type="checkbox"
+                    checked={existingDictionary}
+                    onChange={(event) => {
+                      setExistingDictionary(event.target.checked);
+                      setExistingAuthorize(false);
+                    }}
+                  />
+                  <span>Словарь произношения</span>
+                </label>
+              </div>
+              <p className="launch-summary">
+                Модель: {PLANNING_CHOICES.find((item) => item.id === choiceId)?.label ?? "Автоматически"}.
+                Лимит: до ${Math.min(totalBudget, perRequestBudget * maxRequests).toFixed(2)} за этот запуск.
+              </p>
+              <details className="advanced-settings planning-settings">
+                <summary>Изменить модель и лимиты — обычно не нужно</summary>
+                <div className="writer-levels writer-astra-modes" role="group" aria-label="Модель аудиоредакции">
+                  {PLANNING_CHOICES.map((choice) => (
+                    <button
+                      key={choice.id}
+                      type="button"
+                      className={choiceId === choice.id ? "active" : ""}
+                      aria-pressed={choiceId === choice.id}
+                      onClick={() => {
+                        setChoiceId(choice.id);
+                        setExistingAuthorize(false);
+                      }}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="form-grid">
+                  <label className="field">
+                    <span>Общий лимит, USD</span>
+                    <input
+                      inputMode="decimal"
+                      value={autoTotalBudget}
+                      onChange={(event) => {
+                        setAutoTotalBudget(event.target.value);
+                        setExistingAuthorize(false);
+                      }}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Максимум одного запроса, USD</span>
+                    <input
+                      inputMode="decimal"
+                      value={autoPerRequestBudget}
+                      onChange={(event) => {
+                        setAutoPerRequestBudget(event.target.value);
+                        setExistingAuthorize(false);
+                      }}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Максимум AI-запросов</span>
+                    <input
+                      inputMode="numeric"
+                      value={autoMaxRequests}
+                      onChange={(event) => {
+                        setAutoMaxRequests(event.target.value);
+                        setExistingAuthorize(false);
+                      }}
+                    />
+                  </label>
+                </div>
+                {!budgetReady && (
+                  <p className="field-error budget-error">
+                    Проверьте лимиты: общий бюджет должен покрывать хотя бы один запрос.
+                  </p>
+                )}
+              </details>
+              <label className="paid-approval required-approval">
+                <input
+                  type="checkbox"
+                  checked={existingAuthorize}
+                  disabled={!existingSource || !credentialAvailable || !budgetReady}
+                  onChange={(event) => setExistingAuthorize(event.target.checked)}
+                />
+                <span>
+                  Разрешаю только эту аудиоредакцию через OpenAI в указанном лимите до ${" "}
+                  {Math.min(totalBudget, perRequestBudget * maxRequests).toFixed(2)}.
+                </span>
+              </label>
+              <button
+                type="button"
+                className={`primary auto-launch-button ${existingSource && existingAuthorize ? "ready" : ""}`}
+                disabled={!existingSource || !existingAuthorize || !credentialAvailable || !budgetReady || autoBusy}
+                onClick={() => void prepareExistingAudio()}
+              >
+                Подготовить AudioScript
+              </button>
+            </>
+          )}
+          {existingAudio && existingApprovedFiles.length === 0 && (
+            <>
+              <div className="ready-output-list" aria-label="Проверки AudioScript готовой книги">
+                <strong>AudioScript предложен · версия {existingAudio.audio_script.version}</strong>
+                <ul>
+                  {existingAudio.audio_script.quality_checks.map((check) => (
+                    <li key={check.check_kind}>
+                      {check.state === "PASS" ? "✓" : check.state === "ATTENTION" ? "!" : "×"}{" "}
+                      {check.check_kind}
+                      {check.findings[0] ? ` — ${check.findings[0].detail}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {existingAudio.audio_script.quality_checks.some((item) => item.state === "BLOCKING") ? (
+                <>
+                  <div className="alert inline-alert">
+                    Есть блокирующие проблемы: выпуск запрещён до исправления.
+                  </div>
+                  <AudioScriptRevisionEditor
+                    key={existingAudio.audio_script.audio_script_id}
+                    script={existingAudio.audio_script}
+                    busy={autoBusy}
+                    onSave={reviseExistingAudioScript}
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="paid-approval required-approval">
+                    <input
+                      type="checkbox"
+                      checked={approveAudio}
+                      onChange={(event) => setApproveAudio(event.target.checked)}
+                    />
+                    <span>
+                      Я проверила AudioScript вслух и подтверждаю верность исходнику и качество для слушателя.
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    className={`primary auto-launch-button ${approveAudio ? "ready" : ""}`}
+                    disabled={!approveAudio || autoBusy}
+                    onClick={() => void approveExistingAudio()}
+                  >
+                    Утвердить и подготовить аудиофайлы
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          {existingApprovedFiles.length > 0 && (
+            <div className="ready-output-list" aria-label="Готовые аудиофайлы">
+              <strong>Готово для Audiobook Studio</strong>
+              <ul>
+                {existingApprovedFiles.map((item) => (
+                  <li key={`${item.output_kind}:${item.relative_path}`}>
+                    {item.output_kind}: {item.relative_path}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
+      {workflowMode === "NEW_BOOK" && (autoState?.status === "RUNNING" || autoBusy) && (
         <section className="auto-progress" role="status" aria-live="polite">
           <div className="auto-progress-heading">
             <div>
-              <p className="eyebrow">AUTO BOOK РАБОТАЕТ</p>
-              <h4>{progressMessage(autoState)}</h4>
+              <p className="eyebrow">AUTO BOOK</p>
+              <h4>BOOK OS создаёт книгу</h4>
+              <p>{progressMessage(autoState)}</p>
             </div>
-            <strong>{progress}%</strong>
+            <strong>{progress}% готово</strong>
           </div>
           <div
             className="auto-progress-track"
@@ -494,27 +1657,37 @@ export function LaunchPlanningPanel({
               );
             })}
           </ol>
-          <div className="auto-progress-meta">
-            <span>
-              AI-запросов: {autoState?.requests_used ?? 0}/{autoState?.max_requests ?? maxRequests}
-            </span>
-            {autoState?.current_chapter_ordinal && (
-              <span>Сейчас: глава {autoState.current_chapter_ordinal}</span>
-            )}
-            <AutoBookClock
-              startedAt={autoState?.started_at}
-              updatedAt={autoState?.updated_at}
-              running={autoState?.status === "RUNNING"}
-            />
-          </div>
+          {autoState?.current_chapter_ordinal && (
+            <p className="auto-progress-now">Сейчас: создаю главу {autoState.current_chapter_ordinal}</p>
+          )}
 
           {autoState?.error && (
             <div className="auto-pause-message">
-              <strong>Связь прервалась, но прогресс сохранён.</strong>
-              <span>{autoState.error}</span>
+              <strong>Работа остановлена. Всё созданное сохранено.</strong>
             </div>
           )}
-          {error && <div className="auto-pause-message">{error}</div>}
+          {error && <div className="auto-pause-message"><strong>Работа остановлена. Всё созданное сохранено.</strong></div>}
+
+          <details className="auto-progress-details">
+            <summary>Подробнее</summary>
+            <div className="auto-progress-meta">
+              <span>AI-запросов: {autoState?.requests_used ?? 0}/{autoState?.max_requests ?? maxRequests}</span>
+              <span>Подтверждено: ${(autoState?.confirmed_cost_usd ?? 0).toFixed(2)}</span>
+              <span>Зарезервировано: ${(autoState?.reserved_cost_usd ?? 0).toFixed(2)}</span>
+              {(autoState?.unknown_cost_usd ?? 0) > 0 && (
+                <span>Исход неизвестен: до ${(autoState?.unknown_cost_usd ?? 0).toFixed(2)}</span>
+              )}
+              <span>Внутренний этап: {autoState?.current_stage ?? autoState?.phase ?? "подготовка"}</span>
+              <AutoBookClock
+                startedAt={autoState?.started_at}
+                updatedAt={autoState?.updated_at}
+                running={autoState?.status === "RUNNING"}
+              />
+            </div>
+            {(autoState?.error || error) && (
+              <p className="technical-error">{autoState?.error ?? error}</p>
+            )}
+          </details>
 
           {!autoBusy && autoState?.status === "RUNNING" && (
             <div className="actions planning-action">
@@ -529,7 +1702,132 @@ export function LaunchPlanningPanel({
         </section>
       )}
 
-      {autoState?.status === "DONE" && (
+      {workflowMode === "NEW_BOOK" && autoState?.status === "AWAITING_AUDIO_APPROVAL" && (
+        <section className="auto-progress" aria-label="Проверка аудиоредакции">
+          <div className="auto-progress-heading">
+            <div>
+              <p className="eyebrow">АУДИОРЕДАКЦИЯ · НУЖНО РЕШЕНИЕ АВТОРА</p>
+              <h4>Проверьте AudioScript перед выпуском файлов</h4>
+            </div>
+            <strong>96%</strong>
+          </div>
+          <p>
+            Текстовая рукопись не изменена. DOCX и обязательный чистый TXT будут собраны из одной
+            версии AudioScript №{audioScript?.version ?? "—"} только после вашего утверждения.
+          </p>
+          {audioScript && (
+            <div className="ready-output-list" aria-label="Аудиопроверки">
+              <strong>
+                Проверки: {audioScript.quality_checks.filter((item) => item.state === "PASS").length}
+                {" "}PASS · {audioAttentionChecks.length} требуют внимания · {audioBlockingChecks.length}
+                {" "}блокируют выпуск
+              </strong>
+              <ul>
+                {audioScript.quality_checks.map((check) => (
+                  <li key={check.check_kind}>
+                    {check.state === "PASS" ? "✓" : check.state === "ATTENTION" ? "!" : "×"}{" "}
+                    {check.check_kind}
+                    {check.findings[0] ? ` — ${check.findings[0].detail}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {audioBlockingChecks.length > 0 ? (
+            <>
+              <div className="alert inline-alert">
+                Выпуск заблокирован: сначала исправьте отмеченные места. BOOK OS не выдаёт создание
+                файла за доказательство качества аудиотекста.
+              </div>
+              {audioScript && (
+                <AudioScriptRevisionEditor
+                  key={audioScript.audio_script_id}
+                  script={audioScript}
+                  busy={autoBusy}
+                  onSave={reviseAutoAudioScript}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <label className="paid-approval required-approval">
+                <input
+                  type="checkbox"
+                  checked={approveAudio}
+                  onChange={(event) => setApproveAudio(event.target.checked)}
+                />
+                <span>
+                  Я прочитала аудиоредакцию вслух, проверила смысл, авторский голос, переходы,
+                  числа и все замечания ATTENTION. Утверждаю эту точную версию.
+                </span>
+              </label>
+              <button
+                type="button"
+                className={`primary auto-launch-button ${approveAudio ? "ready" : ""}`}
+                disabled={!approveAudio || autoBusy || !audioScript}
+                onClick={() => void approveAudioScript()}
+              >
+                Утвердить AudioScript и подготовить файлы
+              </button>
+            </>
+          )}
+        </section>
+      )}
+
+      {workflowMode === "NEW_BOOK" && autoState?.status === "AWAITING_FINAL_ACCEPTANCE" && (
+        <section className="auto-progress" aria-label="Финальное принятие книги">
+          <div className="auto-progress-heading">
+            <div>
+              <p className="eyebrow">ФИНАЛЬНЫЙ КАНДИДАТ · НУЖНО РЕШЕНИЕ АВТОРА</p>
+              <h4>Проверьте книгу перед фиксацией Literary Master</h4>
+            </div>
+            <strong>94%</strong>
+          </div>
+          <p>
+            Редактура, фактчек, BookBench и независимая критика завершены. BOOK OS не назовёт
+            автоматический проход вашим решением: финальный master будет зафиксирован только после
+            этого явного действия.
+          </p>
+          {finalCandidate && (
+            <div className="run-details" aria-label="Точный финальный кандидат">
+              <p>
+                <strong>Кандидат:</strong> {finalCandidate.candidate_id}
+              </p>
+              <p>
+                <strong>Снимок:</strong> {finalCandidate.snapshot_hash.slice(0, 16)}… · замечаний
+                осталось: {finalCandidate.candidate.findings_remaining ?? 0}
+              </p>
+              <p>
+                <strong>Будут подготовлены:</strong>{" "}
+                {finalCandidate.candidate.selected_outputs?.join(", ") || "выбранные файлы"}
+              </p>
+            </div>
+          )}
+          <label className="paid-approval required-approval">
+            <input
+              type="checkbox"
+              checked={finalAccepted}
+              onChange={(event) => setFinalAccepted(event.target.checked)}
+            />
+            <span>Я проверила финальный кандидат и принимаю именно эту версию книги.</span>
+          </label>
+          <div className="actions planning-action">
+            <button
+              type="button"
+              className={`primary auto-launch-button ${finalAccepted ? "ready" : ""}`}
+              disabled={!finalAccepted || autoBusy}
+              onClick={() => void decideFinal(true)}
+            >
+              Принять книгу и подготовить файлы
+            </button>
+            <button type="button" className="ghost" disabled={autoBusy} onClick={() => void decideFinal(false)}>
+              Вернуть на доработку
+            </button>
+          </div>
+        </section>
+      )}
+
+      {workflowMode === "NEW_BOOK" && autoState?.status === "DONE" && (
         <section className="auto-progress complete" role="status">
           <div className="auto-progress-heading">
             <div>
@@ -543,15 +1841,56 @@ export function LaunchPlanningPanel({
           </div>
           <p>{autoState.last_action}</p>
           <AutoBookClock startedAt={autoState.started_at} updatedAt={autoState.updated_at} running={false} />
-          {autoState.output_path && <small>Файл: {autoState.output_path}</small>}
+          {autoState.output_files && autoState.output_files.length > 0 ? (
+            <div className="ready-output-list" aria-label="Готовые файлы">
+              <strong>Готовые файлы</strong>
+              <ul>
+                {autoState.output_files
+                  .filter((item) => item.status === "READY")
+                  .map((item) => (
+                    <li key={`${item.output_kind}:${item.relative_path}`}>
+                      {item.output_kind}: {item.relative_path}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : (
+            autoState.output_path && <small>Файл: {autoState.output_path}</small>
+          )}
         </section>
       )}
 
-      {autoState?.status === "FAILED" && (
+      {workflowMode === "NEW_BOOK" && autoState?.status === "FAILED" && (
         <div className="alert inline-alert">
           Предыдущий запуск остановился: {autoState.error ?? autoState.last_action}. Исправьте причину
           и запустите Auto Book снова — уже созданные этапы книги будут использованы.
         </div>
+      )}
+
+      {autoState && (
+        <section className="planning-step change-request-box" aria-label="Изменение книги">
+          <h4>Что изменить в книге?</h4>
+          <p className="muted">
+            Напишите обычными словами. BOOK OS сохранит запрос, найдёт затронутые части и повторит
+            только зависимые проверки.
+          </p>
+          <textarea
+            rows={3}
+            value={changeRequest}
+            onChange={(event) => setChangeRequest(event.target.value)}
+            placeholder="Например: сделай объяснение понятнее и добавь практический разбор"
+          />
+          <button
+            type="button"
+            className="ghost"
+            disabled={!changeRequest.trim()}
+            onClick={() => void saveChangeRequest()}
+          >
+            {changeId ? "Отправить уточнение и продолжить" : "Выполнить изменение"}
+          </button>
+          {changeStatus && <small>Статус: {changeStatus}</small>}
+          {changeSaved && <p className="series-studio-success">{changeSaved}</p>}
+        </section>
       )}
 
       {error && autoState?.status !== "RUNNING" && !autoBusy && (

@@ -26,7 +26,9 @@ SECTION_DRAFT_V1 = PromptTemplate(
         "scope expansion. Do not fabricate facts, citations, quotations, studies, sources, or "
         "evidence not present in the explicitly supplied allowed context. If authoritative_context "
         "contains negative_style_constraints, obey them as quality constraints and state the actual "
-        "thought directly rather than using stock negative-first framing. Do not approve, lock, "
+        "thought directly rather than using stock negative-first framing. Treat target character "
+        "count as guidance and never pad, repeat, or add generic material merely to hit a number. "
+        "Do not approve, lock, "
         "or supersede any BOOK OS authority. Return JSON matching the supplied output schema."
     ),
 )
@@ -60,6 +62,23 @@ BOOK_CONTRACT_PROPOSAL_V1 = PromptTemplate(
     ),
 )
 
+BOOK_CONCEPT_PROPOSAL_V1 = PromptTemplate(
+    prompt_id="book_concept_proposal_v1",
+    version="1.0.0",
+    developer_text=(
+        "You are the bounded BOOK OS Concept Editor. Expand a short raw nonfiction idea into a "
+        "professional, specific concept before any Book Definition is created. Infer a concrete "
+        "reader job when the reader hint is empty. Define the problem, transformation, central "
+        "idea, promise, differentiation, why-now case, scope in/out, and series position. Treat "
+        "completed books supplied in series_continuity only as a NEGATIVE anti-duplication corpus, "
+        "never as a writing template. Reject generic template-clone logic and call out overlap "
+        "risks. Target length is guidance: quality and completeness outrank exact character count, "
+        "and text must never be padded. Do not invent facts, citations, market statistics or "
+        "evidence. This is a DRAFT proposal and cannot approve authority. For Russian input, write "
+        "natural professional Russian. Return only the schema-valid structured proposal."
+    ),
+)
+
 ARCHITECTURE_PROPOSAL_V1 = PromptTemplate(
     prompt_id="architecture_proposal_v1",
     version="1.0.0",
@@ -68,7 +87,9 @@ ARCHITECTURE_PROPOSAL_V1 = PromptTemplate(
         "and current project metadata, propose a coherent Business Nonfiction architecture. Every "
         "chapter must have a distinct function and new contribution; avoid duplicate chapter ideas, "
         "generic chapter names and artificial symmetry. This is a DRAFT proposal and cannot approve "
-        "authority. If negative_style_constraints are supplied, obey them. For Russian projects, "
+        "authority. If series_continuity is supplied, compare against completed books as a negative "
+        "anti-duplication corpus and never clone their structure, examples or argument flow. If "
+        "negative_style_constraints are supplied, obey them. For Russian projects, "
         "write natural professional Russian. Return only the schema-valid structured proposal."
     ),
 )
@@ -113,6 +134,7 @@ PROMPTS = {
     for item in (
         SECTION_DRAFT_V1,
         STYLE_PREVIEW_V1,
+        BOOK_CONCEPT_PROPOSAL_V1,
         BOOK_CONTRACT_PROPOSAL_V1,
         ARCHITECTURE_PROPOSAL_V1,
         CHAPTER_CONTRACT_PROPOSAL_V1,

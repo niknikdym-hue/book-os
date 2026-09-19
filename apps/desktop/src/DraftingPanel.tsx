@@ -61,7 +61,7 @@ function resultModelLabel(run: DraftRunView) {
   return run.model;
 }
 
-export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanelProps) {
+export function DraftingPanel({ project, chapter, api = coreApi, calmMode = false }: DraftingPanelProps) {
   const [objective, setObjective] = useState("");
   const [context, setContext] = useState("");
   const [choiceId, setChoiceId] = useState<WriterChoiceId>("ASTRA_HIGH");
@@ -72,6 +72,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(!calmMode);
   const draftLoadSequence = useRef(0);
 
   const selectedChoice = choiceById(choiceId);
@@ -181,9 +182,23 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
             {chapter ? `${chapter.ordinal}. ${chapter.working_title}` : "Выберите главу для работы"}
           </p>
         </div>
-        <div className={`writer-status ${credentialAvailable ? "ready" : "missing"}`}>
-          <span aria-hidden="true" />
-          {credentialAvailable ? "OpenAI API подключён" : "OpenAI не подключён"}
+        <div className="writer-head-actions">
+          {!calmMode && (
+            <div className={`writer-status ${credentialAvailable ? "ready" : "missing"}`}>
+              <span aria-hidden="true" />
+              {credentialAvailable ? "OpenAI API подключён" : "OpenAI не подключён"}
+            </div>
+          )}
+          {calmMode && (
+            <button
+              type="button"
+              className="writer-inspector-toggle"
+              aria-expanded={inspectorOpen}
+              onClick={() => setInspectorOpen((value) => !value)}
+            >
+              {inspectorOpen ? "Скрыть настройки" : "Настройки главы"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -280,7 +295,7 @@ export function DraftingPanel({ project, chapter, api = coreApi }: DraftingPanel
           )}
         </section>
 
-        <aside className="writer-inspector" aria-label="Настройки Writer">
+        <aside className="writer-inspector" aria-label="Настройки Writer" hidden={!inspectorOpen}>
           <section>
             <span className="writer-overline">МОДЕЛЬ</span>
             <div className="writer-levels writer-astra-modes" role="group" aria-label="Модель Writer">
