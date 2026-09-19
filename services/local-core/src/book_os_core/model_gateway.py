@@ -38,6 +38,7 @@ class SectionDraftOutput(BaseModel):
 
 
 class FictionSceneDraftOutput(BaseModel):
+    schema_version: Literal["0.1.0"] = "0.1.0"
     outcome: Literal["DRAFT", "ARCHITECTURE_BLOCKER"]
     text: str | None = None
     blocker_code: str | None = None
@@ -62,6 +63,7 @@ class FictionSceneDraftOutput(BaseModel):
 
 
 class FictionContinuityExtractionOutput(BaseModel):
+    schema_version: Literal["0.1.0"] = "0.1.0"
     scene_id: str = Field(min_length=1)
     state_change_codes: list[str] = Field(default_factory=list)
     new_character_knowledge_refs: list[str] = Field(default_factory=list)
@@ -330,6 +332,7 @@ class DeterministicFakeAdapter:
             return ModelAdapterResult(
                 provider_run_id="fake-fiction-scene",
                 output={
+                    "schema_version": "0.1.0",
                     "outcome": "DRAFT",
                     "text": f"Fiction draft for: {request.section_objective}",
                     "blocker_code": None,
@@ -342,6 +345,7 @@ class DeterministicFakeAdapter:
             return ModelAdapterResult(
                 provider_run_id="fake-fiction-continuity",
                 output={
+                    "schema_version": "0.1.0",
                     "scene_id": str(request.task_payload.get("scene_id", "scene")),
                     "state_change_codes": ["SYNTHETIC_STATE_CHANGE"],
                     "new_character_knowledge_refs": [],
