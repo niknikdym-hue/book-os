@@ -136,6 +136,7 @@ class AcceptedBookPassport:
     passport: MysteryBookPassport
     passport_hash: str
     status: PassportAuthorityStatus
+    recurring_asset_codes_at_acceptance: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -313,6 +314,9 @@ def _accepted_passport_payload(
         "passport_ref": passport_ref(accepted.passport),
         "passport_hash": accepted.passport_hash,
         "status": accepted.status,
+        "recurring_asset_codes_at_acceptance": _json_strings(
+            accepted.recurring_asset_codes_at_acceptance
+        ),
     }
 
 
@@ -748,6 +752,12 @@ def _validate_prior_passports(
                     ref,
                 )
             )
+        _validate_unique_values(
+            accepted.recurring_asset_codes_at_acceptance,
+            code="SERIES.PRIOR.RECURRING_ASSET",
+            current_book_id=current_book_id,
+            findings=findings,
+        )
         if accepted.status not in {"APPROVED", "LOCKED"}:
             findings.append(
                 _finding(
@@ -786,6 +796,12 @@ def _validate_prior_passports(
                     "prior passport is missing its historical Series Profile ref",
                     ref,
                 )
+            )
+        else:
+            _validate_passport_shape(
+                passport=prior,
+                expected_series_profile_ref=prior.series_profile_ref,
+                findings=findings,
             )
         if prior.book_id == current_book_id:
             findings.append(
@@ -936,8 +952,7 @@ def _prior_asset_ledger(
     prior_passports: tuple[AcceptedBookPassport, ...],
     findings: list[SeriesCollisionFinding],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    recurring = set(profile.allowed_recurring_asset_codes)
-    consumed_by: dict[str, str] = {}
+    all_consumed_by: dict[str, str] = {}
     reserved_by: dict[str, str] = {}
 
     for accepted in sorted(
@@ -945,6 +960,9 @@ def _prior_asset_ledger(
         key=lambda item: (item.passport.book_number, item.passport.book_id),
     ):
         prior = accepted.passport
+        recurring_at_acceptance = set(
+            accepted.recurring_asset_codes_at_acceptance
+        )
         prior_consumed = set(prior.assets_consumed)
         prior_claims = set(prior.reservation_claim_codes)
 
@@ -984,10 +1002,11 @@ def _prior_asset_ledger(
                 )
 
         for asset_code in prior.assets_consumed:
-            if asset_code in recurring:
-                continue
-            prior_consumer = consumed_by.get(asset_code)
-            if prior_consumer is not None:
+            prior_consumer = all_consumed_by.get(asset_code)
+            if (
+                asset_code not in recurring_at_acceptance
+                and prior_consumer is not None
+            ):
                 findings.append(
                     _finding(
                         "SERIES.PRIOR_ASSET.REUSED_CONSUMED",
@@ -997,13 +1016,12 @@ def _prior_asset_ledger(
                         current_book_id,
                         prior.book_id,
                         (
-                            f"historical asset {asset_code} was already consumed "
-                            f"by {prior_consumer}"
+                            f"historical one-use asset {asset_code} was already "
+                            f"consumed by {prior_consumer}"
                         ),
                         asset_code,
                     )
                 )
-                continue
             reserving_book = reserved_by.get(asset_code)
             if reserving_book is not None and asset_code not in prior_claims:
                 findings.append(
@@ -1021,11 +1039,11 @@ def _prior_asset_ledger(
                         asset_code,
                     )
                 )
-            consumed_by[asset_code] = prior.book_id
+            all_consumed_by.setdefault(asset_code, prior.book_id)
             reserved_by.pop(asset_code, None)
 
         for asset_code in prior.assets_reserved:
-            if asset_code in recurring:
+            if asset_code in recurring_at_acceptance:
                 findings.append(
                     _finding(
                         "SERIES.PRIOR_ASSET.RESERVE_RECURRING_SIGNATURE",
@@ -1042,7 +1060,7 @@ def _prior_asset_ledger(
                     )
                 )
                 continue
-            if asset_code in consumed_by:
+            if asset_code in all_consumed_by:
                 findings.append(
                     _finding(
                         "SERIES.PRIOR_ASSET.RESERVE_ALREADY_CONSUMED",
@@ -1078,7 +1096,7 @@ def _prior_asset_ledger(
             else:
                 reserved_by[asset_code] = prior.book_id
 
-    return consumed_by, reserved_by
+    return all_consumed_by, reserved_by
 
 
 def _check_assets(
@@ -1089,7 +1107,7 @@ def _check_assets(
     findings: list[SeriesCollisionFinding],
 ) -> None:
     recurring = set(profile.allowed_recurring_asset_codes)
-    consumed_by, reserved_by = _prior_asset_ledger(
+    all_consumed_by, reserved_by = _prior_asset_ledger(
         profile=profile,
         current_book_id=current.book_id,
         prior_passports=prior_passports,
@@ -1134,7 +1152,7 @@ def _check_assets(
     for asset_code in sorted(consumed):
         if asset_code in recurring:
             continue
-        prior_consumer = consumed_by.get(asset_code)
+        prior_consumer = all_consumed_by.get(asset_code)
         if prior_consumer is not None:
             findings.append(
                 _finding(
@@ -1183,7 +1201,7 @@ def _check_assets(
                     asset_code,
                 )
             )
-        if asset_code in consumed_by:
+        if asset_code in all_consumed_by:
             findings.append(
                 _finding(
                     "SERIES.ASSET.RESERVE_ALREADY_CONSUMED",
@@ -1191,7 +1209,7 @@ def _check_assets(
                     "ASSET",
                     "ASSET",
                     current.book_id,
-                    consumed_by[asset_code],
+                    all_consumed_by[asset_code],
                     f"cannot reserve already consumed asset {asset_code}",
                     asset_code,
                 )
