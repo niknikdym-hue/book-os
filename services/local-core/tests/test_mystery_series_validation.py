@@ -121,6 +121,7 @@ ACCEPTED_ONE = AcceptedBookPassport(
     passport=PRIOR_ONE,
     passport_hash=passport_hash(PRIOR_ONE),
     status="APPROVED",
+    recurring_asset_codes_at_acceptance=("signature-city", "signature-team"),
 )
 
 CURRENT = _passport(
@@ -133,11 +134,16 @@ CURRENT = _passport(
 )
 
 
-def _accepted(passport: MysteryBookPassport) -> AcceptedBookPassport:
+def _accepted(
+    passport: MysteryBookPassport,
+    *,
+    recurring_asset_codes: tuple[str, ...] = ("signature-city", "signature-team"),
+) -> AcceptedBookPassport:
     return AcceptedBookPassport(
         passport=passport,
         passport_hash=passport_hash(passport),
         status="APPROVED",
+        recurring_asset_codes_at_acceptance=recurring_asset_codes,
     )
 
 
@@ -620,7 +626,11 @@ def test_standalone_series_requires_case_resolution_and_late_entry_orientation()
 
 
 def test_strongly_serialized_profile_can_relax_standalone_rules() -> None:
-    serialized_profile = replace(PROFILE, strongly_serialized=True)
+    serialized_profile = replace(
+        PROFILE,
+        content_hash=_hash("series-profile-serialized-v3"),
+        strongly_serialized=True,
+    )
     current = replace(
         CURRENT,
         series_profile_ref=series_profile_ref(serialized_profile),
