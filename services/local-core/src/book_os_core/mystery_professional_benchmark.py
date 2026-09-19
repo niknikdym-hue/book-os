@@ -387,14 +387,34 @@ def _policy_payload(policy: ProfessionalBenchmarkPolicy) -> dict[str, JSONValue]
     }
 
 
+def _set_policy_payload(policy: BenchmarkSetPolicy) -> dict[str, JSONValue]:
+    return {
+        "expected_subgenre": policy.expected_subgenre,
+        "expected_target_market": policy.expected_target_market,
+        "expected_language": policy.expected_language,
+        "min_references": policy.min_references,
+        "min_distinct_authors": policy.min_distinct_authors,
+        "min_publication_span_years": policy.min_publication_span_years,
+        "max_single_author_fraction": policy.max_single_author_fraction,
+        "min_text_access_references": policy.min_text_access_references,
+        "required_categories": _json_strings(tuple(policy.required_categories)),
+        "min_established_publisher_references": (
+            policy.min_established_publisher_references
+        ),
+        "max_review_age_seconds": policy.max_review_age_seconds,
+    }
+
+
 def _run_ref(
     *,
     run: ProfessionalFictionBenchmarkRun,
     policy: ProfessionalBenchmarkPolicy,
+    benchmark_set_policy: BenchmarkSetPolicy,
 ) -> str:
     payload: dict[str, JSONValue] = {
         "book_id": run.book_id,
         "policy": _policy_payload(policy),
+        "benchmark_set_policy": _set_policy_payload(benchmark_set_policy),
         "checkpoint": run.checkpoint,
         "manuscript_snapshot_ref": run.manuscript_snapshot_ref,
         "manuscript_snapshot_hash": run.manuscript_snapshot_hash,
@@ -1065,7 +1085,8 @@ def evaluate_professional_benchmark(
     run: ProfessionalFictionBenchmarkRun,
     policy: ProfessionalBenchmarkPolicy,
     benchmark_set: FictionBenchmarkSet,
-    benchmark_set_validation: BenchmarkSetValidationResult,
+    benchmark_set_policy: BenchmarkSetPolicy,
+    now_epoch: int,
     current_manuscript_snapshot_ref: str,
     current_manuscript_snapshot_hash: str,
     current_evaluated_revision_refs: tuple[str, ...],
@@ -1074,6 +1095,11 @@ def evaluate_professional_benchmark(
     verified_human_disposition_refs: frozenset[str] = frozenset(),
 ) -> ProfessionalBenchmarkResult:
     findings: list[ProfessionalBenchmarkFinding] = []
+    benchmark_set_validation = validate_benchmark_set(
+        benchmark_set=benchmark_set,
+        policy=benchmark_set_policy,
+        now_epoch=now_epoch,
+    )
 
     if run.checkpoint not in _VALID_CHECKPOINTS:
         findings.append(
@@ -1201,6 +1227,7 @@ def evaluate_professional_benchmark(
         )
 
     evaluations_by_dimension: dict[str, BenchmarkDimensionEvaluation] = {}
+    evaluation_refs_seen: set[str] = set()
     for evaluation in run.dimension_evaluations:
         if evaluation.dimension not in _VALID_DIMENSIONS:
             findings.append(
@@ -1252,6 +1279,20 @@ def evaluate_professional_benchmark(
                     evaluation.dimension,
                 )
             )
+        elif evaluation.evaluation_ref in evaluation_refs_seen:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.EVALUATION.REF_REUSED",
+                    (
+                        f"evaluation ref {evaluation.evaluation_ref} is reused "
+                        "across professional benchmark dimensions"
+                    ),
+                    evaluation.dimension,
+                    evaluation.evaluation_ref,
+                )
+            )
+        else:
+            evaluation_refs_seen.add(evaluation.evaluation_ref)
         if not evaluation.rubric_ref.strip():
             findings.append(
                 _finding(
@@ -1605,7 +1646,11 @@ def evaluate_professional_benchmark(
             )
         )
 
-    result_ref = _run_ref(run=run, policy=policy)
+    result_ref = _run_ref(
+        run=run,
+        policy=policy,
+        benchmark_set_policy=benchmark_set_policy,
+    )
     return ProfessionalBenchmarkResult(
         qualified=not findings,
         professional_benchmark_ref=result_ref,
@@ -1621,7 +1666,8 @@ def verify_professional_benchmark(
     run: ProfessionalFictionBenchmarkRun,
     policy: ProfessionalBenchmarkPolicy,
     benchmark_set: FictionBenchmarkSet,
-    benchmark_set_validation: BenchmarkSetValidationResult,
+    benchmark_set_policy: BenchmarkSetPolicy,
+    now_epoch: int,
     current_manuscript_snapshot_ref: str,
     current_manuscript_snapshot_hash: str,
     current_evaluated_revision_refs: tuple[str, ...],
@@ -1633,7 +1679,8 @@ def verify_professional_benchmark(
         run=run,
         policy=policy,
         benchmark_set=benchmark_set,
-        benchmark_set_validation=benchmark_set_validation,
+        benchmark_set_policy=benchmark_set_policy,
+        now_epoch=now_epoch,
         current_manuscript_snapshot_ref=current_manuscript_snapshot_ref,
         current_manuscript_snapshot_hash=current_manuscript_snapshot_hash,
         current_evaluated_revision_refs=current_evaluated_revision_refs,
@@ -1663,12 +1710,20 @@ def verify_professional_benchmark(
 def sample_benchmark_evidence_from_result(
     *,
     result: ProfessionalBenchmarkResult,
-    evaluator_identity: str,
 ) -> ProfessionalBenchmarkEvidence:
     """Bridge MYS-08 evidence into MYS-06 representative-sample readiness."""
+    professional_range = (
+        result.readiness_band in _VALID_BANDS
+        and _BAND_ORDER[result.readiness_band]
+        >= _BAND_ORDER["PROFESSIONAL_RANGE_CANDIDATE"]
+    )
     return ProfessionalBenchmarkEvidence(
-        status="PASS" if result.qualified else "BLOCKING_GAP",
+        status=(
+            "PASS"
+            if result.qualified and professional_range
+            else "BLOCKING_GAP"
+        ),
         benchmark_ref=result.professional_benchmark_ref,
         benchmark_set_ref=result.benchmark_set_ref,
-        evaluator_identity=evaluator_identity,
+        evaluator_identity="mystery-os/professional-benchmark-gate",
     )
