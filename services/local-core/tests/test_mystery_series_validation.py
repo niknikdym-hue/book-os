@@ -186,9 +186,7 @@ def _semantic_evidence(
         for dimension in policy.semantic_required_dimensions:
             key = (prior_id, dimension)
             state = (state_overrides or {}).get(key, "CLEAR")
-            evaluation_ref = (
-                f"series-eval:{current.book_id}:{prior_id}:{dimension}:v1"
-            )
+            evaluation_ref = f"series-eval:{current.book_id}:{prior_id}:{dimension}:v1"
             evaluator_identity = "series-editor/model-independent"
             rubric_ref = f"series-collision-rubric:{dimension}:v1"
             row = SeriesSemanticCollisionEvidence(
@@ -210,10 +208,7 @@ def _semantic_evidence(
                 evaluator_identity=evaluator_identity,
                 evaluator_class="LLM_JUDGE",
                 rubric_ref=rubric_ref,
-                purpose=(
-                    f"SERIES_COLLISION:{current.book_id}:"
-                    f"{prior_id}:{dimension}"
-                ),
+                purpose=(f"SERIES_COLLISION:{current.book_id}:{prior_id}:{dimension}"),
                 status="SUCCEEDED",
                 current=True,
             )
@@ -313,9 +308,7 @@ def test_exact_blocking_dimension_reuse_blocks_even_with_other_surface_changes()
     )
 
     assert "SERIES.COLLISION.EXACT_BLOCKING" in _codes(result)
-    assert any(
-        finding.dimension == "MECHANISM" for finding in result.findings
-    )
+    assert any(finding.dimension == "MECHANISM" for finding in result.findings)
     assert not result.qualified
 
 
@@ -347,10 +340,7 @@ def test_same_culprit_relationship_and_motive_family_is_composite_blocker() -> N
         artifacts=artifacts,
     )
 
-    assert (
-        "SERIES.COLLISION.CULPRIT_RELATIONSHIP_AND_MOTIVE"
-        in _codes(result)
-    )
+    assert "SERIES.COLLISION.CULPRIT_RELATIONSHIP_AND_MOTIVE" in _codes(result)
     assert not result.qualified
 
 
@@ -374,8 +364,7 @@ def test_consumed_one_use_asset_cannot_be_reused_but_recurring_signature_can() -
 
     assert "SERIES.ASSET.REUSED_ONE_USE" in _codes(result)
     assert not any(
-        finding.code == "SERIES.ASSET.REUSED_ONE_USE"
-        and "signature-city" in finding.evidence_refs
+        finding.code == "SERIES.ASSET.REUSED_ONE_USE" and "signature-city" in finding.evidence_refs
         for finding in result.findings
     )
 
@@ -495,9 +484,7 @@ def test_semantic_attention_requires_verified_human_disposition() -> None:
         semantic=semantic,
         artifacts=artifacts,
     )
-    assert "SERIES.COLLISION.SEMANTIC_ATTENTION_UNVERIFIED" in _codes(
-        unverified
-    )
+    assert "SERIES.COLLISION.SEMANTIC_ATTENTION_UNVERIFIED" in _codes(unverified)
 
     verified = _evaluate(
         semantic=semantic,
@@ -569,8 +556,7 @@ def test_series_brain_ref_changes_when_semantic_evidence_changes() -> None:
         evaluator_class=changed_first.evaluator_class,
         rubric_ref=changed_first.rubric_ref,
         purpose=(
-            f"SERIES_COLLISION:{CURRENT.book_id}:"
-            f"{PRIOR_ONE.book_id}:{changed_first.dimension}"
+            f"SERIES_COLLISION:{CURRENT.book_id}:{PRIOR_ONE.book_id}:{changed_first.dimension}"
         ),
         status="SUCCEEDED",
         current=True,
@@ -681,9 +667,7 @@ def test_strongly_serialized_profile_can_relax_standalone_rules() -> None:
     )
 
     assert "SERIES.STANDALONE.PRIMARY_CASE_UNRESOLVED" not in _codes(result)
-    assert "SERIES.STANDALONE.LATE_ENTRY_ORIENTATION_MISSING" not in _codes(
-        result
-    )
+    assert "SERIES.STANDALONE.LATE_ENTRY_ORIENTATION_MISSING" not in _codes(result)
 
 
 def test_book_one_requires_no_semantic_evidence_when_there_are_no_prior_books() -> None:
