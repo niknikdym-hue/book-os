@@ -293,9 +293,7 @@ def test_owner_and_cost_authorizations_are_exact_operation_artifacts() -> None:
             "SCENE_DRAFT",
         )
     }
-    wrong_cost = {
-        COST_REF: _cost("another-operation")
-    }
+    wrong_cost = {COST_REF: _cost("another-operation")}
 
     result = _evaluate(
         request,
@@ -314,9 +312,7 @@ def test_cost_cap_must_fit_owner_policy_and_exact_cost_authorization() -> None:
     owner, cost = _auth_maps(request, cost_cap=0.20)
 
     authorized = _evaluate(request, owner=owner, cost=cost)
-    assert "ROUTING.PROVIDER.COST_CAP_EXCEEDS_AUTHORIZATION" in _codes(
-        authorized
-    )
+    assert "ROUTING.PROVIDER.COST_CAP_EXCEEDS_AUTHORIZATION" in _codes(authorized)
 
     above_policy = replace(request, max_cost_usd=0.75)
     owner2, cost2 = _auth_maps(above_policy, cost_cap=1.00)
