@@ -33,6 +33,11 @@ PrivateContentScope: TypeAlias = Literal[
 NetworkMode: TypeAlias = Literal["DISABLED", "SOURCE_PACKET_ONLY"]
 ReasoningMode: TypeAlias = Literal["auto", "medium", "high", "xhigh"]
 
+_VALID_BLAST_RADIUS = frozenset({"LOW", "MEDIUM", "HIGH"})
+_VALID_PRIVATE_SCOPES = frozenset({"NONE", "MINIMUM_NECESSARY", "OWNER_SELECTED"})
+_VALID_NETWORK_MODES = frozenset({"DISABLED", "SOURCE_PACKET_ONLY"})
+_VALID_REASONING_MODES = frozenset({"auto", "medium", "high", "xhigh"})
+
 _CLASS_ORDER: dict[str, int] = {
     "A_LOCAL": 0,
     "B_STANDARD": 1,
@@ -217,6 +222,36 @@ def _routing_choice_payload(choice: RoutingChoice | None) -> JSONValue:
     }
 
 
+def _owner_authorization_payload(
+    authorization: VerifiedOwnerExecutionAuthorization | None,
+) -> JSONValue:
+    if authorization is None:
+        return None
+    return {
+        "authorization_ref": authorization.authorization_ref,
+        "operation_id": authorization.operation_id,
+        "operation_kind": authorization.operation_kind,
+        "provider_execution_allowed": authorization.provider_execution_allowed,
+        "editorial_prep_agent_allowed": authorization.editorial_prep_agent_allowed,
+        "private_content_allowed": authorization.private_content_allowed,
+        "current": authorization.current,
+    }
+
+
+def _cost_authorization_payload(
+    authorization: VerifiedCostAuthorization | None,
+) -> JSONValue:
+    if authorization is None:
+        return None
+    return {
+        "authorization_ref": authorization.authorization_ref,
+        "operation_id": authorization.operation_id,
+        "currency": authorization.currency,
+        "max_cost_usd": authorization.max_cost_usd,
+        "current": authorization.current,
+    }
+
+
 def _policy_payload(policy: ProductionRoutingPolicy) -> dict[str, JSONValue]:
     return {
         "max_operation_cost_usd": policy.max_operation_cost_usd,
@@ -238,6 +273,8 @@ def _policy_payload(policy: ProductionRoutingPolicy) -> dict[str, JSONValue]:
 def _request_payload(
     request: ProductionRouteRequest,
     policy: ProductionRoutingPolicy,
+    owner_authorization: VerifiedOwnerExecutionAuthorization | None,
+    cost_authorization: VerifiedCostAuthorization | None,
 ) -> dict[str, JSONValue]:
     return {
         "operation_id": request.operation_id,
@@ -249,6 +286,8 @@ def _request_payload(
         "routing_choice": _routing_choice_payload(request.routing_choice),
         "owner_authorization_ref": request.owner_authorization_ref,
         "cost_authorization_ref": request.cost_authorization_ref,
+        "owner_authorization": _owner_authorization_payload(owner_authorization),
+        "cost_authorization": _cost_authorization_payload(cost_authorization),
         "max_cost_usd": request.max_cost_usd,
         "prep_bundle_ref": (
             editorial_prep_bundle_ref(request.prep_bundle)
@@ -294,6 +333,28 @@ def _validate_prep_bundle(
     ],
     findings: list[ProductionRoutingFinding],
 ) -> None:
+    if bundle.private_content_scope not in _VALID_PRIVATE_SCOPES:
+        findings.append(
+            _finding(
+                "ROUTING.AGENT.BUNDLE.PRIVATE_SCOPE_UNKNOWN",
+                f"unknown private content scope {bundle.private_content_scope}",
+            )
+        )
+    if bundle.network_mode not in _VALID_NETWORK_MODES:
+        findings.append(
+            _finding(
+                "ROUTING.AGENT.BUNDLE.NETWORK_MODE_UNKNOWN",
+                f"unknown network mode {bundle.network_mode}",
+            )
+        )
+    if bundle.reasoning_mode not in _VALID_REASONING_MODES:
+        findings.append(
+            _finding(
+                "ROUTING.AGENT.BUNDLE.REASONING_MODE_UNKNOWN",
+                f"unknown reasoning mode {bundle.reasoning_mode}",
+            )
+        )
+
     for field_name, value in (
         ("TASK_ID", bundle.task_id),
         ("PROJECT_ID", bundle.project_id),
@@ -435,6 +496,24 @@ def evaluate_production_route(
     verified_cost_authorizations: Mapping[str, VerifiedCostAuthorization],
 ) -> ProductionRouteResult:
     findings: list[ProductionRoutingFinding] = []
+    owner_authorization = (
+        verified_owner_authorizations.get(request.owner_authorization_ref)
+        if request.owner_authorization_ref is not None
+        else None
+    )
+    cost_authorization = (
+        verified_cost_authorizations.get(request.cost_authorization_ref)
+        if request.cost_authorization_ref is not None
+        else None
+    )
+
+    if request.downstream_blast_radius not in _VALID_BLAST_RADIUS:
+        findings.append(
+            _finding(
+                "ROUTING.BLAST_RADIUS_UNKNOWN",
+                f"unknown downstream blast radius {request.downstream_blast_radius}",
+            )
+        )
 
     if not request.operation_id.strip():
         findings.append(
@@ -547,11 +626,6 @@ def evaluate_production_route(
                         "RoutingChoice provider/model must be non-empty",
                     )
                 )
-        owner_authorization: VerifiedOwnerExecutionAuthorization | None = None
-        if request.owner_authorization_ref is not None:
-            owner_authorization = verified_owner_authorizations.get(
-                request.owner_authorization_ref
-            )
         if policy.require_owner_authorization_for_provider:
             if owner_authorization is None:
                 findings.append(
@@ -599,11 +673,6 @@ def evaluate_production_route(
                             owner_authorization.authorization_ref,
                         )
                     )
-        cost_authorization: VerifiedCostAuthorization | None = None
-        if request.cost_authorization_ref is not None:
-            cost_authorization = verified_cost_authorizations.get(
-                request.cost_authorization_ref
-            )
         if policy.require_cost_authorization_for_provider:
             if cost_authorization is None:
                 findings.append(
@@ -694,6 +763,16 @@ def evaluate_production_route(
 
     agent_dispatch_ready = False
     if request.use_editorial_prep_agent:
+        if minimum_class != "C_PREMIUM":
+            findings.append(
+                _finding(
+                    "ROUTING.AGENT.OPERATION_CLASS_INVALID",
+                    (
+                        "EDITORIAL_PREP agent may only execute operations whose "
+                        "minimum class is C_PREMIUM"
+                    ),
+                )
+            )
         if request.selected_execution_class != "C_PREMIUM":
             findings.append(
                 _finding(
@@ -711,6 +790,27 @@ def evaluate_production_route(
                     ),
                 )
             )
+        if (
+            owner_authorization is None
+            or not owner_authorization.current
+            or owner_authorization.operation_id != request.operation_id
+            or owner_authorization.operation_kind != request.operation_kind
+        ):
+            findings.append(
+                _finding(
+                    "ROUTING.AGENT.EXPLICIT_OWNER_AUTH_INVALID",
+                    "EDITORIAL_PREP agent requires exact current Owner authorization",
+                )
+            )
+        elif not owner_authorization.editorial_prep_agent_allowed:
+            findings.append(
+                _finding(
+                    "ROUTING.AGENT.EXPLICIT_OWNER_AUTH_DENIED",
+                    "Owner authorization does not permit EDITORIAL_PREP agent",
+                    owner_authorization.authorization_ref,
+                )
+            )
+
         if not request.agent_lane_available:
             findings.append(
                 _finding(
@@ -756,7 +856,12 @@ def evaluate_production_route(
             )
         )
 
-    payload = _request_payload(request, policy)
+    payload = _request_payload(
+        request,
+        policy,
+        owner_authorization,
+        cost_authorization,
+    )
     route_ref = f"mystery-production-route:{content_hash(payload)}"
     qualified = not findings
     if request.use_editorial_prep_agent and qualified:
