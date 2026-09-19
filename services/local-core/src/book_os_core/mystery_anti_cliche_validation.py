@@ -25,9 +25,7 @@ AntiClicheSeverity: TypeAlias = Literal["BLOCKING", "MAJOR", "MINOR", "NOTE"]
 ExceptionDecision: TypeAlias = Literal["ACCEPT", "REWORK", "REJECT"]
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_VALID_STAGES = frozenset(
-    {"PRE_DRAFT", "REPRESENTATIVE_SAMPLE", "MIDBOOK", "WHOLE_BOOK", "FINAL"}
-)
+_VALID_STAGES = frozenset({"PRE_DRAFT", "REPRESENTATIVE_SAMPLE", "MIDBOOK", "WHOLE_BOOK", "FINAL"})
 _VALID_LEVELS = frozenset(
     {
         "BLOCKED_BY_DEFAULT",
@@ -38,9 +36,7 @@ _VALID_LEVELS = frozenset(
 )
 _VALID_SEVERITIES = frozenset({"BLOCKING", "MAJOR", "MINOR", "NOTE"})
 _VALID_DECISIONS = frozenset({"ACCEPT", "REWORK", "REJECT"})
-_VALID_EVALUATOR_CLASSES = frozenset(
-    {"SEMANTIC", "LLM_JUDGE", "PAIRWISE", "HUMAN_LABEL"}
-)
+_VALID_EVALUATOR_CLASSES = frozenset({"SEMANTIC", "LLM_JUDGE", "PAIRWISE", "HUMAN_LABEL"})
 
 
 @dataclass(frozen=True)
@@ -186,8 +182,7 @@ def _rule_pack_payload(rule_pack: AntiClicheRulePack) -> dict[str, JSONValue]:
         "version": rule_pack.version,
         "rules": _json_objects(
             tuple(
-                _rule_payload(rule)
-                for rule in sorted(rule_pack.rules, key=lambda item: item.code)
+                _rule_payload(rule) for rule in sorted(rule_pack.rules, key=lambda item: item.code)
             )
         ),
     }
@@ -254,12 +249,8 @@ def _exception_payload(exception: AntiClicheException) -> dict[str, JSONValue]:
 def _policy_payload(policy: AntiClichePolicy) -> dict[str, JSONValue]:
     return {
         "stage": policy.stage,
-        "require_independent_semantic_scan": (
-            policy.require_independent_semantic_scan
-        ),
-        "major_requires_human_disposition": (
-            policy.major_requires_human_disposition
-        ),
+        "require_independent_semantic_scan": (policy.require_independent_semantic_scan),
+        "major_requires_human_disposition": (policy.major_requires_human_disposition),
     }
 
 
@@ -429,9 +420,7 @@ def _validate_scan_artifact(
         )
         return
 
-    expected_purpose = (
-        f"ANTI_CLICHE_SCAN:{run.stage}:{run.rule_pack_ref}"
-    )
+    expected_purpose = f"ANTI_CLICHE_SCAN:{run.stage}:{run.rule_pack_ref}"
     for code, actual, expected in (
         ("ID_MISMATCH", artifact.evaluation_ref, run.scan_evaluation_ref),
         ("SNAPSHOT_MISMATCH", artifact.manuscript_snapshot_ref, run.target_snapshot_ref),
@@ -489,11 +478,7 @@ def _exception_for_finding(
     finding_ref: str,
     exceptions: tuple[AntiClicheException, ...],
 ) -> list[AntiClicheException]:
-    return [
-        exception
-        for exception in exceptions
-        if exception.finding_ref == finding_ref
-    ]
+    return [exception for exception in exceptions if exception.finding_ref == finding_ref]
 
 
 def evaluate_anti_cliche(
@@ -554,10 +539,7 @@ def evaluate_anti_cliche(
 
     current_pack_ref = anti_cliche_rule_pack_ref(rule_pack)
     current_pack_hash = anti_cliche_rule_pack_hash(rule_pack)
-    if (
-        run.rule_pack_ref != current_pack_ref
-        or run.rule_pack_hash != current_pack_hash
-    ):
+    if run.rule_pack_ref != current_pack_ref or run.rule_pack_hash != current_pack_hash:
         findings.append(
             _finding(
                 "ANTI_CLICHE.RUN.RULE_PACK_STALE",
@@ -592,10 +574,7 @@ def evaluate_anti_cliche(
         )
 
     if run.series_book:
-        if (
-            run.current_series_brain_ref is None
-            or not run.current_series_brain_ref.strip()
-        ):
+        if run.current_series_brain_ref is None or not run.current_series_brain_ref.strip():
             findings.append(
                 _finding(
                     "ANTI_CLICHE.SERIES.BRAIN_REF_MISSING",
@@ -816,10 +795,7 @@ def evaluate_anti_cliche(
                         finding_ref,
                     )
                 )
-            elif (
-                anti_finding.human_disposition_ref
-                not in verified_human_decision_refs
-            ):
+            elif anti_finding.human_disposition_ref not in verified_human_decision_refs:
                 findings.append(
                     _finding(
                         "ANTI_CLICHE.FINDING.MAJOR_DISPOSITION_UNVERIFIED",
@@ -950,10 +926,7 @@ def evaluate_anti_cliche(
                     _finding(
                         "ANTI_CLICHE.EXCEPTION.SERIES_REF_MISMATCH",
                         "BLOCKING",
-                        (
-                            "series-book exception must cite the exact current "
-                            "Series Brain ref"
-                        ),
+                        ("series-book exception must cite the exact current Series Brain ref"),
                         exception.finding_ref,
                     )
                 )
@@ -968,13 +941,7 @@ def evaluate_anti_cliche(
             )
 
     unresolved = tuple(
-        sorted(
-            {
-                finding.code
-                for finding in findings
-                if finding.severity in {"BLOCKING", "MAJOR"}
-            }
-        )
+        sorted({finding.code for finding in findings if finding.severity in {"BLOCKING", "MAJOR"}})
     )
     result_ref = _run_ref(run=run, policy=policy)
     return AntiClicheResult(
