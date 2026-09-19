@@ -81,6 +81,35 @@ _VALID_CHECKPOINTS = frozenset(
     {"PRE_DRAFT", "REPRESENTATIVE_SAMPLE", "MIDBOOK", "WHOLE_BOOK", "FINAL"}
 )
 _VALID_BANDS = frozenset(_BAND_ORDER)
+_VALID_DIMENSION_STATUSES = frozenset({"PASS", "MAJOR_GAP", "BLOCKING_GAP"})
+_VALID_SEVERITIES = frozenset({"BLOCKING", "MAJOR", "MINOR", "NOTE"})
+_VALID_REFERENCE_CATEGORIES = frozenset(
+    {
+        "COMMERCIAL_SUCCESS",
+        "CRITICAL_RESPECT",
+        "DURABLE_BACKLIST",
+        "RECENT_EXPECTATION",
+        "AUDIO_REFERENCE",
+    }
+)
+_VALID_PUBLISHER_CLASSES = frozenset(
+    {"ESTABLISHED_PUBLISHER", "SMALL_PRESS", "INDEPENDENT", "OTHER"}
+)
+_VALID_ACCESS_LEVELS = frozenset(
+    {
+        "METADATA_ONLY",
+        "DERIVED_NON_RECONSTRUCTIVE",
+        "LAWFUL_BOUNDED_TEXT",
+        "LICENSED_FULL_ACCESS",
+        "PUBLIC_DOMAIN_FULL_ACCESS",
+    }
+)
+_VALID_RIGHTS_BASES = frozenset(
+    {"PUBLIC_METADATA", "PUBLIC_DOMAIN", "USER_OWNED", "LICENSED", "OTHER_DOCUMENTED"}
+)
+_VALID_COMPARISON_MODES = frozenset(
+    {"CRITERION", "BLIND_PAIRWISE", "CORPUS_DIAGNOSTIC"}
+)
 _VALID_DIMENSIONS = frozenset(
     {
         "PREMISE_IDENTITY",
@@ -646,6 +675,94 @@ def validate_benchmark_set(
         else:
             years.append(reference.publication_year)
 
+        if reference.publisher_class not in _VALID_PUBLISHER_CLASSES:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.PUBLISHER_CLASS_UNKNOWN",
+                    (
+                        f"reference {reference.reference_id} has unknown publisher "
+                        f"class {reference.publisher_class}"
+                    ),
+                    reference.reference_id,
+                )
+            )
+        if (
+            reference.publisher_class == "ESTABLISHED_PUBLISHER"
+            and (reference.publisher_ref is None or not reference.publisher_ref.strip())
+        ):
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.PUBLISHER_REF_MISSING",
+                    (
+                        f"established-publisher reference {reference.reference_id} "
+                        "requires publisher_ref"
+                    ),
+                    reference.reference_id,
+                )
+            )
+        if reference.access_level not in _VALID_ACCESS_LEVELS:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.ACCESS_LEVEL_UNKNOWN",
+                    (
+                        f"reference {reference.reference_id} has unknown access level "
+                        f"{reference.access_level}"
+                    ),
+                    reference.reference_id,
+                )
+            )
+        if reference.rights_basis not in _VALID_RIGHTS_BASES:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.RIGHTS_BASIS_UNKNOWN",
+                    (
+                        f"reference {reference.reference_id} has unknown rights basis "
+                        f"{reference.rights_basis}"
+                    ),
+                    reference.reference_id,
+                )
+            )
+        if not reference.format_codes:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.FORMATS_MISSING",
+                    f"reference {reference.reference_id} has no format codes",
+                    reference.reference_id,
+                )
+            )
+        if len(set(reference.format_codes)) != len(reference.format_codes):
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.DUPLICATE_FORMAT",
+                    f"reference {reference.reference_id} repeats format codes",
+                    reference.reference_id,
+                )
+            )
+        if len(set(reference.craft_observation_refs)) != len(
+            reference.craft_observation_refs
+        ):
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.DUPLICATE_OBSERVATION_REF",
+                    (
+                        f"reference {reference.reference_id} repeats craft "
+                        "observation refs"
+                    ),
+                    reference.reference_id,
+                )
+            )
+        if any(not value.strip() for value in reference.craft_observation_refs):
+            findings.append(
+                _finding(
+                    "PRO_BENCH.REFERENCE.EMPTY_OBSERVATION_REF",
+                    (
+                        f"reference {reference.reference_id} contains an empty "
+                        "craft observation ref"
+                    ),
+                    reference.reference_id,
+                )
+            )
+
         if not reference.selection_categories:
             findings.append(
                 _finding(
@@ -664,7 +781,21 @@ def validate_benchmark_set(
                     reference.reference_id,
                 )
             )
-        categories_seen.update(reference.selection_categories)
+        for category in reference.selection_categories:
+            if category not in _VALID_REFERENCE_CATEGORIES:
+                findings.append(
+                    _finding(
+                        "PRO_BENCH.REFERENCE.CATEGORY_UNKNOWN",
+                        (
+                            f"reference {reference.reference_id} has unknown "
+                            f"category {category}"
+                        ),
+                        reference.reference_id,
+                        category,
+                    )
+                )
+            else:
+                categories_seen.add(category)
 
         for field_name, value in (
             ("SELECTION_REASON", reference.selection_reason),
@@ -1091,6 +1222,28 @@ def evaluate_professional_benchmark(
             continue
         evaluations_by_dimension[evaluation.dimension] = evaluation
 
+        if evaluation.status not in _VALID_DIMENSION_STATUSES:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.EVALUATION.STATUS_UNKNOWN",
+                    (
+                        f"dimension {evaluation.dimension} has unknown status "
+                        f"{evaluation.status}"
+                    ),
+                    evaluation.dimension,
+                )
+            )
+        if evaluation.comparison_mode not in _VALID_COMPARISON_MODES:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.EVALUATION.COMPARISON_MODE_UNKNOWN",
+                    (
+                        f"dimension {evaluation.dimension} has unknown comparison "
+                        f"mode {evaluation.comparison_mode}"
+                    ),
+                    evaluation.dimension,
+                )
+            )
         if not evaluation.evaluation_ref.strip():
             findings.append(
                 _finding(
@@ -1155,6 +1308,28 @@ def evaluate_professional_benchmark(
 
     findings_by_dimension: dict[str, list[FictionBenchmarkFinding]] = {}
     for benchmark_finding in run.findings:
+        if benchmark_finding.dimension not in _VALID_DIMENSIONS:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.FINDING.DIMENSION_UNKNOWN",
+                    (
+                        f"benchmark finding uses unknown dimension "
+                        f"{benchmark_finding.dimension}"
+                    ),
+                    benchmark_finding.dimension,
+                )
+            )
+        if benchmark_finding.severity not in _VALID_SEVERITIES:
+            findings.append(
+                _finding(
+                    "PRO_BENCH.FINDING.SEVERITY_UNKNOWN",
+                    (
+                        f"finding {benchmark_finding.dimension} has unknown severity "
+                        f"{benchmark_finding.severity}"
+                    ),
+                    benchmark_finding.dimension,
+                )
+            )
         findings_by_dimension.setdefault(
             benchmark_finding.dimension,
             [],
