@@ -18,6 +18,7 @@ from book_os_core.mystery_editorial_gate import (
     ExternalWritingReadiness,
     SceneContract,
     readiness_with_anti_cliche,
+    readiness_with_production_route,
     WritingGatePolicy,
     create_scene_contract_revision,
     evaluate_scene_writing_gate,
@@ -35,6 +36,7 @@ from book_os_core.mystery_research_validation import (
     ResearchLedgerResult,
     research_entity_id,
 )
+from book_os_core.mystery_production_routing import ProductionRouteResult
 from book_os_core.mystery_series_validation import SeriesUniquenessResult
 
 NOW = 1_800_000_000
@@ -510,6 +512,7 @@ def test_provider_execution_requires_route_execution_and_cost_authorization() ->
         scene_revision,
         readiness=_clean_readiness(
             provider_execution_requested=True,
+            execution_route_qualified=True,
             execution_route_ref="route:writer-standard",
             execution_authorization_ref="execution-auth:1",
             cost_authorization_ref="cost-auth:1",
@@ -892,3 +895,93 @@ def test_failed_anti_cliche_result_clears_stale_manual_readiness() -> None:
     assert not readiness.anti_cliche_qualified
     assert readiness.anti_cliche_evaluation_ref is None
     assert readiness.unresolved_blocked_cliche_codes
+
+
+def test_provider_refs_without_qualified_production_route_do_not_unlock_writing() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    readiness = _clean_readiness(
+        provider_execution_requested=True,
+        execution_route_qualified=False,
+        execution_route_ref="mystery-production-route:invented",
+        execution_authorization_ref="owner-auth:invented",
+        cost_authorization_ref="cost-auth:invented",
+    )
+
+    result = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        readiness=readiness,
+    )
+
+    assert "EXECUTION.ROUTE_NOT_QUALIFIED" in _blockers(result)
+    assert not result.state.writing_allowed
+
+
+def test_production_route_bridge_enters_exact_execution_provenance_into_token() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    route = ProductionRouteResult(
+        qualified=True,
+        operation_id="op:synthetic:verified",
+        operation_kind="SCENE_DRAFT",
+        provider="openai",
+        model="gpt-5.6-sol",
+        execution_route_ref="mystery-production-route:verified-v1",
+        provider_execution_requested=True,
+        execution_authorization_ref="owner-auth:verified-v1",
+        cost_authorization_ref="cost-auth:verified-v1",
+        agent_dispatch_ready=False,
+        findings=(),
+    )
+    readiness = readiness_with_production_route(
+        _clean_readiness(),
+        route,
+    )
+
+    result = _evaluate(
+        graph,
+        policy,
+        contract,
+        scene_revision,
+        readiness=readiness,
+    )
+
+    assert result.state.writing_allowed
+    assert result.token is not None
+    for ref in (
+        "mystery-production-route:verified-v1",
+        "owner-auth:verified-v1",
+        "cost-auth:verified-v1",
+    ):
+        assert ref in result.token.evaluation_refs
+
+
+def test_failed_production_route_clears_stale_execution_readiness() -> None:
+    readiness = readiness_with_production_route(
+        _clean_readiness(
+            provider_execution_requested=True,
+            execution_route_qualified=True,
+            execution_route_ref="mystery-production-route:stale",
+            execution_authorization_ref="owner-auth:stale",
+            cost_authorization_ref="cost-auth:stale",
+        ),
+        ProductionRouteResult(
+            qualified=False,
+            operation_id="op:synthetic:blocked",
+            operation_kind="SCENE_DRAFT",
+            provider="openai",
+            model="gpt-5.6-sol",
+            execution_route_ref="mystery-production-route:blocked",
+            provider_execution_requested=True,
+            execution_authorization_ref=None,
+            cost_authorization_ref=None,
+            agent_dispatch_ready=False,
+            findings=(),
+        ),
+    )
+
+    assert not readiness.execution_route_qualified
+    assert readiness.execution_route_ref is None
+    assert readiness.execution_authorization_ref is None
+    assert readiness.cost_authorization_ref is None

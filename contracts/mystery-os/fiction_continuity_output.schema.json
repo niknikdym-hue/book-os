@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/fiction_continuity_output.schema.json",
+  "title": "MYSTERY OS Fiction Continuity Extraction Output",
+  "type": "object",
+  "required": [
+    "schema_version","scene_id","state_change_codes",
+    "new_character_knowledge_refs","clue_state_refs",
+    "relationship_movement_refs","continuity_risk_notes"
+  ],
+  "properties": {
+    "schema_version":{"const":"0.1.0"},
+    "scene_id":{"type":"string","minLength":1},
+    "state_change_codes":{"type":"array","items":{"type":"string"}},
+    "new_character_knowledge_refs":{"type":"array","items":{"type":"string"}},
+    "clue_state_refs":{"type":"array","items":{"type":"string"}},
+    "relationship_movement_refs":{"type":"array","items":{"type":"string"}},
+    "continuity_risk_notes":{"type":"array","items":{"type":"string"}}
+  },
+  "additionalProperties":false
+}

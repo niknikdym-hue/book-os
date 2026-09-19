@@ -12,6 +12,8 @@ from .model_gateway import (
     BookBenchPairwiseOutput,
     BookContractProposalOutput,
     ChapterContractProposalOutput,
+    FictionContinuityExtractionOutput,
+    FictionSceneDraftOutput,
     ModelAdapterResult,
     ModelBudgetError,
     ModelOutputError,
@@ -68,6 +70,14 @@ class YandexChatCompletionsAdapter:
 
     @staticmethod
     def _output_type(task_type: str) -> type[BaseModel]:
+        if task_type in {
+            "REPRESENTATIVE_SAMPLE_DRAFT",
+            "SCENE_DRAFT",
+            "ROUTINE_SCENE_REVISION",
+        }:
+            return FictionSceneDraftOutput
+        if task_type == "CONTINUITY_EXTRACTION":
+            return FictionContinuityExtractionOutput
         if task_type == "BOOK_CONTRACT_PROPOSAL":
             return BookContractProposalOutput
         if task_type == "ARCHITECTURE_PROPOSAL":

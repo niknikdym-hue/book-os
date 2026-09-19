@@ -5,7 +5,7 @@ from typing import Any, Literal, Protocol
 import json
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from .prompts import PromptTemplate
 from .secrets import SecretStore
@@ -35,6 +35,41 @@ class AuthorityInputRef(BaseModel):
 class SectionDraftOutput(BaseModel):
     text: str = Field(min_length=1)
     notes: list[str] = Field(default_factory=list)
+
+
+class FictionSceneDraftOutput(BaseModel):
+    schema_version: Literal["0.1.0"] = "0.1.0"
+    outcome: Literal["DRAFT", "ARCHITECTURE_BLOCKER"]
+    text: str | None = None
+    blocker_code: str | None = None
+    blocker_detail: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_outcome_payload(self) -> "FictionSceneDraftOutput":
+        if self.outcome == "DRAFT":
+            if self.text is None or not self.text.strip():
+                raise ValueError("DRAFT outcome requires non-empty text")
+            if self.blocker_code is not None or self.blocker_detail is not None:
+                raise ValueError("DRAFT outcome must not carry architecture blocker fields")
+        else:
+            if self.text not in {None, ""}:
+                raise ValueError("ARCHITECTURE_BLOCKER must not return manuscript prose")
+            if self.blocker_code is None or not self.blocker_code.strip():
+                raise ValueError("ARCHITECTURE_BLOCKER requires blocker_code")
+            if self.blocker_detail is None or not self.blocker_detail.strip():
+                raise ValueError("ARCHITECTURE_BLOCKER requires blocker_detail")
+        return self
+
+
+class FictionContinuityExtractionOutput(BaseModel):
+    schema_version: Literal["0.1.0"] = "0.1.0"
+    scene_id: str = Field(min_length=1)
+    state_change_codes: list[str] = Field(default_factory=list)
+    new_character_knowledge_refs: list[str] = Field(default_factory=list)
+    clue_state_refs: list[str] = Field(default_factory=list)
+    relationship_movement_refs: list[str] = Field(default_factory=list)
+    continuity_risk_notes: list[str] = Field(default_factory=list)
 
 
 class BookContractProposalOutput(BaseModel):
@@ -111,6 +146,10 @@ class ModelTaskRequest(BaseModel):
     task_id: str
     task_type: Literal[
         "SECTION_DRAFT",
+        "REPRESENTATIVE_SAMPLE_DRAFT",
+        "SCENE_DRAFT",
+        "ROUTINE_SCENE_REVISION",
+        "CONTINUITY_EXTRACTION",
         "BOOK_CONTRACT_PROPOSAL",
         "ARCHITECTURE_PROPOSAL",
         "CHAPTER_CONTRACT_PROPOSAL",
@@ -285,6 +324,37 @@ class DeterministicFakeAdapter:
                 },
                 usage={"input_tokens": 50, "output_tokens": 20},
             )
+        if request.task_type in {
+            "REPRESENTATIVE_SAMPLE_DRAFT",
+            "SCENE_DRAFT",
+            "ROUTINE_SCENE_REVISION",
+        }:
+            return ModelAdapterResult(
+                provider_run_id="fake-fiction-scene",
+                output={
+                    "schema_version": "0.1.0",
+                    "outcome": "DRAFT",
+                    "text": f"Fiction draft for: {request.section_objective}",
+                    "blocker_code": None,
+                    "blocker_detail": None,
+                    "notes": ["deterministic fake fiction writer"],
+                },
+                usage={"input_tokens": 100, "output_tokens": 40},
+            )
+        if request.task_type == "CONTINUITY_EXTRACTION":
+            return ModelAdapterResult(
+                provider_run_id="fake-fiction-continuity",
+                output={
+                    "schema_version": "0.1.0",
+                    "scene_id": str(request.task_payload.get("scene_id", "scene")),
+                    "state_change_codes": ["SYNTHETIC_STATE_CHANGE"],
+                    "new_character_knowledge_refs": [],
+                    "clue_state_refs": [],
+                    "relationship_movement_refs": [],
+                    "continuity_risk_notes": [],
+                },
+                usage={"input_tokens": 80, "output_tokens": 30},
+            )
         return ModelAdapterResult(
             provider_run_id="fake-success",
             output={
@@ -327,7 +397,15 @@ class OpenAIResponsesAdapter:
     @staticmethod
     def output_schema(task_type: str = "SECTION_DRAFT") -> dict[str, Any]:
         schema: dict[str, Any]
-        if task_type == "BOOK_CONTRACT_PROPOSAL":
+        if task_type in {
+            "REPRESENTATIVE_SAMPLE_DRAFT",
+            "SCENE_DRAFT",
+            "ROUTINE_SCENE_REVISION",
+        }:
+            schema = FictionSceneDraftOutput.model_json_schema()
+        elif task_type == "CONTINUITY_EXTRACTION":
+            schema = FictionContinuityExtractionOutput.model_json_schema()
+        elif task_type == "BOOK_CONTRACT_PROPOSAL":
             schema = BookContractProposalOutput.model_json_schema()
         elif task_type == "ARCHITECTURE_PROPOSAL":
             schema = BookArchitectureProposalOutput.model_json_schema()
@@ -547,7 +625,15 @@ class OpenAIResponsesAdapter:
             raise ModelOutputError("OpenAI structured output must be an object")
         try:
             output_type: type[BaseModel] = SectionDraftOutput
-            if request.task_type == "BOOK_CONTRACT_PROPOSAL":
+            if request.task_type in {
+                "REPRESENTATIVE_SAMPLE_DRAFT",
+                "SCENE_DRAFT",
+                "ROUTINE_SCENE_REVISION",
+            }:
+                output_type = FictionSceneDraftOutput
+            elif request.task_type == "CONTINUITY_EXTRACTION":
+                output_type = FictionContinuityExtractionOutput
+            elif request.task_type == "BOOK_CONTRACT_PROPOSAL":
                 output_type = BookContractProposalOutput
             elif request.task_type == "ARCHITECTURE_PROPOSAL":
                 output_type = BookArchitectureProposalOutput

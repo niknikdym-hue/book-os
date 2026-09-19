@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/production_route_request.schema.json",
+  "title": "MYSTERY OS Production Route Request",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "operation_id",
+    "operation_kind",
+    "selected_execution_class",
+    "downstream_blast_radius",
+    "provider_execution_requested",
+    "use_editorial_prep_agent",
+    "owner_authorization_ref",
+    "cost_authorization_ref",
+    "agent_lane_available",
+    "agent_capability_enabled"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "operation_id": {"type": "string", "minLength": 1},
+    "operation_kind": {
+      "enum": [
+        "SCHEMA_VALIDATION",
+        "CASE_TIMELINE_VALIDATION",
+        "EXACT_SERIES_COLLISION",
+        "REPRESENTATIVE_SAMPLE_DRAFT",
+        "SCENE_DRAFT",
+        "ROUTINE_SCENE_REVISION",
+        "CONTINUITY_EXTRACTION",
+        "SERIES_ARCHITECTURE",
+        "CASE_SOLUTION_ARCHITECTURE",
+        "CLUE_REVEAL_ARCHITECTURE",
+        "ANTI_CLICHE_STRESS_TEST",
+        "SERIES_SEMANTIC_COLLISION",
+        "WRITING_READINESS_AUDIT",
+        "WHOLE_BOOK_DEVELOPMENTAL"
+      ]
+    },
+    "selected_execution_class": {"enum": ["A_LOCAL", "B_STANDARD", "C_PREMIUM"]},
+    "downstream_blast_radius": {"enum": ["LOW", "MEDIUM", "HIGH"]},
+    "provider_execution_requested": {"type": "boolean"},
+    "use_editorial_prep_agent": {"type": "boolean"},
+    "owner_authorization_ref": {"type": ["string", "null"]},
+    "cost_authorization_ref": {"type": ["string", "null"]},
+    "max_cost_usd": {"type": ["number", "null"], "minimum": 0},
+    "agent_lane_available": {"type": "boolean"},
+    "agent_capability_enabled": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}
