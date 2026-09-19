@@ -922,6 +922,10 @@ def test_production_route_bridge_enters_exact_execution_provenance_into_token() 
     graph, policy, contract, scene_revision, _ = _setup()
     route = ProductionRouteResult(
         qualified=True,
+        operation_id="op:synthetic:verified",
+        operation_kind="SCENE_DRAFT",
+        provider="openai",
+        model="gpt-5.6-sol",
         execution_route_ref="mystery-production-route:verified-v1",
         provider_execution_requested=True,
         execution_authorization_ref="owner-auth:verified-v1",
@@ -963,6 +967,10 @@ def test_failed_production_route_clears_stale_execution_readiness() -> None:
         ),
         ProductionRouteResult(
             qualified=False,
+            operation_id="op:synthetic:blocked",
+            operation_kind="SCENE_DRAFT",
+            provider="openai",
+            model="gpt-5.6-sol",
             execution_route_ref="mystery-production-route:blocked",
             provider_execution_requested=True,
             execution_authorization_ref=None,
