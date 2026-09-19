@@ -331,7 +331,7 @@ def _semantic_payload(
     }
 
 
-def series_brain_ref(
+def series_context_ref(
     *,
     profile: SeriesProfileSnapshot,
     current_passport: MysteryBookPassport,
@@ -349,6 +349,28 @@ def series_brain_ref(
         "current_passport_ref": passport_ref(current_passport),
         "prior_passports": prior_values,
         "policy": _policy_payload(policy),
+    }
+    return f"series-context:{content_hash(payload)}"
+
+
+def series_brain_ref(
+    *,
+    context_ref: str,
+    semantic_evidence: tuple[SeriesSemanticCollisionEvidence, ...],
+) -> str:
+    semantic_values: list[JSONValue] = []
+    for evidence in sorted(
+        semantic_evidence,
+        key=lambda item: (
+            item.prior_book_id,
+            item.dimension,
+            item.evaluation_ref,
+        ),
+    ):
+        semantic_values.append(_semantic_payload(evidence))
+    payload: dict[str, JSONValue] = {
+        "series_context_ref": context_ref,
+        "semantic_evidence": semantic_values,
     }
     return f"series-brain:{content_hash(payload)}"
 
@@ -850,7 +872,7 @@ def _check_exact_collisions(
                 findings.append(
                     _finding(
                         "SERIES.COLLISION.EXACT_ATTENTION",
-                        "MAJOR",
+                        "MINOR",
                         "EXACT",
                         dimension,
                         current.book_id,
@@ -1025,7 +1047,7 @@ def _validate_semantic_evidence(
     current: MysteryBookPassport,
     prior_passports: tuple[AcceptedBookPassport, ...],
     policy: SeriesCollisionPolicy,
-    brain_ref: str,
+    context_ref: str,
     semantic_evidence: tuple[SeriesSemanticCollisionEvidence, ...],
     verified_evaluations: Mapping[str, VerifiedEvaluationArtifact],
     verified_human_disposition_refs: frozenset[str],
@@ -1173,7 +1195,7 @@ def _validate_semantic_evidence(
                 (
                     "SNAPSHOT_MISMATCH",
                     artifact.manuscript_snapshot_ref,
-                    brain_ref,
+                    context_ref,
                 ),
                 (
                     "EVALUATOR_MISMATCH",
@@ -1335,7 +1357,7 @@ def evaluate_series_uniqueness(
         findings=findings,
     )
 
-    brain_ref = series_brain_ref(
+    context_ref = series_context_ref(
         profile=profile,
         current_passport=current_passport,
         prior_passports=prior_passports,
@@ -1399,13 +1421,17 @@ def evaluate_series_uniqueness(
         current=current_passport,
         prior_passports=prior_passports,
         policy=policy,
-        brain_ref=brain_ref,
+        context_ref=context_ref,
         semantic_evidence=semantic_evidence,
         verified_evaluations=verified_evaluations,
         verified_human_disposition_refs=verified_human_disposition_refs,
         findings=findings,
     )
 
+    final_brain_ref = series_brain_ref(
+        context_ref=context_ref,
+        semantic_evidence=semantic_evidence,
+    )
     blockers = [
         finding
         for finding in findings
@@ -1413,7 +1439,7 @@ def evaluate_series_uniqueness(
     ]
     return SeriesUniquenessResult(
         qualified=not blockers,
-        series_brain_ref=brain_ref,
+        series_brain_ref=final_brain_ref,
         current_passport_ref=passport_ref(current_passport),
         findings=tuple(findings),
     )
