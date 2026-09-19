@@ -1433,6 +1433,19 @@ def _validate_semantic_evidence(
                     evidence.evaluation_ref,
                 )
             )
+        elif evidence.evaluator_class == "DETERMINISTIC":
+            findings.append(
+                _finding(
+                    "SERIES.SEMANTIC.DETERMINISTIC_EVALUATOR_INVALID",
+                    "BLOCKING",
+                    "SEMANTIC",
+                    evidence.dimension,
+                    current.book_id,
+                    evidence.prior_book_id,
+                    "semantic collision evidence requires a semantic/human evaluator",
+                    evidence.evaluation_ref,
+                )
+            )
         if evidence.independence_state not in _VALID_INDEPENDENCE:
             findings.append(
                 _finding(
