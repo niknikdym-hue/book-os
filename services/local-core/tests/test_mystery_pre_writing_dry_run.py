@@ -145,7 +145,9 @@ def _build_authority() -> tuple[
         actor_kind="AI",
     )
     graph.register_head(scene)
-    authority_revisions = (story, narrative, case)
+    # Writer packet must mirror the full WritingAdmission authority snapshot,
+    # including the exact reviewed SceneContract revision itself.
+    authority_revisions = (story, narrative, case, scene)
     return (
         graph,
         contract,
