@@ -73,6 +73,28 @@ _VALID_DIMENSIONS: frozenset[str] = frozenset(
         "PROSE_SCENE_PATTERN_RISK",
     }
 )
+_MINIMUM_SEMANTIC_DIMENSIONS: frozenset[str] = frozenset(
+    {
+        "PREMISE",
+        "CASE_TYPE",
+        "CULPRIT_RELATIONSHIP",
+        "MOTIVE_FAMILY",
+        "MECHANISM",
+        "CONCEALMENT",
+        "SUSPECT_ARCHITECTURE",
+        "CLUE_ARCHITECTURE",
+        "SUPERNATURAL_DEVICE",
+        "MIDPOINT_REVERSAL",
+        "PROTAGONIST_JEOPARDY",
+        "EMOTIONAL_CONFLICT",
+        "RELATIONSHIP_MOVEMENT",
+        "FINAL_REVEAL",
+        "CLIMAX_STAGING",
+        "SETTING_TYPE",
+        "CASE_SOLUTION_ARCHITECTURE",
+        "PROSE_SCENE_PATTERN_RISK",
+    }
+)
 _VALID_SEMANTIC_STATES = frozenset({"CLEAR", "ATTENTION", "MATERIAL_COLLISION"})
 _VALID_EVALUATOR_CLASSES = frozenset(
     {"DETERMINISTIC", "SEMANTIC", "LLM_JUDGE", "PAIRWISE", "HUMAN_LABEL"}
@@ -713,13 +735,11 @@ def _validate_policy(
     current_book_id: str,
     findings: list[SeriesCollisionFinding],
 ) -> None:
-    groups = (
+    for label, values in (
         ("BLOCKING", policy.exact_blocking_dimensions),
         ("ATTENTION", policy.exact_attention_dimensions),
         ("SEMANTIC", policy.semantic_required_dimensions),
-    )
-    seen_across: dict[str, str] = {}
-    for label, values in groups:
+    ):
         if len(set(values)) != len(values):
             findings.append(
                 _finding(
@@ -745,25 +765,44 @@ def _validate_policy(
                         f"unknown collision dimension {dimension}",
                     )
                 )
-            prior_group = seen_across.get(dimension)
-            if prior_group is not None:
-                findings.append(
-                    _finding(
-                        "SERIES.POLICY.DIMENSION_OVERLAP",
-                        "BLOCKING",
-                        "EXACT",
-                        dimension,
-                        current_book_id,
-                        None,
-                        (
-                            f"dimension {dimension} appears in both "
-                            f"{prior_group} and {label} policy groups"
-                        ),
-                    )
-                )
-            else:
-                seen_across[dimension] = label
 
+    exact_overlap = set(policy.exact_blocking_dimensions).intersection(
+        policy.exact_attention_dimensions
+    )
+    for dimension in sorted(exact_overlap):
+        findings.append(
+            _finding(
+                "SERIES.POLICY.EXACT_DIMENSION_OVERLAP",
+                "BLOCKING",
+                "EXACT",
+                dimension,
+                current_book_id,
+                None,
+                (
+                    f"dimension {dimension} cannot be both exact-blocking and "
+                    "exact-attention"
+                ),
+            )
+        )
+
+    semantic_missing = sorted(
+        _MINIMUM_SEMANTIC_DIMENSIONS - set(policy.semantic_required_dimensions)
+    )
+    for dimension in semantic_missing:
+        findings.append(
+            _finding(
+                "SERIES.POLICY.SEMANTIC_CORE_MISSING",
+                "BLOCKING",
+                "SEMANTIC",
+                dimension,
+                current_book_id,
+                None,
+                (
+                    f"semantic collision policy must cover core dimension "
+                    f"{dimension}"
+                ),
+            )
+        )
 
 def _validate_prior_passports(
     *,
