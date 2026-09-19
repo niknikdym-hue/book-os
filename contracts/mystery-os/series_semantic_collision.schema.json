@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/series_semantic_collision.schema.json",
+  "title": "MYSTERY OS Series Semantic Collision Evidence",
+  "type": "object",
+  "required": [
+    "schema_version","current_book_id","prior_book_id","dimension",
+    "state","evaluation_ref","evaluator_identity","evaluator_class",
+    "independence_state","rubric_ref"
+  ],
+  "properties": {
+    "schema_version":{"const":"0.1.0"},
+    "current_book_id":{"type":"string","minLength":1},
+    "prior_book_id":{"type":"string","minLength":1},
+    "dimension":{"enum":[
+      "PREMISE","CASE_TYPE","VICTIM_TARGET_PROFILE","CULPRIT_RELATIONSHIP",
+      "MOTIVE_FAMILY","MECHANISM","CONCEALMENT","SUSPECT_ARCHITECTURE",
+      "CLUE_ARCHITECTURE","RED_HERRING_PATTERN","SUPERNATURAL_DEVICE",
+      "SETTING_TYPE","PROTAGONIST_JEOPARDY","EMOTIONAL_CONFLICT",
+      "RELATIONSHIP_MOVEMENT","MIDPOINT_REVERSAL","FINAL_REVEAL",
+      "CLIMAX_STAGING","ENDING_STATE","OPENING_PATTERN",
+      "BODY_DISCOVERY_PATTERN","INTERVIEW_CADENCE",
+      "CASE_SOLUTION_ARCHITECTURE","PROSE_SCENE_PATTERN_RISK"
+    ]},
+    "state":{"enum":["CLEAR","ATTENTION","MATERIAL_COLLISION"]},
+    "evaluation_ref":{"type":"string","minLength":1},
+    "evaluator_identity":{"type":"string","minLength":1},
+    "evaluator_class":{"enum":["DETERMINISTIC","SEMANTIC","LLM_JUDGE","PAIRWISE","HUMAN_LABEL"]},
+    "independence_state":{"enum":["INDEPENDENT","SAME_CONFIG","UNKNOWN","NOT_APPLICABLE"]},
+    "rubric_ref":{"type":"string","minLength":1},
+    "human_disposition_ref":{"type":["string","null"]}
+  },
+  "additionalProperties": false
+}

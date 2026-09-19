@@ -17,6 +17,7 @@ from .mystery_case_validation import CaseIntegrityResult
 from .mystery_narrative_validation import NarrativeValidationResult
 from .mystery_research_validation import ResearchLedgerResult, research_entity_id
 from .mystery_sample_qualification import SampleQualificationResult
+from .mystery_series_validation import SeriesUniquenessResult
 
 GateStatus: TypeAlias = Literal[
     "NOT_STARTED",
@@ -62,6 +63,7 @@ class WritingGatePolicy:
     narrative_contract_entity_id: str
     case_solution_entity_id: str
     production_mode: ProductionMode
+    series_book: bool = False
     extra_required_authority_entity_ids: tuple[str, ...] = ()
 
 
@@ -73,6 +75,8 @@ class ExternalWritingReadiness:
     representative_sample_ref: str | None = None
     writer_qualified: bool = False
     writer_qualification_ref: str | None = None
+    series_uniqueness_qualified: bool = False
+    series_brain_ref: str | None = None
     provider_execution_requested: bool = False
     execution_route_ref: str | None = None
     execution_authorization_ref: str | None = None
@@ -96,6 +100,18 @@ def readiness_with_sample_qualification(
         writer_qualification_ref=(
             qualification.writer_qualification_ref if qualification.writer_qualified else None
         ),
+    )
+
+
+def readiness_with_series_uniqueness(
+    readiness: ExternalWritingReadiness,
+    uniqueness: SeriesUniquenessResult,
+) -> ExternalWritingReadiness:
+    """Bind MYS-09 exact Series Brain evidence into MYS-05 writing readiness."""
+    return replace(
+        readiness,
+        series_uniqueness_qualified=uniqueness.qualified,
+        series_brain_ref=uniqueness.series_brain_ref if uniqueness.qualified else None,
     )
 
 
@@ -595,6 +611,29 @@ def _qualification_gate(
     )
 
 
+def _series_uniqueness_gate(
+    policy: WritingGatePolicy,
+    readiness: ExternalWritingReadiness,
+) -> GateRecord:
+    if not policy.series_book:
+        return GateRecord(gate_id="SERIES_UNIQUENESS", status="PASS")
+
+    blockers: list[str] = []
+    refs: list[str] = []
+    if not readiness.series_uniqueness_qualified:
+        blockers.append("SERIES_UNIQUENESS.NOT_QUALIFIED")
+    if not readiness.series_brain_ref:
+        blockers.append("SERIES_UNIQUENESS.REF_MISSING")
+    else:
+        refs.append(readiness.series_brain_ref)
+    return GateRecord(
+        gate_id="SERIES_UNIQUENESS",
+        status="BLOCKED" if blockers else "PASS",
+        blocking_findings=tuple(blockers),
+        evaluation_refs=tuple(refs),
+    )
+
+
 def _execution_gate(readiness: ExternalWritingReadiness) -> GateRecord:
     if not readiness.provider_execution_requested:
         return GateRecord(gate_id="EXECUTION_AUTHORIZATION", status="PASS")
@@ -735,6 +774,7 @@ def evaluate_scene_writing_gate(
     )
     research_gate = research_evidence.record
     anti_cliche_gate = _anti_cliche_gate(readiness)
+    series_uniqueness_gate = _series_uniqueness_gate(policy, readiness)
     qualification_gate = _qualification_gate(policy, readiness)
     execution_gate = _execution_gate(readiness)
 
@@ -745,6 +785,7 @@ def evaluate_scene_writing_gate(
         narrative_gate,
         research_gate,
         anti_cliche_gate,
+        series_uniqueness_gate,
         qualification_gate,
         execution_gate,
     )

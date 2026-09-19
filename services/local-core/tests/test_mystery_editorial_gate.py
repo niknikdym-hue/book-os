@@ -19,6 +19,7 @@ from book_os_core.mystery_editorial_gate import (
     WritingGatePolicy,
     create_scene_contract_revision,
     evaluate_scene_writing_gate,
+    readiness_with_series_uniqueness,
     scene_contract_entity_id,
     transition_scene_contract_status,
     verify_writing_admission_token,
@@ -32,6 +33,7 @@ from book_os_core.mystery_research_validation import (
     ResearchLedgerResult,
     research_entity_id,
 )
+from book_os_core.mystery_series_validation import SeriesUniquenessResult
 
 NOW = 1_800_000_000
 
@@ -759,3 +761,65 @@ def test_research_recheck_deadline_bounds_admission_even_with_cached_green_ledge
         if gate.gate_id == "REALISM_RESEARCH"
     )
     assert research_gate.status == "STALE"
+
+
+def test_series_book_cannot_receive_writing_admission_without_current_series_brain() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    series_policy = replace(policy, series_book=True)
+
+    blocked = _evaluate(
+        graph,
+        series_policy,
+        contract,
+        scene_revision,
+    )
+
+    blockers = _blockers(blocked)
+    assert "SERIES_UNIQUENESS.NOT_QUALIFIED" in blockers
+    assert "SERIES_UNIQUENESS.REF_MISSING" in blockers
+    assert not blocked.state.writing_allowed
+
+
+def test_series_uniqueness_result_populates_writing_readiness_and_token() -> None:
+    graph, policy, contract, scene_revision, _ = _setup()
+    series_policy = replace(policy, series_book=True)
+    uniqueness = SeriesUniquenessResult(
+        qualified=True,
+        series_brain_ref="series-brain:qualified-v1",
+        current_passport_ref="mystery-book-passport:book-1:v1",
+        findings=(),
+    )
+    readiness = readiness_with_series_uniqueness(
+        _clean_readiness(),
+        uniqueness,
+    )
+
+    result = _evaluate(
+        graph,
+        series_policy,
+        contract,
+        scene_revision,
+        readiness=readiness,
+    )
+
+    assert result.state.writing_allowed
+    assert result.token is not None
+    assert "series-brain:qualified-v1" in result.token.evaluation_refs
+
+
+def test_failed_series_uniqueness_never_sets_manual_series_ready_flag() -> None:
+    readiness = readiness_with_series_uniqueness(
+        _clean_readiness(
+            series_uniqueness_qualified=True,
+            series_brain_ref="series-brain:stale-manual-value",
+        ),
+        SeriesUniquenessResult(
+            qualified=False,
+            series_brain_ref="series-brain:blocked",
+            current_passport_ref="passport:blocked",
+            findings=(),
+        ),
+    )
+
+    assert not readiness.series_uniqueness_qualified
+    assert readiness.series_brain_ref is None

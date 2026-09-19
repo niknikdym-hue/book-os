@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://book-os.local/contracts/mystery-os/series_brain_run.schema.json",
+  "title": "MYSTERY OS Series Brain Run",
+  "type": "object",
+  "required": [
+    "schema_version","series_profile_id","series_profile_ref",
+    "writer_executor_identity","current_passport_ref",
+    "prior_passport_refs","exact_blocking_dimensions",
+    "exact_attention_dimensions","semantic_required_dimensions",
+    "semantic_evaluation_refs"
+  ],
+  "properties": {
+    "schema_version":{"const":"0.1.0"},
+    "series_profile_id":{"type":"string","minLength":1},
+    "series_profile_ref":{"type":"string","minLength":1},
+    "writer_executor_identity":{"type":"string","minLength":1},
+    "current_passport_ref":{"type":"string","minLength":1},
+    "prior_passport_refs":{"type":"array","uniqueItems":true,"items":{"type":"string","minLength":1}},
+    "exact_blocking_dimensions":{"type":"array","uniqueItems":true,"items":{"type":"string","minLength":1}},
+    "exact_attention_dimensions":{"type":"array","uniqueItems":true,"items":{"type":"string","minLength":1}},
+    "semantic_required_dimensions":{"type":"array","minItems":1,"uniqueItems":true,"items":{"type":"string","minLength":1}},
+    "semantic_evaluation_refs":{"type":"array","uniqueItems":true,"items":{"type":"string","minLength":1}}
+  },
+  "additionalProperties": false
+}
