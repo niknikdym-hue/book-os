@@ -545,6 +545,7 @@ def test_series_brain_ref_changes_when_semantic_evidence_changes() -> None:
         current_passport=CURRENT,
         prior_passports=(ACCEPTED_ONE,),
         policy=POLICY,
+        writer_executor_identity=WRITER_ID,
     )
     changed_artifacts = dict(artifacts)
     del changed_artifacts[first.evaluation_ref]
@@ -648,6 +649,7 @@ def test_strongly_serialized_profile_can_relax_standalone_rules() -> None:
         current_passport=current,
         prior_passports=(ACCEPTED_ONE,),
         policy=POLICY,
+        writer_executor_identity=WRITER_ID,
     )
     artifacts = {
         ref: replace(artifact, manuscript_snapshot_ref=context_ref)
